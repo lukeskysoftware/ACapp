@@ -1,23 +1,13 @@
 <?php
 session_start();
-require_once "db_connection.php";
+require_once "db.php";
+require_once "config.php"; // Include the config file to get the API key
 header('Content-Type: text/html; charset=utf-8');
 mysqli_set_charset($mysqli, 'utf8mb4');
 
 // Verifica se l'amministratore è loggato, altrimenti reindirizza alla pagina di login
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
     header("Location: login.php");
-    exit();
-}
-
-// Recupera la chiave API di Google Maps dal database
-$query = "SELECT * FROM config WHERE name = 'google_maps_api_key'";
-$result = $mysqli->query($query);
-if ($result && $result->num_rows > 0) {
-    $config = $result->fetch_assoc();
-    $google_maps_api_key = $config['value'];
-} else {
-    echo "Errore: chiave API di Google Maps non trovata.";
     exit();
 }
 ?>
@@ -30,7 +20,7 @@ if ($result && $result->num_rows > 0) {
     <title>Gestione delle Zone</title>
     <link rel="stylesheet" href="styles.css">
     <script async
-        src="https://maps.googleapis.com/maps/api/js?key=<?php echo $google_maps_api_key; ?>&libraries=places&language=it">
+        src="https://maps.googleapis.com/maps/api/js?key=<?php echo GOOGLE_MAPS_API_KEY; ?>&libraries=places&language=it">
     </script>
 </head>
 <body>
