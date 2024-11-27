@@ -7,7 +7,7 @@ $address = $_GET['address'];
 
 function getZonesFromAddress($address) {
     global $conn;
-    $sql = "SELECT * FROM zones WHERE ST_Distance_Sphere(POINT(lon, lat), POINT(:lon, :lat)) <= radius_km * 1000";
+    $sql = "SELECT * FROM cp_zones WHERE ST_Distance_Sphere(POINT(lon, lat), POINT(:lon, :lat)) <= radius_km * 1000";
     $stmt = $conn->prepare($sql);
     $stmt->bindParam(':lon', $lon);
     $stmt->bindParam(':lat', $lat);
@@ -38,7 +38,7 @@ function getCoordinatesFromAddress($address) {
 
 function getSlotsForZone($zone_id) {
     global $conn;
-    $sql = "SELECT * FROM slots WHERE zone_id = :zone_id";
+    $sql = "SELECT * FROM cp_slots WHERE zone_id = :zone_id";
     $stmt = $conn->prepare($sql);
     $stmt->bindParam(':zone_id', $zone_id);
     $stmt->execute();
