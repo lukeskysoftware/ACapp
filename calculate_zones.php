@@ -42,7 +42,15 @@ function getSlotsForZone($zone_id) {
 function geocodeAddress($address, $apiKey) {
     $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
     $response = file_get_contents($url);
+
+    // Debugging: Log the raw API response
+    error_log("API Response: " . $response);
+
     $data = json_decode($response, true);
+
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        throw new Exception('JSON Decode Error: ' . json_last_error_msg());
+    }
 
     if ($data['status'] === 'OK') {
         $latitude = $data['results'][0]['geometry']['location']['lat'];
