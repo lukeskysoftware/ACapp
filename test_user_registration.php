@@ -2,7 +2,8 @@
 include 'db.php';
 
 function testUserRegistration() {
-    // Dati di test
+    global $conn;
+
     $username = 'testuser';
     $password = 'Test@1234';
 
@@ -10,16 +11,21 @@ function testUserRegistration() {
     $hashed_password = password_hash($password, PASSWORD_BCRYPT);
 
     // Inserimento utente nel database
-    $sql = "INSERT INTO users (username, password) VALUES ('$username', '$hashed_password')";
-    if (mysqli_query($conn, $sql)) {
+    $sql = "INSERT INTO users (username, password) VALUES (?, ?)";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "ss", $username, $hashed_password);
+    if (mysqli_stmt_execute($stmt)) {
         echo "User registered successfully\n";
     } else {
-        echo "Error: " . $sql . "\n" . mysqli_error($conn);
+        echo "Error: " . mysqli_stmt_error($stmt) . "\n";
     }
 
     // Verifica che l'utente sia stato registrato
-    $sql = "SELECT * FROM users WHERE username = '$username'";
-    $result = mysqli_query($conn, $sql);
+    $sql = "SELECT * FROM users WHERE username = ?";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "s", $username);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
     $user = mysqli_fetch_assoc($result);
 
     // Verifica della password
@@ -30,12 +36,14 @@ function testUserRegistration() {
     }
 
     // Pulizia del database
-    $sql = "DELETE FROM users WHERE username = '$username'";
-    mysqli_query($conn, $sql);
+    $sql = "DELETE FROM users WHERE username = ?";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "s", $username);
+    mysqli_stmt_execute($stmt);
 
+    mysqli_stmt_close($stmt);
     mysqli_close($conn);
 }
 
-// Esecuzione del test
 testUserRegistration();
 ?>
