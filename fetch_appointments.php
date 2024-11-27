@@ -1,5 +1,6 @@
 <?php
 include 'db.php';
+include 'menu.php';
 
 $appointments = array();
 $sql = "SELECT id, name, appointment_date, appointment_time FROM appointments";
