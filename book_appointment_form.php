@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -53,12 +52,19 @@
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.zones && data.zones.length > 0) {
-                    displayZones(data.zones);
-                } else {
-                    alert('No zones found for this location.');
+            .then(response => response.text())  // Change to text for debugging
+            .then(text => {
+                try {
+                    const data = JSON.parse(text);
+                    if (data.zones && data.zones.length > 0) {
+                        displayZones(data.zones);
+                    } else {
+                        alert('No zones found for this location.');
+                    }
+                } catch (error) {
+                    console.error('Error parsing JSON:', error);
+                    console.error('Response text:', text);  // Log the response for debugging
+                    alert('Error fetching zones: ' + error.message);
                 }
             })
             .catch(error => {
