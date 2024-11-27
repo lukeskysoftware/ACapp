@@ -4,13 +4,14 @@
     <title>Book Appointment</title>
     <?php include 'config.php'; ?>
     <?php include 'menu.php'; ?>
-    
+
     <script>
         let rawResponseText = '';
 
         async function loadAPIKey() {
             try {
                 const response = await fetch('get_api_key.php');
+                if (!response.ok) throw new Error('Failed to load API key');
                 const data = await response.json();
                 const apiKey = data.api_key;
                 const script = document.createElement('script');
@@ -62,27 +63,29 @@
                 method: 'POST',
                 body: formData
             })
-                .then(response => response.text())
-                .then(text => {
-                    console.log('Raw response:', text);
-                    rawResponseText = text; // Store raw response for later processing
-                    const messageDiv = document.getElementById('message');
-                    messageDiv.innerHTML = 'Data fetched. Click "Process Data" to process the data.';
-                    messageDiv.style.color = 'green';
-                    document.getElementById('rawData').value = rawResponseText; // Store data in hidden input
-                })
-                .catch(error => {
-                    console.error('Error fetching zones:', error);
-                    const messageDiv = document.getElementById('message');
-                    messageDiv.innerHTML = 'Error fetching zones: ' + error.message;
-                    messageDiv.style.color = 'red';
-                });
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to fetch zones');
+                return response.json();
+            })
+            .then(data => {
+                rawResponseText = JSON.stringify(data);
+                const messageDiv = document.getElementById('message');
+                messageDiv.innerHTML = 'Data fetched. Click "Process Data" to process the data.';
+                messageDiv.style.color = 'green';
+                document.getElementById('rawData').value = rawResponseText;
+            })
+            .catch(error => {
+                console.error('Error fetching zones:', error);
+                const messageDiv = document.getElementById('message');
+                messageDiv.innerHTML = 'Error fetching zones: ' + error.message;
+                messageDiv.style.color = 'red';
+            });
         }
 
         function processData() {
             try {
                 const rawData = document.getElementById('rawData').value;
-                const data = JSON.parse(rawData); // Parse the stored data
+                const data = JSON.parse(rawData);
                 const messageDiv = document.getElementById('message');
                 if (data.zones && data.zones.length > 0) {
                     displayZones(data.zones);
@@ -105,7 +108,7 @@
             zoneDetails.innerHTML = '<h3>Zones for the Location:</h3>';
             zones.forEach(zone => {
                 const zoneDiv = document.createElement('div');
-                zoneDiv.textContent = `Zone: ${zone.name}`;
+                zoneDiv.textContent = `Zone: ${zone.zone_name}`;
                 zoneDetails.appendChild(zoneDiv);
             });
             zoneDetails.style.display = 'block';
@@ -114,7 +117,7 @@
         function checkAddress() {
             const address = document.getElementById('address').value;
             if (address) {
-                initAutocomplete(); // Initialize autocomplete to get lat and long
+                initAutocomplete();
             } else {
                 const messageDiv = document.getElementById('message');
                 messageDiv.innerHTML = 'Please enter an address.';
@@ -169,79 +172,98 @@
         }
     }
 
+    function calculateDistance($lat1, $lon1, $lat2, $lon2) {
+        $theta = $lon1 - $lon2;
+        $distance = sin(deg2rad($lat1)) * sin(deg2rad($lat2)) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * cos(deg2rad($theta));
+        $distance = acos($distance);
+        $distance = rad2deg($distance);
+        $distance = $distance * 60 * 1.1515 * 1.609344;
+        return $distance;
+    }
+
+    function getItalianDayOfWeek($dayNumber) {
+        $days = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+        return $days[$dayNumber - 1];
+    }
+
+    function getNextDateForDayOfWeek($dayOfWeek, $startingDate) {
+        $nextDate = clone $startingDate;
+        $nextDate->modify('next ' . getItalianDayOfWeek($dayOfWeek));
+        return $nextDate;
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+        try {
+            if (!isset($_POST['latitude']) || !isset($_POST['longitude'])) {
+                throw new Exception('Latitude and Longitude are required.');
+            }
+
+            $latitude = $_POST['latitude'];
+            $longitude = $_POST['longitude'];
+
+            error_log("Received coordinates: Latitude=$latitude, Longitude=$longitude");
+
+            $zones = getZonesFromCoordinates($latitude, $longitude);
+
+            error_log("Zones data: " . print_r($zones, true));
+
+            header('Content-Type: application/json'); // Set response header to JSON
+            echo json_encode([
+                'zones' => $zones,
+                'debug' => [
+                    'received_coordinates' => [
+                        'latitude' => $latitude,
+                        'longitude' => $longitude,
+                    ],
+                    'zones_data' => $zones,
+                ],
+            ]);
+        } catch (Exception $e) {
+            error_log("Error: " . $e->getMessage());
+
+            header('Content-Type: application/json'); // Set response header to JSON
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
     function getZonesFromCoordinates($latitude, $longitude) {
         global $conn;
-        $sql = "SELECT * FROM cp_zones WHERE ST_Distance_Sphere(POINT(lon, lat), POINT(:lon, :lat)) <= 5000"; // radius in meters
+        $sql = "SELECT id, zone_name, latitude, longitude, day_of_week, start_time, end_time FROM cp_zones";
         $stmt = $conn->prepare($sql);
-        $stmt->bindParam(':lon', $longitude);
-        $stmt->bindParam(':lat', $latitude);
-
         $stmt->execute();
         $zones = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        foreach ($zones as &$zone) {
-            $zone['slots'] = getSlotsForZone($zone['id']);
+        $assigned_zones = [];
+        $current_date = new DateTime();
+        $current_day_of_week = (int)$current_date->format('N');
+
+        foreach ($zones as $row) {
+            $distance = calculateDistance($latitude, $longitude, $row['latitude'], $row['longitude']);
+            if ($distance <= 5) {
+                if ($row['day_of_week'] == $current_day_of_week) {
+                    $current_date->add(new DateInterval('P1D'));
+                    continue;
+                }
+                $next_occurrence_date = getNextDateForDayOfWeek($row['day_of_week'], $current_date);
+                $next_available_time = $next_occurrence_date->format('Y-m-d') . ' ' . $row['start_time'];
+
+                $query_appointments = "SELECT COUNT(*) AS num_appointments FROM appointments WHERE zone_id = '{$row['id']}' AND appointment_date = '$next_available_time' AND start_time = '{$row['start_time']}' AND end_time = '{$row['end_time']}'";
+                $result_appointments = $conn->query($query_appointments);
+                $appointment_count = ($result_appointments->num_rows > 0) ? $result_appointments->fetch_assoc()['num_appointments'] : 0;
+
+                if ($appointment_count == 0) {
+                    $assigned_zones[] = [
+                        'zone_id' => $row['id'],
+                        'zone_name' => $row['zone_name'],
+                        'next_available_time' => $next_available_time,
+                        'distance' => $distance
+                    ];
+                }
+            }
         }
 
-        return $zones;
+        return $assigned_zones;
     }
-
-    function getSlotsForZone($zone_id) {
-        global $conn;
-        $sql = "SELECT * FROM cp_slots WHERE zone_id = :zone_id";
-        $stmt = $conn->prepare($sql);
-        $stmt->bindParam(':zone_id', $zone_id);
-        $stmt->execute();
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    function geocodeAddress($address, $apiKey) {
-        $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
-        $response = file_get_contents($url);
-        $data = json_decode($response, true);
-
-        if ($data['status'] === 'OK') {
-            $latitude = $data['results'][0]['geometry']['location']['lat'];
-            $longitude = $data['results'][0]['geometry']['location']['lng'];
-            return ['latitude' => $latitude, 'longitude' => $longitude];
-        } else {
-            throw new Exception('Failed to geocode address: ' . $data['status']);
-        }
-    }
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    try {
-        if (!isset($_POST['latitude']) || !isset($_POST['longitude'])) {
-            throw new Exception('Latitude and Longitude are required.');
-        }
-
-        $latitude = $_POST['latitude'];
-        $longitude = $_POST['longitude'];
-
-        error_log("Received coordinates: Latitude=$latitude, Longitude=$longitude");
-
-        $zones = getZonesFromCoordinates($latitude, $longitude);
-
-        error_log("Zones data: " . print_r($zones, true));
-
-        header('Content-Type: text/plain');
-        echo serialize([
-            'zones' => $zones,
-            'debug' => [
-                'received_coordinates' => [
-                    'latitude' => $latitude,
-                    'longitude' => $longitude,
-                ],
-                'zones_data' => $zones,
-            ],
-        ]);
-    } catch (Exception $e) {
-        error_log("Error: " . $e->getMessage());
-
-        header('Content-Type: text/plain');
-        echo serialize(['error' => $e->getMessage()]);
-    }
-}
     ?>
 </body>
 </html>
