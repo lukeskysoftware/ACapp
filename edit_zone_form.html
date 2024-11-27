@@ -32,17 +32,28 @@
                     document.getElementById('zone_address').value = data.address;
                     document.getElementById('latitude').value = data.latitude;
                     document.getElementById('longitude').value = data.longitude;
-                    document.getElementById('start_time').value = data.start_time;
-                    document.getElementById('end_time').value = data.end_time;
-                    document.getElementById('duration').value = data.duration;
 
                     const daysSelect = document.getElementById('days');
-                    const days = data.days.split(',');
-                    for (let option of daysSelect.options) {
-                        if (days.includes(option.value)) {
-                            option.selected = true;
+                    const slotsContainer = document.getElementById('slots_container');
+
+                    // Clear existing slots
+                    slotsContainer.innerHTML = '';
+
+                    // Populate slots
+                    data.slots.forEach(slot => {
+                        const dayOption = Array.from(daysSelect.options).find(option => option.value === slot.day);
+                        if (dayOption) {
+                            dayOption.selected = true;
                         }
-                    }
+
+                        const slotDiv = document.createElement('div');
+                        slotDiv.classList.add('slot');
+                        slotDiv.innerHTML = `
+                            <label for="slot_${slot.day}_${slot.time}">Orario per ${slot.day}:</label>
+                            <input type="time" id="slot_${slot.day}_${slot.time}" name="slots[${slot.day}][]" value="${slot.time}" required><br>
+                        `;
+                        slotsContainer.appendChild(slotDiv);
+                    });
                 })
                 .catch(error => console.error('Error fetching zone data:', error));
         }
@@ -81,23 +92,10 @@
         }
 
         function validateForm() {
-            const startTime = document.getElementById('start_time').value;
-            const endTime = document.getElementById('end_time').value;
-            const duration = document.getElementById('duration').value;
             const days = document.getElementById('days').selectedOptions;
 
-            if (!startTime || !endTime || !duration || days.length === 0) {
+            if (days.length === 0) {
                 alert("Tutti i campi devono essere compilati.");
-                return false;
-            }
-
-            if (startTime >= endTime) {
-                alert("L'ora di inizio deve essere prima dell'ora di fine.");
-                return false;
-            }
-
-            if (duration <= 0) {
-                alert("La durata dell'appuntamento deve essere maggiore di 0.");
                 return false;
             }
 
@@ -127,14 +125,9 @@
                 <option value="Sunday">Domenica</option>
             </select><br>
 
-            <label for="start_time">Ora di Inizio:</label>
-            <input type="time" id="start_time" name="start_time" required><br>
-
-            <label for="end_time">Ora di Fine:</label>
-            <input type="time" id="end_time" name="end_time" required><br>
-
-            <label for="duration">Durata dell'Appuntamento (minuti):</label>
-            <input type="number" id="duration" name="duration" min="1" required><br>
+            <div id="slots_container">
+                <!-- Slots will be dynamically populated here -->
+            </div>
 
             <label for="latitude">Latitudine:</label>
             <input type="text" id="latitude" name="latitude" readonly><br>
