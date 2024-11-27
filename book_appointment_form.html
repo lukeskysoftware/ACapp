@@ -48,7 +48,7 @@
         }
 
         function fetchZones(address) {
-            fetch('get_zones.php?address=' + encodeURIComponent(address))
+            fetch('calculate_zones.php?address=' + encodeURIComponent(address))
                 .then(response => response.json())
                 .then(data => {
                     if (data.zones.length > 0) {
@@ -69,6 +69,15 @@
             });
             zoneDetails.style.display = 'block';
         }
+
+        function checkAddress() {
+            const address = document.getElementById('address').value;
+            if (address) {
+                fetchZones(address);
+            } else {
+                alert('Please enter an address.');
+            }
+        }
     </script>
 </head>
 <body>
@@ -76,6 +85,7 @@
     <form id="appointmentForm" action="book_appointment.php" method="post">
         <label for="address">Address:</label><br>
         <input type="text" id="address" name="address" required><br><br>
+        <button type="button" onclick="checkAddress()">Check Address</button><br><br>
         
         <div id="zoneDetails" style="display:none;"></div>
 
