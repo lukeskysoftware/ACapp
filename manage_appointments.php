@@ -5,7 +5,7 @@ include 'menu.php';
 // Funzione per ottenere tutti gli appuntamenti
 function getAppointments() {
     global $conn;
-    $sql = "SELECT * FROM appointments";
+    $sql = "SELECT * FROM cp_appointments";
     $result = mysqli_query($conn, $sql);
     $appointments = mysqli_fetch_all($result, MYSQLI_ASSOC);
     return $appointments;
@@ -14,7 +14,7 @@ function getAppointments() {
 // Funzione per eliminare un appuntamento
 if (isset($_POST['delete'])) {
     $id = $_POST['appointment_id'];
-    $sql = "DELETE FROM appointments WHERE id = $id";
+    $sql = "DELETE FROM cp_appointments WHERE id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_appointments.php');
 }
@@ -27,7 +27,7 @@ if (isset($_POST['update'])) {
     $notes = $_POST['notes'];
     $appointment_date = $_POST['appointment_date'];
     $appointment_time = $_POST['appointment_time'];
-    $sql = "UPDATE appointments SET name='$name', phone='$phone', notes='$notes', appointment_date='$appointment_date', appointment_time='$appointment_time' WHERE id = $id";
+    $sql = "UPDATE cp_appointments SET name='$name', phone='$phone', notes='$notes', appointment_date='$appointment_date', appointment_time='$appointment_time' WHERE id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_appointments.php');
 }
