@@ -51,34 +51,43 @@
             });
         }
 
-        function fetchZones(latitude, longitude) {
-            const formData = new FormData();
-            formData.append('latitude', latitude);
-            formData.append('longitude', longitude);
+   function fetchZones(latitude, longitude) {
+    const formData = new FormData();
+    formData.append('latitude', latitude);
+    formData.append('longitude', longitude);
 
-            fetch('', {
-                method: 'POST',
-                body: formData
-            })
-                .then(response => response.json())
-                .then(data => {
-                    const messageDiv = document.getElementById('message');
-                    if (data.zones && data.zones.length > 0) {
-                        displayZones(data.zones);
-                        messageDiv.innerHTML = 'Zones found for this location.';
-                        messageDiv.style.color = 'green';
-                    } else {
-                        messageDiv.innerHTML = 'No zones found for this location.';
-                        messageDiv.style.color = 'red';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error fetching zones:', error);
-                    const messageDiv = document.getElementById('message');
-                    messageDiv.innerHTML = 'Error fetching zones.';
+    fetch('', {
+        method: 'POST',
+        body: formData
+    })
+        .then(response => response.text()) // Change to text to debug the raw response
+        .then(text => {
+            console.log('Raw response:', text); // Log the raw response
+            try {
+                const data = JSON.parse(text); // Try parsing the JSON
+                const messageDiv = document.getElementById('message');
+                if (data.zones && data.zones.length > 0) {
+                    displayZones(data.zones);
+                    messageDiv.innerHTML = 'Zones found for this location.';
+                    messageDiv.style.color = 'green';
+                } else {
+                    messageDiv.innerHTML = 'No zones found for this location.';
                     messageDiv.style.color = 'red';
-                });
-        }
+                }
+            } catch (e) {
+                console.error('JSON Parse Error:', e);
+                const messageDiv = document.getElementById('message');
+                messageDiv.innerHTML = 'Error parsing zones data.';
+                messageDiv.style.color = 'red';
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching zones:', error);
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = 'Error fetching zones.';
+            messageDiv.style.color = 'red';
+        });
+}
 
         function displayZones(zones) {
             const zoneDetails = document.getElementById('zoneDetails');
