@@ -34,3 +34,12 @@ CREATE TABLE admins (
     user_id INT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
+
+-- Create table for slots
+CREATE TABLE slots (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    zone_id INT NOT NULL,
+    day VARCHAR(50) NOT NULL,
+    time TIME NOT NULL,
+    FOREIGN KEY (zone_id) REFERENCES zones(id)
+);
