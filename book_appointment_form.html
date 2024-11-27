@@ -50,12 +50,10 @@
             if (!place.geometry) {
                 return;
             }
-            // Fetch zones and available slots based on address
             fetchZones(place.formatted_address);
         }
 
         function fetchZones(address) {
-            // Replace with actual API endpoint to get zones
             fetch('get_zones.php?address=' + encodeURIComponent(address))
                 .then(response => response.json())
                 .then(data => {
@@ -76,7 +74,7 @@
                 zone.slots.forEach(slot => {
                     const slotLink = document.createElement('a');
                     slotLink.href = '#';
-                    slotLink.textContent = `${slot.date} ${slot.time}`;
+                    slotLink.textContent = `${slot.day} ${slot.time}`;
                     slotLink.onclick = () => selectSlot(slot);
                     zoneDiv.appendChild(slotLink);
                     zoneDiv.appendChild(document.createElement('br'));
@@ -89,7 +87,6 @@
         function selectSlot(slot) {
             document.getElementById('selectedSlot').value = slot.id;
             document.getElementById('userDetails').style.display = 'block';
-            // Optionally, you can set the form action here based on the selected slot
         }
 
         google.maps.event.addDomListener(window, 'load', initAutocomplete);
