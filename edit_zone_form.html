@@ -32,7 +32,6 @@
                     document.getElementById('zone_address').value = data.address;
                     document.getElementById('latitude').value = data.latitude;
                     document.getElementById('longitude').value = data.longitude;
-                    // Populate other fields like days, start_time, end_time, and duration
                     document.getElementById('start_time').value = data.start_time;
                     document.getElementById('end_time').value = data.end_time;
                     document.getElementById('duration').value = data.duration;
@@ -80,12 +79,36 @@
             if (!results[2]) return '';
             return decodeURIComponent(results[2].replace(/\+/g, ' '));
         }
+
+        function validateForm() {
+            const startTime = document.getElementById('start_time').value;
+            const endTime = document.getElementById('end_time').value;
+            const duration = document.getElementById('duration').value;
+            const days = document.getElementById('days').selectedOptions;
+
+            if (!startTime || !endTime || !duration || days.length === 0) {
+                alert("Tutti i campi devono essere compilati.");
+                return false;
+            }
+
+            if (startTime >= endTime) {
+                alert("L'ora di inizio deve essere prima dell'ora di fine.");
+                return false;
+            }
+
+            if (duration <= 0) {
+                alert("La durata dell'appuntamento deve essere maggiore di 0.");
+                return false;
+            }
+
+            return true;
+        }
     </script>
 </head>
 <body onload="loadZoneData(getParameterByName('zone_id'));">
     <div class="container">
         <h2>Modifica Zona</h2>
-        <form action="edit_zone.php" method="post">
+        <form action="edit_zone.php" method="post" onsubmit="return validateForm();">
             <input type="hidden" id="zone_id" name="zone_id">
             <label for="zone_name">Nome della Zona:</label>
             <input type="text" id="zone_name" name="name" required><br>
