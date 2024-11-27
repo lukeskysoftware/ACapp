@@ -207,7 +207,7 @@
 
             error_log("Zones data: " . print_r($zones, true));
 
-            header('Content-Type: application/json'); // Set response header to JSON
+            header('Content-Type: application/json');
             echo json_encode([
                 'zones' => $zones,
                 'debug' => [
@@ -221,7 +221,7 @@
         } catch (Exception $e) {
             error_log("Error: " . $e->getMessage());
 
-            header('Content-Type: application/json'); // Set response header to JSON
+            header('Content-Type: application/json');
             echo json_encode(['error' => $e->getMessage()]);
         }
     }
