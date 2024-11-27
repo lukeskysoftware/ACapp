@@ -60,15 +60,15 @@ function fetchZones(latitude, longitude) {
         method: 'POST',
         body: formData
     })
-        .then(response => response.text()) // Change to text to debug the raw response
+        .then(response => response.text())
         .then(text => {
-            console.log('Raw response:', text); // Log the raw response
+            console.log('Raw response:', text);
             try {
-                const data = JSON.parse(text); // Try parsing the JSON
+                const data = JSON.parse(text);
                 const messageDiv = document.getElementById('message');
                 if (data.zones && data.zones.length > 0) {
                     displayZones(data.zones);
-                    messageDiv.innerHTML = 'Zones found for this location.';
+                    messageDiv.innerHTML = 'Zones found for this location. Calculations: ' + JSON.stringify(data.debug);
                     messageDiv.style.color = 'green';
                 } else {
                     messageDiv.innerHTML = 'No zones found for this location.';
@@ -212,7 +212,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         error_log("Zones data: " . print_r($zones, true));
 
         header('Content-Type: application/json');
-        echo json_encode(['zones' => $zones]);
+        echo json_encode([
+            'zones' => $zones,
+            'debug' => [
+                'received_coordinates' => [
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
+                ],
+                'zones_data' => $zones,
+            ],
+        ]);
     } catch (Exception $e) {
         error_log("Error: " . $e->getMessage());
 
