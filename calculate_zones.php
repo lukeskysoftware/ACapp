@@ -3,6 +3,16 @@ include 'db.php';
 include 'config.php';
 include 'menu.php';
 
+function getApiKey() {
+    global $conn;
+    $result = $conn->query("SELECT api_key FROM cp_api_keys LIMIT 1");
+    if ($result) {
+        return $result->fetch_assoc()['api_key'];
+    } else {
+        throw new Exception('Failed to retrieve API key from the database.');
+    }
+}
+
 function getZonesFromCoordinates($latitude, $longitude) {
     global $conn;
     $sql = "SELECT * FROM cp_zones WHERE ST_Distance_Sphere(POINT(lon, lat), POINT(:lon, :lat)) <= 5000"; // radius in meters
@@ -29,26 +39,46 @@ function getSlotsForZone($zone_id) {
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+function geocodeAddress($address, $apiKey) {
+    $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
+    $response = file_get_contents($url);
+    $data = json_decode($response, true);
+
+    if ($data['status'] === 'OK') {
+        $latitude = $data['results'][0]['geometry']['location']['lat'];
+        $longitude = $data['results'][0]['geometry']['location']['lng'];
+        return ['latitude' => $latitude, 'longitude' => $longitude];
+    } else {
+        throw new Exception('Failed to geocode address: ' . $data['status']);
+    }
+}
+
 try {
-    if (!isset($_GET['latitude']) || !isset($_GET['longitude'])) {
-        throw new Exception('Latitude and Longitude are required.');
+    if (!isset($_GET['address']) && (!isset($_GET['latitude']) || !isset($_GET['longitude']))) {
+        throw new Exception('Address or Latitude and Longitude are required.');
     }
 
-    $latitude = $_GET['latitude'];
-    $longitude = $_GET['longitude'];
+    $apiKey = getApiKey();
 
-    // Debugging: Log the received coordinates
+    if (isset($_GET['address'])) {
+        $address = $_GET['address'];
+        $coordinates = geocodeAddress($address, $apiKey);
+        $latitude = $coordinates['latitude'];
+        $longitude = $coordinates['longitude'];
+    } else {
+        $latitude = $_GET['latitude'];
+        $longitude = $_GET['longitude'];
+    }
+
     error_log("Received coordinates: Latitude=$latitude, Longitude=$longitude");
 
     $zones = getZonesFromCoordinates($latitude, $longitude);
 
-    // Debugging: Log the zones data
     error_log("Zones data: " . print_r($zones, true));
 
     header('Content-Type: application/json');
     echo json_encode(['zones' => $zones]);
 } catch (Exception $e) {
-    // Debugging: Log the exception message
     error_log("Error: " . $e->getMessage());
 
     header('Content-Type: application/json');
