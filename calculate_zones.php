@@ -5,7 +5,7 @@ include 'menu.php';
 
 function getZonesFromCoordinates($latitude, $longitude) {
     global $conn;
-    $sql = "SELECT * FROM cp_zones WHERE ST_Distance_Sphere(POINT(lon, lat), POINT(:lon, :lat)) <= radius_km * 1000";
+    $sql = "SELECT * FROM cp_zones WHERE ST_Distance_Sphere(POINT(lon, lat), POINT(:lon, :lat)) <= 5000"; // radius in meters
     $stmt = $conn->prepare($sql);
     $stmt->bindParam(':lon', $longitude);
     $stmt->bindParam(':lat', $latitude);
