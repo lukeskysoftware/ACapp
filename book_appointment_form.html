@@ -52,35 +52,22 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.zones.length > 0) {
-                        displaySlots(data.zones);
+                        displayZones(data.zones);
                     } else {
                         alert('No zones found for this address.');
                     }
                 });
         }
 
-        function displaySlots(zones) {
-            const slotsDiv = document.getElementById('slots');
-            slotsDiv.innerHTML = '';
+        function displayZones(zones) {
+            const zoneDetails = document.getElementById('zoneDetails');
+            zoneDetails.innerHTML = '<h3>Zones for the Address:</h3>';
             zones.forEach(zone => {
                 const zoneDiv = document.createElement('div');
-                zoneDiv.innerHTML = `<h4>${zone.name}</h4>`;
-                zone.slots.forEach(slot => {
-                    const slotLink = document.createElement('a');
-                    slotLink.href = '#';
-                    slotLink.textContent = `${slot.day} ${slot.time}`;
-                    slotLink.onclick = () => selectSlot(slot);
-                    zoneDiv.appendChild(slotLink);
-                    zoneDiv.appendChild(document.createElement('br'));
-                });
-                slotsDiv.appendChild(zoneDiv);
+                zoneDiv.textContent = `Zone: ${zone.name}`;
+                zoneDetails.appendChild(zoneDiv);
             });
-            document.getElementById('zoneDetails').style.display = 'block';
-        }
-
-        function selectSlot(slot) {
-            document.getElementById('selectedSlot').value = slot.id;
-            document.getElementById('userDetails').style.display = 'block';
+            zoneDetails.style.display = 'block';
         }
     </script>
 </head>
@@ -90,10 +77,7 @@
         <label for="address">Address:</label><br>
         <input type="text" id="address" name="address" required><br><br>
         
-        <div id="zoneDetails" style="display:none;">
-            <h3>Available Slots</h3>
-            <div id="slots"></div>
-        </div>
+        <div id="zoneDetails" style="display:none;"></div>
 
         <div id="userDetails" style="display:none;">
             <label for="name">Name:</label><br>
