@@ -21,7 +21,9 @@
             }
         }
 
-        window.addEventListener('load', loadAPIKey);
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAPIKey();
+        });
 
         function initAutocomplete() {
             var input = document.getElementById('address');
