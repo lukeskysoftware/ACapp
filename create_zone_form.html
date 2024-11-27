@@ -27,7 +27,6 @@
 <body>
     <div class="container">
         <h2>Gestione delle Zone</h2>
-        <!-- Form for Zone Management -->
         <form action="create_zone.php" method="post">
             <label for="zone_name">Nome della Zona:</label>
             <input type="text" id="zone_name" name="name" required><br>
@@ -55,6 +54,12 @@
             <label for="duration">Durata dell'Appuntamento (minuti):</label>
             <input type="number" id="duration" name="duration" min="1" required><br>
 
+            <label for="latitude">Latitudine:</label>
+            <input type="text" id="latitude" name="latitude" readonly><br>
+
+            <label for="longitude">Longitudine:</label>
+            <input type="text" id="longitude" name="longitude" readonly><br>
+
             <button type="submit">Crea Zona</button>
         </form>
 
@@ -75,23 +80,10 @@
 
                 autocomplete.addListener('place_changed', function() {
                     var place = autocomplete.getPlace();
-                    if (place.address_components) {
-                        for (var i = 0; i < place.address_components.length; i++) {
-                            var addressType = place.address_components[i].types[0];
-                            if (addressType === 'locality') {
-                                document.getElementById('city').value = place.address_components[i].long_name;
-                                document.getElementById('temp_city').value = place.address_components[i].long_name;
-                            } else if (addressType === 'administrative_area_level_1') {
-                                document.getElementById('province').value = place.address_components[i].short_name;
-                                document.getElementById('temp_province').value = place.address_components[i].short_name;
-                            } else if (addressType === 'postal_code') {
-                                document.getElementById('zip').value = place.address_components[i].long_name;
-                                document.getElementById('temp_zip').value = place.address_components[i].long_name;
-                            }
-                        }
+                    if (place.geometry) {
+                        document.getElementById('latitude').value = place.geometry.location.lat();
+                        document.getElementById('longitude').value = place.geometry.location.lng();
                     }
-                    document.getElementById('temp_latitude').value = place.geometry.location.lat();
-                    document.getElementById('temp_longitude').value = place.geometry.location.lng();
                 });
             }
         </script>
