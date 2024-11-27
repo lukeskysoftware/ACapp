@@ -33,6 +33,17 @@
                     document.getElementById('latitude').value = data.latitude;
                     document.getElementById('longitude').value = data.longitude;
                     // Populate other fields like days, start_time, end_time, and duration
+                    document.getElementById('start_time').value = data.start_time;
+                    document.getElementById('end_time').value = data.end_time;
+                    document.getElementById('duration').value = data.duration;
+
+                    const daysSelect = document.getElementById('days');
+                    const days = data.days.split(',');
+                    for (let option of daysSelect.options) {
+                        if (days.includes(option.value)) {
+                            option.selected = true;
+                        }
+                    }
                 })
                 .catch(error => console.error('Error fetching zone data:', error));
         }
@@ -58,6 +69,16 @@
                     document.getElementById('longitude').value = place.geometry.location.lng();
                 }
             });
+        }
+
+        function getParameterByName(name) {
+            const url = window.location.href;
+            const nameRegex = name.replace(/[\[\]]/g, '\\$&');
+            const regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)');
+            const results = regex.exec(url);
+            if (!results) return null;
+            if (!results[2]) return '';
+            return decodeURIComponent(results[2].replace(/\+/g, ' '));
         }
     </script>
 </head>
