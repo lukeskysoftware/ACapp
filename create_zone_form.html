@@ -17,6 +17,26 @@
         <label for="radius_km">Radius (km):</label><br>
         <input type="number" id="radius_km" name="radius_km" required><br><br>
         
+        <label for="days">Days of the Week:</label><br>
+        <select id="days" name="days[]" multiple required>
+            <option value="Monday">Monday</option>
+            <option value="Tuesday">Tuesday</option>
+            <option value="Wednesday">Wednesday</option>
+            <option value="Thursday">Thursday</option>
+            <option value="Friday">Friday</option>
+            <option value="Saturday">Saturday</option>
+            <option value="Sunday">Sunday</option>
+        </select><br><br>
+
+        <label for="start_time">Start Time:</label><br>
+        <input type="time" id="start_time" name="start_time" required><br><br>
+
+        <label for="end_time">End Time:</label><br>
+        <input type="time" id="end_time" name="end_time" required><br><br>
+
+        <label for="duration">Appointment Duration (minutes):</label><br>
+        <input type="number" id="duration" name="duration" required><br><br>
+
         <input type="submit" value="Create Zone">
     </form>
     
