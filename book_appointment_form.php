@@ -42,31 +42,40 @@
             autocomplete.addListener('place_changed', function() {
                 var place = autocomplete.getPlace();
                 if (place.geometry) {
-                    document.getElementById('latitude').value = place.geometry.location.lat();
-                    document.getElementById('longitude').value = place.geometry.location.lng();
+                    var latitude = place.geometry.location.lat();
+                    var longitude = place.geometry.location.lng();
+                    document.getElementById('latitude').value = latitude;
+                    document.getElementById('longitude').value = longitude;
+                    fetchZones(latitude, longitude);
                 }
-                fetchZones(input.value);
             });
         }
 
-        function fetchZones(address) {
-            fetch('calculate_zones.php?address=' + encodeURIComponent(address))
+        function fetchZones(latitude, longitude) {
+            fetch(`calculate_zones.php?latitude=${latitude}&longitude=${longitude}`)
                 .then(response => response.json())
                 .then(data => {
+                    const messageDiv = document.getElementById('message');
                     if (data.zones && data.zones.length > 0) {
                         displayZones(data.zones);
+                        messageDiv.innerHTML = 'Zones found for this location.';
+                        messageDiv.style.color = 'green';
                     } else {
-                        alert('No zones found for this address.');
+                        messageDiv.innerHTML = 'No zones found for this location.';
+                        messageDiv.style.color = 'red';
                     }
                 })
                 .catch(error => {
                     console.error('Error fetching zones:', error);
+                    const messageDiv = document.getElementById('message');
+                    messageDiv.innerHTML = 'Error fetching zones.';
+                    messageDiv.style.color = 'red';
                 });
         }
 
         function displayZones(zones) {
             const zoneDetails = document.getElementById('zoneDetails');
-            zoneDetails.innerHTML = '<h3>Zones for the Address:</h3>';
+            zoneDetails.innerHTML = '<h3>Zones for the Location:</h3>';
             zones.forEach(zone => {
                 const zoneDiv = document.createElement('div');
                 zoneDiv.textContent = `Zone: ${zone.name}`;
@@ -78,9 +87,11 @@
         function checkAddress() {
             const address = document.getElementById('address').value;
             if (address) {
-                fetchZones(address);
+                initAutocomplete(); // Initialize autocomplete to get lat and long
             } else {
-                alert('Please enter an address.');
+                const messageDiv = document.getElementById('message');
+                messageDiv.innerHTML = 'Please enter an address.';
+                messageDiv.style.color = 'red';
             }
         }
     </script>
@@ -92,6 +103,7 @@
         <input type="text" id="address" name="address" required><br><br>
         <button type="button" onclick="checkAddress()">Check Address</button><br><br>
         
+        <div id="message"></div>
         <div id="zoneDetails" style="display:none;"></div>
 
         <div id="userDetails" style="display:none;">
