@@ -65,10 +65,11 @@
                 .then(response => response.text())
                 .then(text => {
                     console.log('Raw response:', text);
-                    rawResponseText = text; // Store raw response for later parsing
+                    rawResponseText = text; // Store raw response for later processing
                     const messageDiv = document.getElementById('message');
                     messageDiv.innerHTML = 'Data fetched. Click "Process Data" to process the data.';
                     messageDiv.style.color = 'green';
+                    document.getElementById('rawData').value = rawResponseText; // Store data in hidden input
                 })
                 .catch(error => {
                     console.error('Error fetching zones:', error);
@@ -80,7 +81,8 @@
 
         function processData() {
             try {
-                const data = eval('(' + rawResponseText + ')'); // Use eval as an alternative to JSON.parse
+                const rawData = document.getElementById('rawData').value;
+                const data = JSON.parse(rawData); // Parse the stored data
                 const messageDiv = document.getElementById('message');
                 if (data.zones && data.zones.length > 0) {
                     displayZones(data.zones);
@@ -149,6 +151,7 @@
             <input type="hidden" id="zone_id" name="zone_id">
             <input type="hidden" id="latitude" name="latitude">
             <input type="hidden" id="longitude" name="longitude">
+            <input type="hidden" id="rawData" name="rawData">
             <input type="submit" value="Confirm Appointment">
         </div>
     </form>
