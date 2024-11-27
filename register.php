@@ -7,12 +7,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     $sql = "INSERT INTO users (username, password) VALUES (?, ?)";
     $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) {
+        die("Statement preparation failed: " . mysqli_error($conn));
+    }
+
     mysqli_stmt_bind_param($stmt, "ss", $username, $password);
+
     if (mysqli_stmt_execute($stmt)) {
         echo "User registered successfully";
     } else {
         echo "Error: " . mysqli_stmt_error($stmt);
     }
+
     mysqli_stmt_close($stmt);
     mysqli_close($conn);
 }
