@@ -1,6 +1,7 @@
-<?php
+f<?php
 include 'db.php';
 include 'config.php';
+include 'menu.php';
 
 $address = $_GET['address'];
 
