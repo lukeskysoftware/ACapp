@@ -11,7 +11,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Delete the zone
     $sql_zone = "DELETE FROM cp_zones WHERE id = '$zone_id'";
     if (mysqli_query($conn, $sql_zone)) {
-        echo "Zone deleted successfully";
+        header("Location: dashboard.php");
+        exit();
     } else {
         echo "Error: " . $sql_zone . "<br>" . mysqli_error($conn);
     }
