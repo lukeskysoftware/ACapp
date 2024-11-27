@@ -49,6 +49,7 @@ function geocodeAddress($address, $apiKey) {
     $data = json_decode($response, true);
 
     if (json_last_error() !== JSON_ERROR_NONE) {
+        error_log("JSON Decode Error: " . json_last_error_msg());
         throw new Exception('JSON Decode Error: ' . json_last_error_msg());
     }
 
