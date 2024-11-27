@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Book Appointment</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places"></script>
 </head>
 <body>
     <h2>Book Appointment</h2>
@@ -21,7 +22,30 @@
         <label for="description">Description:</label><br>
         <textarea id="description" name="description" required></textarea><br><br>
         
+        <label for="address">Address:</label><br>
+        <input type="text" id="address" name="address" required><br><br>
+        
         <input type="submit" value="Book Appointment">
     </form>
+    
+    <script>
+        function initAutocomplete() {
+            const input = document.getElementById('address');
+            const options = {
+                types: ['address'],
+                componentRestrictions: { country: 'us' } // Restrict to a specific country if needed
+            };
+            const autocomplete = new google.maps.places.Autocomplete(input, options);
+
+            // Restrict to a specific city
+            autocomplete.setComponentRestrictions({
+                country: 'us',
+                administrativeArea: 'Los Angeles' // Replace with your city
+            });
+        }
+
+        // Initialize autocomplete when the page loads
+        google.maps.event.addDomListener(window, 'load', initAutocomplete);
+    </script>
 </body>
 </html>
