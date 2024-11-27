@@ -5,16 +5,17 @@ include 'menu.php';
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $name = $_POST['name'];
     $address = $_POST['address'];
-    $radius_km = $_POST['radius_km'];
+    $latitude = $_POST['latitude'];
+    $longitude = $_POST['longitude'];
     $days = $_POST['days'];
     $start_time = $_POST['start_time'];
     $end_time = $_POST['end_time'];
     $duration = $_POST['duration'];
 
-    $sql = "INSERT INTO cp_zones (name, address, radius_km) VALUES ('$name', '$address', '$radius_km')";
+    $sql = "INSERT INTO cp_zones (name, address, latitude, longitude) VALUES ('$name', '$address', '$latitude', '$longitude')";
     if (mysqli_query($conn, $sql)) {
         $zone_id = mysqli_insert_id($conn);
-        
+
         // Generate time slots based on the provided days, start time, end time, and duration
         foreach ($days as $day) {
             $current_time = strtotime($start_time);
