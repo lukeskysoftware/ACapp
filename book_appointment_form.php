@@ -2,14 +2,10 @@
 <html>
 <head>
     <title>Book Appointment</title>
-    <?php include 'config.php'; ?>
-    <?php include 'menu.php'; ?>
-
     <script>
         async function loadAPIKey() {
             try {
                 const response = await fetch('get_api_key.php');
-                if (!response.ok) throw new Error('Failed to load API key');
                 const data = await response.json();
                 const apiKey = data.api_key;
                 const script = document.createElement('script');
@@ -28,8 +24,7 @@
 
         function initAutocomplete() {
             const input = document.getElementById('address');
-            const options = { types: ['geocode'] };
-            const autocomplete = new google.maps.places.Autocomplete(input, options);
+            const autocomplete = new google.maps.places.Autocomplete(input, { types: ['geocode'] });
 
             autocomplete.addListener('place_changed', function() {
                 const place = autocomplete.getPlace();
@@ -52,19 +47,12 @@
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.text())  // Change to text for debugging
-            .then(text => {
-                try {
-                    const data = JSON.parse(text);
-                    if (data.zones && data.zones.length > 0) {
-                        displayZones(data.zones);
-                    } else {
-                        alert('No zones found for this location.');
-                    }
-                } catch (error) {
-                    console.error('Error parsing JSON:', error);
-                    console.error('Response text:', text);  // Log the response for debugging
-                    alert('Error fetching zones: ' + error.message);
+            .then(response => response.json())
+            .then(data => {
+                if (data.zones && data.zones.length > 0) {
+                    displayZones(data.zones);
+                } else {
+                    alert('No zones found for this location.');
                 }
             })
             .catch(error => {
