@@ -1,1 +1,27 @@
-
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Book Appointment</title>
+</head>
+<body>
+    <h2>Book Appointment</h2>
+    <form action="book_appointment.php" method="post">
+        <label for="name">Name:</label><br>
+        <input type="text" id="name" name="name" required><br><br>
+        
+        <label for="email">Email:</label><br>
+        <input type="email" id="email" name="email" required><br><br>
+        
+        <label for="date">Date:</label><br>
+        <input type="date" id="date" name="date" required><br><br>
+        
+        <label for="time">Time:</label><br>
+        <input type="time" id="time" name="time" required><br><br>
+        
+        <label for="description">Description:</label><br>
+        <textarea id="description" name="description" required></textarea><br><br>
+        
+        <input type="submit" value="Book Appointment">
+    </form>
+</body>
+</html>
