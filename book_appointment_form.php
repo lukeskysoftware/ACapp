@@ -6,6 +6,8 @@
     <?php include 'menu.php'; ?>
     
     <script>
+        let rawResponseText = '';
+
         async function loadAPIKey() {
             try {
                 const response = await fetch('get_api_key.php');
@@ -51,20 +53,34 @@
             });
         }
 
-function fetchZones(latitude, longitude) {
-    const formData = new FormData();
-    formData.append('latitude', latitude);
-    formData.append('longitude', longitude);
+        function fetchZones(latitude, longitude) {
+            const formData = new FormData();
+            formData.append('latitude', latitude);
+            formData.append('longitude', longitude);
 
-    fetch('', {
-        method: 'POST',
-        body: formData
-    })
-        .then(response => response.text())
-        .then(text => {
-            console.log('Raw response:', text);
+            fetch('', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.text())
+                .then(text => {
+                    console.log('Raw response:', text);
+                    rawResponseText = text; // Store raw response for later parsing
+                    const messageDiv = document.getElementById('message');
+                    messageDiv.innerHTML = 'Data fetched. Click "Parse JSON" to process the data.';
+                    messageDiv.style.color = 'green';
+                })
+                .catch(error => {
+                    console.error('Error fetching zones:', error);
+                    const messageDiv = document.getElementById('message');
+                    messageDiv.innerHTML = 'Error fetching zones: ' + error.message;
+                    messageDiv.style.color = 'red';
+                });
+        }
+
+        function parseJSON() {
             try {
-                const data = JSON.parse(text);
+                const data = JSON.parse(rawResponseText);
                 const messageDiv = document.getElementById('message');
                 if (data.zones && data.zones.length > 0) {
                     displayZones(data.zones);
@@ -80,14 +96,7 @@ function fetchZones(latitude, longitude) {
                 messageDiv.innerHTML = 'Error parsing zones data: ' + e.message;
                 messageDiv.style.color = 'red';
             }
-        })
-        .catch(error => {
-            console.error('Error fetching zones:', error);
-            const messageDiv = document.getElementById('message');
-            messageDiv.innerHTML = 'Error fetching zones: ' + error.message;
-            messageDiv.style.color = 'red';
-        });
-}
+        }
 
         function displayZones(zones) {
             const zoneDetails = document.getElementById('zoneDetails');
@@ -118,6 +127,7 @@ function fetchZones(latitude, longitude) {
         <label for="address">Address:</label><br>
         <input type="text" id="address" name="address" required><br><br>
         <button type="button" onclick="checkAddress()">Check Address</button><br><br>
+        <button type="button" onclick="parseJSON()">Parse JSON</button><br><br>
         
         <div id="message"></div>
         <div id="zoneDetails" style="display:none;"></div>
