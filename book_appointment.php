@@ -1,6 +1,7 @@
 
 <?php
 include 'db.php';
+include 'menu.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $zone_id = $_POST['zone_id'];
