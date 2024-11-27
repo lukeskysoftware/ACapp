@@ -5,7 +5,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = $_POST['username'];
     $password = password_hash($_POST['password'], PASSWORD_BCRYPT);
 
-    $sql = "INSERT INTO users (username, password) VALUES (?, ?)";
+    $sql = "INSERT INTO cp_users (username, password) VALUES (?, ?)";
     $stmt = mysqli_prepare($conn, $sql);
     if (!$stmt) {
         die("Statement preparation failed: " . mysqli_error($conn));
