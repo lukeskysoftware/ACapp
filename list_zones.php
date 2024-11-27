@@ -1,5 +1,6 @@
 <?php
 include 'db.php';
+include 'menu.php'; // Include the menu
 
 $sql = "SELECT * FROM cp_zones";
 $result = mysqli_query($conn, $sql);
