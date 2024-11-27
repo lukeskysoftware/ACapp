@@ -2,7 +2,8 @@
 <html>
 <head>
     <title>Book Appointment</title>
-    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places"></script>
+    <?php include 'config.php'; ?>
+    <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo GOOGLE_MAPS_API_KEY; ?>&libraries=places"></script>
 </head>
 <body>
     <h2>Book Appointment</h2>
@@ -33,18 +34,14 @@
             const input = document.getElementById('address');
             const options = {
                 types: ['address'],
-                componentRestrictions: { country: 'us' } // Restrict to a specific country if needed
+                componentRestrictions: { country: 'us' }
             };
             const autocomplete = new google.maps.places.Autocomplete(input, options);
-
-            // Restrict to a specific city
             autocomplete.setComponentRestrictions({
                 country: 'us',
-                administrativeArea: 'Los Angeles' // Replace with your city
+                administrativeArea: 'Los Angeles'
             });
         }
-
-        // Initialize autocomplete when the page loads
         google.maps.event.addDomListener(window, 'load', initAutocomplete);
     </script>
 </body>
