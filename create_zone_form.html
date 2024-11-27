@@ -2,6 +2,8 @@
 <html>
 <head>
     <title>Create Zone</title>
+    <?php include 'config.php'; ?>
+    <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo GOOGLE_MAPS_API_KEY; ?>&libraries=places"></script>
 </head>
 <body>
     <h2>Create Zone</h2>
@@ -10,12 +12,32 @@
         <input type="text" id="name" name="name" required><br><br>
         
         <label for="address">Zone Address:</label><br>
-        <textarea id="address" name="address" required></textarea><br><br>
+        <input type="text" id="address" name="address" required><br><br>
         
         <label for="radius_km">Radius (km):</label><br>
         <input type="number" id="radius_km" name="radius_km" required><br><br>
         
         <input type="submit" value="Create Zone">
     </form>
+    
+    <script>
+        function initAutocomplete() {
+            const input = document.getElementById('address');
+            const options = {
+                types: ['address'],
+                componentRestrictions: { country: 'us' } // Restrict to a specific country if needed
+            };
+            const autocomplete = new google.maps.places.Autocomplete(input, options);
+
+            // Restrict to a specific city
+            autocomplete.setComponentRestrictions({
+                country: 'us',
+                administrativeArea: 'Los Angeles' // Replace with your city
+            });
+        }
+
+        // Initialize autocomplete when the page loads
+        google.maps.event.addDomListener(window, 'load', initAutocomplete);
+    </script>
 </body>
 </html>
