@@ -3,7 +3,7 @@
 <head>
     <title>Book Appointment</title>
     <?php include 'config.php'; ?>
-     <?php include 'menu.php'; ?>
+    <?php include 'menu.php'; ?>
     
     <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo GOOGLE_MAPS_API_KEY; ?>&libraries=places"></script>
 </head>
@@ -32,6 +32,7 @@
             <textarea id="notes" name="notes"></textarea><br><br>
             
             <input type="hidden" id="selectedSlot" name="selectedSlot">
+            <input type="hidden" id="zone_id" name="zone_id">
             <input type="submit" value="Confirm Appointment">
         </div>
     </form>
