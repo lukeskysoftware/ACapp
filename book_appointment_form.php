@@ -196,30 +196,30 @@ function fetchZones(latitude, longitude) {
         }
     }
 
-    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-        try {
-            if (!isset($_POST['latitude']) || !isset($_POST['longitude'])) {
-                throw new Exception('Latitude and Longitude are required.');
-            }
-
-            $latitude = $_POST['latitude'];
-            $longitude = $_POST['longitude'];
-
-            error_log("Received coordinates: Latitude=$latitude, Longitude=$longitude");
-
-            $zones = getZonesFromCoordinates($latitude, $longitude);
-
-            error_log("Zones data: " . print_r($zones, true));
-
-            header('Content-Type: application/json');
-            echo json_encode(['zones' => $zones]);
-        } catch (Exception $e) {
-            error_log("Error: " . $e->getMessage());
-
-            header('Content-Type: application/json');
-            echo json_encode(['error' => $e->getMessage()]);
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    try {
+        if (!isset($_POST['latitude']) || !isset($_POST['longitude'])) {
+            throw new Exception('Latitude and Longitude are required.');
         }
+
+        $latitude = $_POST['latitude'];
+        $longitude = $_POST['longitude'];
+
+        error_log("Received coordinates: Latitude=$latitude, Longitude=$longitude");
+
+        $zones = getZonesFromCoordinates($latitude, $longitude);
+
+        error_log("Zones data: " . print_r($zones, true));
+
+        header('Content-Type: application/json');
+        echo json_encode(['zones' => $zones]);
+    } catch (Exception $e) {
+        error_log("Error: " . $e->getMessage());
+
+        header('Content-Type: application/json');
+        echo json_encode(['error' => $e->getMessage()]);
     }
+}
     ?>
 </body>
 </html>
