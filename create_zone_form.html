@@ -26,9 +26,37 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
 <body>
     <div class="container">
         <h2>Gestione delle Zone</h2>
-        <!-- Your existing error handling and form code -->
-        
-        <!-- Include il JavaScript di Google Maps Places Autocomplete -->
+        <!-- Form for Zone Management -->
+        <form action="create_zone.php" method="post">
+            <label for="zone_name">Nome della Zona:</label>
+            <input type="text" id="zone_name" name="name" required><br>
+
+            <label for="zone_address">Indirizzo della Zona:</label>
+            <input type="text" id="zone_address" name="address" required><br>
+
+            <label for="days">Giorni della Settimana:</label>
+            <select id="days" name="days[]" multiple required>
+                <option value="Monday">Lunedì</option>
+                <option value="Tuesday">Martedì</option>
+                <option value="Wednesday">Mercoledì</option>
+                <option value="Thursday">Giovedì</option>
+                <option value="Friday">Venerdì</option>
+                <option value="Saturday">Sabato</option>
+                <option value="Sunday">Domenica</option>
+            </select><br>
+
+            <label for="start_time">Ora di Inizio:</label>
+            <input type="time" id="start_time" name="start_time" required><br>
+
+            <label for="end_time">Ora di Fine:</label>
+            <input type="time" id="end_time" name="end_time" required><br>
+
+            <label for="duration">Durata dell'Appuntamento (minuti):</label>
+            <input type="number" id="duration" name="duration" min="1" required><br>
+
+            <button type="submit">Crea Zona</button>
+        </form>
+
         <script>
             function initAutocomplete() {
                 var input = document.getElementById('zone_address');
