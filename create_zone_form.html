@@ -5,7 +5,9 @@
     <?php include 'config.php'; ?>
     <?php include 'menu.php'; ?>
     
-    <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo GOOGLE_MAPS_API_KEY; ?>&libraries=places&language=it"></script>
+    <script async
+        src="https://maps.googleapis.com/maps/api/js?key=<?php echo GOOGLE_MAPS_API_KEY; ?>&libraries=places&language=it">
+    </script>
 </head>
 <body>
     <h2>Create Zone</h2>
@@ -78,7 +80,7 @@
                 document.getElementById('temp_longitude').value = place.geometry.location.lng();
             });
         }
-        google.maps.event.addDomListener(window, 'load', initAutocomplete);
+        window.addEventListener('load', initAutocomplete);
     </script>
 </body>
 </html>
