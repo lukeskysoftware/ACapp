@@ -11,7 +11,7 @@ function testUserRegistration() {
     $hashed_password = password_hash($password, PASSWORD_BCRYPT);
 
     // Inserimento utente nel database
-    $sql = "INSERT INTO users (username, password) VALUES (?, ?)";
+    $sql = "INSERT INTO cp_users (username, password) VALUES (?, ?)";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "ss", $username, $hashed_password);
     if (mysqli_stmt_execute($stmt)) {
@@ -21,7 +21,7 @@ function testUserRegistration() {
     }
 
     // Verifica che l'utente sia stato registrato
-    $sql = "SELECT * FROM users WHERE username = ?";
+    $sql = "SELECT * FROM cp_users WHERE username = ?";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "s", $username);
     mysqli_stmt_execute($stmt);
@@ -36,7 +36,7 @@ function testUserRegistration() {
     }
 
     // Pulizia del database
-    $sql = "DELETE FROM users WHERE username = ?";
+    $sql = "DELETE FROM cp_users WHERE username = ?";
     $stmt = mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, "s", $username);
     mysqli_stmt_execute($stmt);
