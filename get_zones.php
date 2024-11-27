@@ -1,4 +1,4 @@
-f<?php
+<?php
 include 'db.php';
 include 'config.php';
 include 'menu.php';
