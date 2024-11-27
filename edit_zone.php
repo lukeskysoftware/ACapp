@@ -22,7 +22,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Insert new slots
         $slot_inserted = false;
         foreach ($slots as $day => $times) {
-            foreach ($times as $time) {
+            foreach ($time as $time) {
                 $sql_slot = "INSERT INTO cp_slots (zone_id, day, time) VALUES ('$zone_id', '$day', '$time')";
                 if (!mysqli_query($conn, $sql_slot)) {
                     echo "Error inserting slot: " . mysqli_error($conn);
@@ -34,7 +34,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         if ($slot_inserted) {
-            echo "Zone updated successfully";
+            header("Location: zone_list.php");
+            exit();
         } else {
             echo "No slots were updated";
         }
