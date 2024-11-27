@@ -1,5 +1,6 @@
 <?php
 include 'db.php';
+include 'menu.php';
 
 // Funzione per ottenere tutti gli appuntamenti
 function getAppointments() {
