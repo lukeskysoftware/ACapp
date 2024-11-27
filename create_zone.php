@@ -16,7 +16,7 @@ $radius = $_POST['radius_km'];
 
  
 
-$sql = "INSERT INTO cp_zones (name, address, latitude, longitude, radius) VALUES ('$name', '$address', '$latitude', '$longitude', '$radius')";
+$sql = "INSERT INTO cp_zones (name, address, latitude, longitude, radius_km) VALUES ('$name', '$address', '$latitude', '$longitude', '$radius')";
     if (mysqli_query($conn, $sql)) {
         $zone_id = mysqli_insert_id($conn);
 
