@@ -51,7 +51,7 @@
             });
         }
 
-   function fetchZones(latitude, longitude) {
+  function fetchZones(latitude, longitude) {
     const formData = new FormData();
     formData.append('latitude', latitude);
     formData.append('longitude', longitude);
