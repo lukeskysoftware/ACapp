@@ -16,7 +16,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (mysqli_query($conn, $sql)) {
         // Delete existing slots for the zone
         $sql_delete_slots = "DELETE FROM cp_slots WHERE zone_id='$zone_id'";
-        mysqli_query($conn, $sql_delete_slots);
+        if (!mysqli_query($conn, $sql_delete_slots)) {
+            echo "Error deleting slots: " . mysqli_error($conn);
+            mysqli_close($conn);
+            exit;
+        }
 
         // Generate new time slots based on the provided days, start time, end time, and duration
         foreach ($days as $day) {
@@ -26,13 +30,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             while ($current_time + ($duration * 60) <= $end_time_ts) {
                 $slot_time = date('H:i:s', $current_time);
                 $sql_slot = "INSERT INTO cp_slots (zone_id, day, time) VALUES ('$zone_id', '$day', '$slot_time')";
-                mysqli_query($conn, $sql_slot);
+                if (!mysqli_query($conn, $sql_slot)) {
+                    echo "Error inserting slot: " . mysqli_error($conn);
+                    mysqli_close($conn);
+                    exit;
+                }
                 $current_time += ($duration * 60);
             }
         }
         echo "Zone updated successfully";
     } else {
-        echo "Error: " . $sql . "<br>" . mysqli_error($conn);
+        echo "Error updating zone: " . mysqli_error($conn);
     }
     mysqli_close($conn);
 }
