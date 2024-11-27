@@ -37,13 +37,20 @@ try {
     $latitude = $_GET['latitude'];
     $longitude = $_GET['longitude'];
 
-    ob_start(); // Start output buffering
+    // Debugging: Log the received coordinates
+    error_log("Received coordinates: Latitude=$latitude, Longitude=$longitude");
+
     $zones = getZonesFromCoordinates($latitude, $longitude);
+
+    // Debugging: Log the zones data
+    error_log("Zones data: " . print_r($zones, true));
+
     header('Content-Type: application/json');
     echo json_encode(['zones' => $zones]);
-    ob_end_flush(); // End output buffering and flush output
 } catch (Exception $e) {
-    ob_end_clean(); // Clear buffer in case of exception
+    // Debugging: Log the exception message
+    error_log("Error: " . $e->getMessage());
+
     header('Content-Type: application/json');
     echo json_encode(['error' => $e->getMessage()]);
 }
