@@ -54,33 +54,33 @@
             });
         }
 
-        function fetchZones(latitude, longitude) {
-            const formData = new FormData();
-            formData.append('latitude', latitude);
-            formData.append('longitude', longitude);
+     function fetchZones(latitude, longitude) {
+    const formData = new FormData();
+    formData.append('latitude', latitude);
+    formData.append('longitude', longitude);
 
-            fetch('', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (!response.ok) throw new Error('Failed to fetch zones');
-                return response.json();
-            })
-            .then(data => {
-                rawResponseText = JSON.stringify(data);
-                const messageDiv = document.getElementById('message');
-                messageDiv.innerHTML = 'Data fetched. Click "Process Data" to process the data.';
-                messageDiv.style.color = 'green';
-                document.getElementById('rawData').value = rawResponseText;
-            })
-            .catch(error => {
-                console.error('Error fetching zones:', error);
-                const messageDiv = document.getElementById('message');
-                messageDiv.innerHTML = 'Error fetching zones: ' + error.message;
-                messageDiv.style.color = 'red';
-            });
-        }
+    fetch('', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Failed to fetch zones');
+        return response.json();
+    })
+    .then(data => {
+        rawResponseText = JSON.stringify(data);
+        const messageDiv = document.getElementById('message');
+        messageDiv.innerHTML = 'Data fetched. Click "Process Data" to process the data.';
+        messageDiv.style.color = 'green';
+        document.getElementById('rawData').value = rawResponseText;
+    })
+    .catch(error => {
+        console.error('Error fetching zones:', error);
+        const messageDiv = document.getElementById('message');
+        messageDiv.innerHTML = 'Error fetching zones: ' + error.message;
+        messageDiv.style.color = 'red';
+    });
+}
 
         function processData() {
             try {
@@ -192,78 +192,78 @@
         return $nextDate;
     }
 
-    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-        try {
-            if (!isset($_POST['latitude']) || !isset($_POST['longitude'])) {
-                throw new Exception('Latitude and Longitude are required.');
-            }
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    try {
+        if (!isset($_POST['latitude']) || !isset($_POST['longitude'])) {
+            throw new Exception('Latitude and Longitude are required.');
+        }
 
-            $latitude = $_POST['latitude'];
-            $longitude = $_POST['longitude'];
+        $latitude = $_POST['latitude'];
+        $longitude = $_POST['longitude'];
 
-            error_log("Received coordinates: Latitude=$latitude, Longitude=$longitude");
+        error_log("Received coordinates: Latitude=$latitude, Longitude=$longitude");
 
-            $zones = getZonesFromCoordinates($latitude, $longitude);
+        $zones = getZonesFromCoordinates($latitude, $longitude);
 
-            error_log("Zones data: " . print_r($zones, true));
+        error_log("Zones data: " . print_r($zones, true));
 
-            header('Content-Type: application/json');
-            echo json_encode([
-                'zones' => $zones,
-                'debug' => [
-                    'received_coordinates' => [
-                        'latitude' => $latitude,
-                        'longitude' => $longitude,
-                    ],
-                    'zones_data' => $zones,
+        header('Content-Type: application/json');
+        echo json_encode([
+            'zones' => $zones,
+            'debug' => [
+                'received_coordinates' => [
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
                 ],
-            ]);
-        } catch (Exception $e) {
-            error_log("Error: " . $e->getMessage());
+                'zones_data' => $zones,
+            ],
+        ]);
+    } catch (Exception $e) {
+        error_log("Error: " . $e->getMessage());
 
-            header('Content-Type: application/json');
-            echo json_encode(['error' => $e->getMessage()]);
-        }
+        header('Content-Type: application/json');
+        echo json_encode(['error' => $e->getMessage()]);
     }
+}
 
-    function getZonesFromCoordinates($latitude, $longitude) {
-        global $conn;
-        $sql = "SELECT id, zone_name, latitude, longitude, day_of_week, start_time, end_time FROM cp_zones";
-        $stmt = $conn->prepare($sql);
-        $stmt->execute();
-        $zones = $stmt->fetchAll(PDO::FETCH_ASSOC);
+function getZonesFromCoordinates($latitude, $longitude) {
+    global $conn;
+    $sql = "SELECT id, zone_name, latitude, longitude, day_of_week, start_time, end_time FROM cp_zones";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    $zones = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $assigned_zones = [];
-        $current_date = new DateTime();
-        $current_day_of_week = (int)$current_date->format('N');
+    $assigned_zones = [];
+    $current_date = new DateTime();
+    $current_day_of_week = (int)$current_date->format('N');
 
-        foreach ($zones as $row) {
-            $distance = calculateDistance($latitude, $longitude, $row['latitude'], $row['longitude']);
-            if ($distance <= 5) {
-                if ($row['day_of_week'] == $current_day_of_week) {
-                    $current_date->add(new DateInterval('P1D'));
-                    continue;
-                }
-                $next_occurrence_date = getNextDateForDayOfWeek($row['day_of_week'], $current_date);
-                $next_available_time = $next_occurrence_date->format('Y-m-d') . ' ' . $row['start_time'];
+    foreach ($zones as $row) {
+        $distance = calculateDistance($latitude, $longitude, $row['latitude'], $row['longitude']);
+        if ($distance <= 5) {
+            if ($row['day_of_week'] == $current_day_of_week) {
+                $current_date->add(new DateInterval('P1D'));
+                continue;
+            }
+            $next_occurrence_date = getNextDateForDayOfWeek($row['day_of_week'], $current_date);
+            $next_available_time = $next_occurrence_date->format('Y-m-d') . ' ' . $row['start_time'];
 
-                $query_appointments = "SELECT COUNT(*) AS num_appointments FROM appointments WHERE zone_id = '{$row['id']}' AND appointment_date = '$next_available_time' AND start_time = '{$row['start_time']}' AND end_time = '{$row['end_time']}'";
-                $result_appointments = $conn->query($query_appointments);
-                $appointment_count = ($result_appointments->num_rows > 0) ? $result_appointments->fetch_assoc()['num_appointments'] : 0;
+            $query_appointments = "SELECT COUNT(*) AS num_appointments FROM appointments WHERE zone_id = '{$row['id']}' AND appointment_date = '$next_available_time' AND start_time = '{$row['start_time']}' AND end_time = '{$row['end_time']}'";
+            $result_appointments = $conn->query($query_appointments);
+            $appointment_count = ($result_appointments->num_rows > 0) ? $result_appointments->fetch_assoc()['num_appointments'] : 0;
 
-                if ($appointment_count == 0) {
-                    $assigned_zones[] = [
-                        'zone_id' => $row['id'],
-                        'zone_name' => $row['zone_name'],
-                        'next_available_time' => $next_available_time,
-                        'distance' => $distance
-                    ];
-                }
+            if ($appointment_count == 0) {
+                $assigned_zones[] = [
+                    'zone_id' => $row['id'],
+                    'zone_name' => $row['zone_name'],
+                    'next_available_time' => $next_available_time,
+                    'distance' => $distance
+                ];
             }
         }
-
-        return $assigned_zones;
     }
-    ?>
+
+    return $assigned_zones;
+}
+?>
 </body>
 </html>
