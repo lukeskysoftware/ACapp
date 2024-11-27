@@ -1,5 +1,5 @@
 <?php
-require_once 'db.php'; // Include your database connection file
+require_once 'db.php';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $apiKey = $_POST['api_key'];
