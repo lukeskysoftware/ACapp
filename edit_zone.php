@@ -10,7 +10,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $slots = $_POST['slots'];
     $radius = $_POST['radius_km'];
 
-$sql = "UPDATE cp_zones SET name='$name', address='$address', latitude='$latitude', longitude='$longitude', radius='$radius' WHERE id='$zone_id'";
+$sql = "UPDATE cp_zones SET name='$name', address='$address', latitude='$latitude', longitude='$longitude', radius_km='$radius' WHERE id='$zone_id'";
 
     if (mysqli_query($conn, $sql)) {
         // Delete existing slots for the zone
