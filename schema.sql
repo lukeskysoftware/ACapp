@@ -43,7 +43,8 @@ CREATE TABLE cp_slots (
     time TIME NOT NULL,
     FOREIGN KEY (zone_id) REFERENCES cp_zones(id)
 );
-CREATE TABLE cp_your_table_name (
+-- Create table for API keys
+CREATE TABLE cp_api_keys (
     id INT AUTO_INCREMENT PRIMARY KEY,
     api_key VARCHAR(255) NOT NULL
 );
