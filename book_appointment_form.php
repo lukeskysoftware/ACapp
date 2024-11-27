@@ -109,6 +109,8 @@
             
             <input type="hidden" id="selectedSlot" name="selectedSlot">
             <input type="hidden" id="zone_id" name="zone_id">
+            <input type="hidden" id="latitude" name="latitude">
+            <input type="hidden" id="longitude" name="longitude">
             <input type="submit" value="Confirm Appointment">
         </div>
     </form>
