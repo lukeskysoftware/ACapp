@@ -8,7 +8,7 @@ if (!isset($_SESSION['user_id'])) {
 <nav>
     <ul>
         <li><a href="create_zone_form.html">Create Zone</a></li>
-        <li><a href="edit_zone_form.html">Edit Zone</a></li> <!-- Added Edit Zone link -->
+        <li><a href="list_zones.php">Manage Zones</a></li> <!-- Updated to point to list_zones.php -->
         <li><a href="manage_appointments.php">Manage Appointments</a></li>
         <li><a href="book_appointment_form.html">Book Appointment</a></li>
         <li><a href="view_appointments.php">View Appointments</a></li>
