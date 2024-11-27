@@ -8,7 +8,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $latitude = $_POST['latitude'];
     $longitude = $_POST['longitude'];
     $slots = $_POST['slots'];
-    $radius = $_POST['radius'];
+    $radius = $_POST['radius_km'];
 
 $sql = "UPDATE cp_zones SET name='$name', address='$address', latitude='$latitude', longitude='$longitude', radius='$radius' WHERE id='$zone_id'";
 
