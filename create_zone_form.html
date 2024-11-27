@@ -1,86 +1,85 @@
+<?php
+session_start();
+require_once "db_connection.php";
+header('Content-Type: text/html; charset=utf-8');
+mysqli_set_charset($mysqli, 'utf8mb4');
+
+// Verifica se l'amministratore è loggato, altrimenti reindirizza alla pagina di login
+if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
+    header("Location: login.php");
+    exit();
+}
+
+// Recupera la chiave API di Google Maps dal database
+$query = "SELECT * FROM config WHERE name = 'google_maps_api_key'";
+$result = $mysqli->query($query);
+if ($result && $result->num_rows > 0) {
+    $config = $result->fetch_assoc();
+    $google_maps_api_key = $config['value'];
+} else {
+    echo "Errore: chiave API di Google Maps non trovata.";
+    exit();
+}
+?>
+
 <!DOCTYPE html>
-<html>
+<html lang="it">
 <head>
-    <title>Create Zone</title>
-    <?php include 'config.php'; ?>
-    <?php include 'menu.php'; ?>
-    
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestione delle Zone</title>
+    <link rel="stylesheet" href="styles.css">
     <script async
-        src="https://maps.googleapis.com/maps/api/js?key=<?php echo GOOGLE_MAPS_API_KEY; ?>&libraries=places&language=it">
+        src="https://maps.googleapis.com/maps/api/js?key=<?php echo $google_maps_api_key; ?>&libraries=places&language=it">
     </script>
 </head>
 <body>
-    <h2>Create Zone</h2>
-    <form action="create_zone.php" method="post">
-        <label for="name">Zone Name:</label><br>
-        <input type="text" id="name" name="name" required><br><br>
+    <div class="container">
+        <h2>Gestione delle Zone</h2>
+        <!-- Your existing error handling and form code -->
         
-        <label for="address">Zone Address:</label><br>
-        <input type="text" id="address" name="address" required><br><br>
-        
-        <label for="radius_km">Radius (km):</label><br>
-        <input type="number" id="radius_km" name="radius_km" required><br><br>
-        
-        <label for="days">Days of the Week:</label><br>
-        <select id="days" name="days[]" multiple required>
-            <option value="Monday">Monday</option>
-            <option value="Tuesday">Tuesday</option>
-            <option value="Wednesday">Wednesday</option>
-            <option value="Thursday">Thursday</option>
-            <option value="Friday">Friday</option>
-            <option value="Saturday">Saturday</option>
-            <option value="Sunday">Sunday</option>
-        </select><br><br>
+        <!-- Include il JavaScript di Google Maps Places Autocomplete -->
+        <script>
+            function initAutocomplete() {
+                var input = document.getElementById('zone_address');
+                var options = {
+                    types: ['geocode'],
+                    strictBounds: true,
+                    bounds: {
+                        north: 42.1,
+                        south: 40.8,
+                        west: 11.5,
+                        east: 13.0
+                    }
+                };
+                var autocomplete = new google.maps.places.Autocomplete(input, options);
 
-        <label for="start_time">Start Time:</label><br>
-        <input type="time" id="start_time" name="start_time" required><br><br>
-
-        <label for="end_time">End Time:</label><br>
-        <input type="time" id="end_time" name="end_time" required><br><br>
-
-        <label for="duration">Appointment Duration (minutes):</label><br>
-        <input type="number" id="duration" name="duration" required><br><br>
-
-        <input type="submit" value="Create Zone">
-    </form>
-
-    <script>
-        function initAutocomplete() {
-            var input = document.getElementById('address');
-            var options = {
-                types: ['geocode'],
-                strictBounds: true, 
-                bounds: {
-                    north: 42.1, 
-                    south: 40.8, 
-                    west: 11.5, 
-                    east: 13.0 
-                }
-            };
-            var autocomplete = new google.maps.places.Autocomplete(input, options);
-
-            autocomplete.addListener('place_changed', function() {
-                var place = autocomplete.getPlace();
-                if (place.address_components) {
-                    for (var i = 0; i < place.address_components.length; i++) {
-                        var addressType = place.address_components[i].types[0];
-                        if (addressType === 'locality') {
-                            document.getElementById('city').value = place.address_components[i].long_name;
-                            document.getElementById('temp_city').value = place.address_components[i].long_name;
-                        } else if (addressType === 'administrative_area_level_1') {
-                            document.getElementById('province').value = place.address_components[i].short_name;
-                            document.getElementById('temp_province').value = place.address_components[i].short_name;
-                        } else if (addressType === 'postal_code') {
-                            document.getElementById('zip').value = place.address_components[i].long_name;
-                            document.getElementById('temp_zip').value = place.address_components[i].long_name;
+                autocomplete.addListener('place_changed', function() {
+                    var place = autocomplete.getPlace();
+                    if (place.address_components) {
+                        for (var i = 0; i < place.address_components.length; i++) {
+                            var addressType = place.address_components[i].types[0];
+                            if (addressType === 'locality') {
+                                document.getElementById('city').value = place.address_components[i].long_name;
+                                document.getElementById('temp_city').value = place.address_components[i].long_name;
+                            } else if (addressType === 'administrative_area_level_1') {
+                                document.getElementById('province').value = place.address_components[i].short_name;
+                                document.getElementById('temp_province').value = place.address_components[i].short_name;
+                            } else if (addressType === 'postal_code') {
+                                document.getElementById('zip').value = place.address_components[i].long_name;
+                                document.getElementById('temp_zip').value = place.address_components[i].long_name;
+                            }
                         }
                     }
-                }
-                document.getElementById('temp_latitude').value = place.geometry.location.lat();
-                document.getElementById('temp_longitude').value = place.geometry.location.lng();
-            });
-        }
-        window.addEventListener('load', initAutocomplete);
-    </script>
+                    document.getElementById('temp_latitude').value = place.geometry.location.lat();
+                    document.getElementById('temp_longitude').value = place.geometry.location.lng();
+                });
+            }
+            window.addEventListener('load', initAutocomplete);
+        </script>
+    </div>
+    <div class="container">
+        <a href="dashboard.php">Torna alla dashboard</a>
+    </div>
 </body>
 </html>
