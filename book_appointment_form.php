@@ -51,7 +51,7 @@
             });
         }
 
-  function fetchZones(latitude, longitude) {
+function fetchZones(latitude, longitude) {
     const formData = new FormData();
     formData.append('latitude', latitude);
     formData.append('longitude', longitude);
@@ -77,14 +77,14 @@
             } catch (e) {
                 console.error('JSON Parse Error:', e);
                 const messageDiv = document.getElementById('message');
-                messageDiv.innerHTML = 'Error parsing zones data.';
+                messageDiv.innerHTML = 'Error parsing zones data: ' + e.message;
                 messageDiv.style.color = 'red';
             }
         })
         .catch(error => {
             console.error('Error fetching zones:', error);
             const messageDiv = document.getElementById('message');
-            messageDiv.innerHTML = 'Error fetching zones.';
+            messageDiv.innerHTML = 'Error fetching zones: ' + error.message;
             messageDiv.style.color = 'red';
         });
 }
