@@ -67,7 +67,7 @@
                     console.log('Raw response:', text);
                     rawResponseText = text; // Store raw response for later parsing
                     const messageDiv = document.getElementById('message');
-                    messageDiv.innerHTML = 'Data fetched. Click "Parse JSON" to process the data.';
+                    messageDiv.innerHTML = 'Data fetched. Click "Process Data" to process the data.';
                     messageDiv.style.color = 'green';
                 })
                 .catch(error => {
@@ -78,9 +78,9 @@
                 });
         }
 
-        function parseJSON() {
+        function processData() {
             try {
-                const data = JSON.parse(rawResponseText);
+                const data = eval('(' + rawResponseText + ')'); // Use eval as an alternative to JSON.parse
                 const messageDiv = document.getElementById('message');
                 if (data.zones && data.zones.length > 0) {
                     displayZones(data.zones);
@@ -91,9 +91,9 @@
                     messageDiv.style.color = 'red';
                 }
             } catch (e) {
-                console.error('JSON Parse Error:', e);
+                console.error('Data Processing Error:', e);
                 const messageDiv = document.getElementById('message');
-                messageDiv.innerHTML = 'Error parsing zones data: ' + e.message;
+                messageDiv.innerHTML = 'Error processing zones data: ' + e.message;
                 messageDiv.style.color = 'red';
             }
         }
@@ -127,7 +127,7 @@
         <label for="address">Address:</label><br>
         <input type="text" id="address" name="address" required><br><br>
         <button type="button" onclick="checkAddress()">Check Address</button><br><br>
-        <button type="button" onclick="parseJSON()">Parse JSON</button><br><br>
+        <button type="button" onclick="processData()">Process Data</button><br><br>
         
         <div id="message"></div>
         <div id="zoneDetails" style="display:none;"></div>
@@ -221,8 +221,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         error_log("Zones data: " . print_r($zones, true));
 
-        header('Content-Type: application/json');
-        echo json_encode([
+        header('Content-Type: text/plain');
+        echo serialize([
             'zones' => $zones,
             'debug' => [
                 'received_coordinates' => [
@@ -235,8 +235,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     } catch (Exception $e) {
         error_log("Error: " . $e->getMessage());
 
-        header('Content-Type: application/json');
-        echo json_encode(['error' => $e->getMessage()]);
+        header('Content-Type: text/plain');
+        echo serialize(['error' => $e->getMessage()]);
     }
 }
     ?>
