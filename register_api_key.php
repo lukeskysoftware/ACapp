@@ -1,26 +1,20 @@
 <?php
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $api_key = $_POST['api_key'];
+require_once 'db.php'; // Include your database connection file
 
-    $config_content = "<?php\n";
-    $config_content .= "define('GOOGLE_MAPS_API_KEY', '$api_key');\n";
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $apiKey = $_POST['api_key'];
 
-    file_put_contents('config.php', $config_content);
-    echo "API key registered successfully.";
+    // Insert the API key into the database
+    $stmt = $conn->prepare("INSERT INTO cp_api_keys (api_key) VALUES (?)");
+    $stmt->bind_param("s", $apiKey);
+
+    if ($stmt->execute()) {
+        echo "API Key registered successfully.";
+    } else {
+        echo "Error: " . $stmt->error;
+    }
+
+    $stmt->close();
+    $conn->close();
 }
 ?>
-
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Register API Key</title>
-</head>
-<body>
-    <h2>Register API Key</h2>
-    <form method="post" action="register_api_key.php">
-        <label for="api_key">API Key:</label><br>
-        <input type="text" id="api_key" name="api_key" required><br><br>
-        <input type="submit" value="Register">
-    </form>
-</body>
-</html>
