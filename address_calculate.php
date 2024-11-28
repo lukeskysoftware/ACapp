@@ -213,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone']) && isset($_POST['notes'])) {
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone']) &&[...]
     header('Content-Type: text/html; charset=UTF-8');
     $zoneId = $_POST['zone_id'];
     $appointmentDate = $_POST['date'];
@@ -227,11 +227,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
         if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime)) {
             $patientId = addPatient($name, $surname, $phone, $notes);
             addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime);
+            
             // Ensure correct date formatting
-$appointmentDate = DateTime::createFromFormat('Y-m-d', $_POST['date']);
-$appointmentDateFormatted = $appointmentDate->format('d-m-Y'); // Italian format
+            $appointmentDateFormatted = DateTime::createFromFormat('Y-m-d', $appointmentDate)->format('d-m-Y'); // Italian format
 
-echo "<p>Appuntamento prenotato con successo per il {$appointmentDateFormatted} alle {$appointmentTime}.</p>";
+            echo "<p>Appuntamento prenotato con successo per il {$appointmentDateFormatted} alle {$appointmentTime}.</p>";
         } else {
             echo "<p>L'orario selezionato non è disponibile. Si prega di scegliere un altro orario.</p>";
         }
