@@ -89,6 +89,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
                             data.forEach(patient => {
                                 const listItem = document.createElement('li');
                                 listItem.textContent = `${patient.name} ${patient.surname} - ${patient.phone}`;
+                                listItem.style.cursor = 'pointer';
                                 listItem.addEventListener('click', function() {
                                     nameInput.value = patient.name;
                                     surnameField.value = patient.surname;
