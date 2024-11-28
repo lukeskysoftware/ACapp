@@ -14,13 +14,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $name = $_POST['name'];
     $surname = $_POST['surname'];
     $phone = $_POST['phone'];
+    $address = $_POST['address'];
     $notes = $_POST['notes'];
 
     // Debugging: Log the received POST data
-    error_log("Received POST data: zone_id={$zone_id}, date={$date}, time={$time}, name={$name}, surname={$surname}, phone={$phone}, notes={$notes}");
+    error_log("Received POST data: zone_id={$zone_id}, date={$date}, time={$time}, name={$name}, surname={$surname}, phone={$phone}, address={$address}, notes={$notes}");
 
     // Ensure all parameters are received
-    if (!isset($zone_id) || !isset($date) || !isset($time) || !isset($name) || !isset($surname) || !isset($phone)) {
+    if (!isset($zone_id) || !isset($date) || !isset($time) || !isset($name) || !isset($surname) || !isset($phone) || !isset($address)) {
         echo "Missing parameters!";
         exit;
     }
@@ -38,9 +39,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $patient_id = $patient['id'];
     } else {
         // Insert patient data
-        $sql1 = "INSERT INTO cp_patients (name, surname, phone, notes) VALUES (?, ?, ?, ?)";
+        $sql1 = "INSERT INTO cp_patients (name, surname, phone) VALUES (?, ?, ?)";
         $stmt1 = $conn->prepare($sql1);
-        $stmt1->bind_param("ssss", $name, $surname, $phone, $notes);
+        $stmt1->bind_param("sss", $name, $surname, $phone);
         if (!$stmt1->execute()) {
             error_log("Database query failed for adding patient: " . mysqli_error($conn));
             echo "Database query failed for adding patient: " . mysqli_error($conn);
@@ -49,10 +50,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $patient_id = $conn->insert_id;
     }
 
-    // Insert appointment data
-    $sql2 = "INSERT INTO cp_appointments (zone_id, patient_id, appointment_date, appointment_time) VALUES (?, ?, ?, ?)";
+    // Insert appointment data with address and notes
+    $sql2 = "INSERT INTO cp_appointments (zone_id, patient_id, appointment_date, appointment_time, address, notes) VALUES (?, ?, ?, ?, ?, ?)";
     $stmt2 = $conn->prepare($sql2);
-    $stmt2->bind_param("iiss", $zone_id, $patient_id, $date, $time);
+    $stmt2->bind_param("iissss", $zone_id, $patient_id, $date, $time, $address, $notes);
     if (!$stmt2->execute()) {
         error_log("Database query failed for adding appointment: " . mysqli_error($conn));
         echo "Database query failed for adding appointment: " . mysqli_error($conn);
@@ -64,6 +65,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     echo "<p>Cognome: " . htmlspecialchars($surname) . "</p>";
     echo "<p>Nome: " . htmlspecialchars($name) . "</p>";
     echo "<p>Telefono: " . htmlspecialchars($phone) . "</p>";
+    echo "<p>Indirizzo: " . htmlspecialchars($address) . "</p>";
     echo "<p>Note: " . htmlspecialchars($notes) . "</p>";
     echo '<button onclick="window.location.href=\'dashboard.php\'">Vai alla Dashboard</button>';
 }
