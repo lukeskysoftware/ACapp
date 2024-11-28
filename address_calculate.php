@@ -97,9 +97,6 @@ function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime) {
     return $count === 0;
 }
 
-    return $availableSlots;
-}
-
 // Function to get the next 3 available appointment dates and times
 function getNext3AppointmentDates($slots) {
     $next3Days = [];
@@ -159,30 +156,6 @@ function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime)
         error_log("Database query failed for adding appointment: " . mysqli_error($conn));
         throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
     }
-}
-
-// Check if appointment is available
-function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime) {
-    global $conn;
-    $sql = "SELECT COUNT(*) FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? AND appointment_time = ?";
-    $stmt = $conn->prepare($sql);
-
-    if (!$stmt) {
-        error_log("Database prepare failed for checking appointment availability: " . mysqli_error($conn));
-        throw new Exception("Database prepare failed for checking appointment availability: " . mysqli_error($conn));
-    }
-
-    $stmt->bind_param("iss", $zoneId, $appointmentDate, $appointmentTime);
-
-    if (!$stmt->execute()) {
-        error_log("Database query failed for checking appointment availability: " . mysqli_error($conn));
-        throw new Exception("Database query failed for checking appointment availability: " . mysqli_error($conn));
-    }
-
-    $stmt->bind_result($count);
-    $stmt->fetch();
-
-    return $count === 0;
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
