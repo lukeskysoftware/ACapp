@@ -198,7 +198,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                         echo "<p>Data: {$formattedDisplayDate}</p>";
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
-                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$time}'>{$time}</a> ";
+                            $formattedTime = date('H:i', strtotime($time)); // Remove seconds
+                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}'>{$formattedTime}</a> ";
                         }
                         echo "</p>";
                     }
@@ -239,7 +240,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             // Ensure correct date formatting
             $appointmentDateFormatted = DateTime::createFromFormat('Y-m-d', $appointmentDate)->format('d F Y'); // Italian format with month name
 
-            echo "<p>Appuntamento prenotato con successo per il {$appointmentDateFormatted} alle {$appointmentTime}.</p>";
+            $formattedAppointmentTime = date('H:i', strtotime($appointmentTime)); // Remove seconds
+
+            echo "<p>Appuntamento prenotato con successo per il {$appointmentDateFormatted} alle {$formattedAppointmentTime}.</p>";
         } else {
             echo "<p>L'orario selezionato non è disponibile. Si prega di scegliere un altro orario.</p>";
         }
