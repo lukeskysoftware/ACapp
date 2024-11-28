@@ -1,3 +1,5 @@
+<?php include 'menu.php'; ?>
+
 <!DOCTYPE html>
 <html>
 <head>
