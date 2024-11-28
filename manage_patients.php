@@ -9,7 +9,7 @@ function getPatients($search = '') {
     if (!empty($search)) {
         $conditions[] = "(p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
     }
-    $sql = "SELECT p.id, p.name, p.surname, p.phone, p.email
+    $sql = "SELECT p.id, p.name, p.surname, p.phone
             FROM cp_patients p";
     if (!empty($conditions)) {
         $sql .= " WHERE " . implode(' AND ', $conditions);
@@ -47,9 +47,8 @@ if (isset($_POST['update'])) {
     $name = $_POST['name'];
     $surname = $_POST['surname'];
     $phone = $_POST['phone'];
-    $email = $_POST['email'];
     $sql = "UPDATE cp_patients
-            SET name='$name', surname='$surname', phone='$phone', email='$email'
+            SET name='$name', surname='$surname', phone='$phone'
             WHERE id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_patients.php');
@@ -143,7 +142,6 @@ $patients = getPatients($search);
             <th>Name</th>
             <th>Surname</th>
             <th>Phone</th>
-            <th>Email</th>
             <th>Appointments</th>
             <th>Actions</th>
         </tr>
@@ -153,7 +151,6 @@ $patients = getPatients($search);
                 <td><?php echo htmlspecialchars($patient['name']); ?></td>
                 <td><?php echo htmlspecialchars($patient['surname']); ?></td>
                 <td><?php echo htmlspecialchars($patient['phone']); ?></td>
-                <td><?php echo htmlspecialchars($patient['email']); ?></td>
                 <td>
                     <?php
                     $appointments = getAppointments($patient['id']);
@@ -182,7 +179,6 @@ $patients = getPatients($search);
                         <input type="text" name="name" value="<?php echo htmlspecialchars($patient['name']); ?>" required>
                         <input type="text" name="surname" value="<?php echo htmlspecialchars($patient['surname']); ?>" required>
                         <input type="text" name="phone" value="<?php echo htmlspecialchars($patient['phone']); ?>" required>
-                        <input type="email" name="email" value="<?php echo htmlspecialchars($patient['email']); ?>" required>
                         <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn">
                     </form>
                 </td>
@@ -190,7 +186,7 @@ $patients = getPatients($search);
             <?php } ?>
         <?php } else { ?>
             <tr>
-                <td colspan="6">No patients found</td>
+                <td colspan="5">No patients found</td>
             </tr>
         <?php } ?>
     </table>
