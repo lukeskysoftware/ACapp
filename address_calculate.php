@@ -54,12 +54,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         // Debugging: Log the origin coordinates
         error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
 
+        echo "Address Coordinates: Latitude={$latitude}, Longitude={$longitude}\n\n";
+
         foreach ($zones as $zone) {
             $destination = [$zone['latitude'], $zone['longitude']];
             $distance = calculateDistance($origin, $destination);
-            if ($distance <= $zone['radius_km']) {
-                echo "Zone: {$zone['name']}\n";
-            }
+            $difference = $distance - $zone['radius_km'];
+            echo "Zone: {$zone['name']}\n";
+            echo "Zone Coordinates: Latitude={$zone['latitude']}, Longitude={$zone['longitude']}\n";
+            echo "Distance: {$distance} km\n";
+            echo "Radius: {$zone['radius_km']} km\n";
+            echo "Difference: {$difference} km\n\n";
         }
     } catch (Exception $e) {
         error_log("Exception: " . $e->getMessage());
