@@ -36,14 +36,6 @@ function getZones() {
     return array_column($zones, 'name');
 }
 
-// Function to delete an appointment
-if (isset($_POST['cancella'])) {
-    $id = $_POST['appointment_id'];
-    $sql = "DELETE FROM cp_appointments WHERE id = $id";
-    mysqli_query($conn, $sql);
-    header('Location: manage_appointments.php');
-}
-
 // Function to update an appointment
 if (isset($_POST['update'])) {
     $id = $_POST['appointment_id'];
@@ -75,15 +67,6 @@ $zones = getZones();
 <head>
     <title>Manage Appointments</title>
     <style>
-        .cancella-btn {
-            background-color: red;
-            color: white;
-        }
-        .cancella-confirm-btn {
-            background-color: red;
-            color: white;
-            display: none;
-        }
         .modifica-btn {
             background-color: green;
             color: white;
@@ -134,14 +117,6 @@ $zones = getZones();
                 actionRow.style.display = 'table-row';
             }
         }
-
-        function confirmDelete(id, name, surname, phone, notes, date, time, zone) {
-            const confirmationMessage = `Sei sicuro di voler cancellare l'appuntamento?\n\nDettagli Appuntamento:\nNome: ${name}\nCognome: ${surname}\nTelefono: ${phone}\nNote: ${notes}\nData: ${date}\nOra: ${time}\nZona: ${zone}`;
-            const confirmationCheckbox = confirm(`${confirmationMessage}`);
-            if (confirmationCheckbox) {
-                document.querySelector(`#cancella-confirm-${id}`).style.display = 'inline';
-            }
-        }
     </script>
 </head>
 <body>
@@ -181,20 +156,11 @@ $zones = getZones();
             <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
             <td>
-                <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
-                <button class="cancella-btn" onclick="confirmDelete(<?php echo $appointment['id']; ?>, '<?php echo htmlspecialchars($appointment['name']); ?>', '<?php echo htmlspecialchars($appointment['surname']); ?>', '<?php echo htmlspecialchars($appointment['phone']); ?>', '<?php echo htmlspecialchars($appointment['notes']); ?>', '<?php echo htmlspecialchars($appointment['appointment_date']); ?>', '<?php echo htmlspecialchars($appointment['appointment_time']); ?>', '<?php echo htmlspecialchars($appointment['zone']); ?>')">Cancella</button>
-                <form method="post" action="manage_appointments.php" style="display:inline;">
-                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="cancella" value="Conferma Cancella" id="cancella-confirm-<?php echo $appointment['id']; ?>" class="cancella-confirm-btn">
-                </form>
+                <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>)">Conferma Modifica</button>
             </td>
         </tr>
         <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
             <td colspan="8">
-                <form method="post" action="manage_appointments.php" style="display:inline;">
-                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="cancella" value="Cancella">
-                </form>
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
                     <input type="text" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>" required>
