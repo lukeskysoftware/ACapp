@@ -59,18 +59,7 @@ function getSlotsForZone($zoneId) {
 
     $slots = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    // Filter out booked slots
-    $availableSlots = [];
-    foreach ($slots as $slot) {
-        $slotDate = $slot['day'];
-        $slotTime = $slot['time'];
-        $isAvailable = isAppointmentAvailable($zoneId, $slotDate, $slotTime);
-        if ($isAvailable) {
-            $availableSlots[] = $slot;
-        }
-    }
-
-    return $availableSlots;
+    return $slots;
 }
 
 // Check if appointment is available
@@ -98,7 +87,8 @@ function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime) {
 }
 
 // Function to get the next 3 available appointment dates and times
-function getNext3AppointmentDates($slots) {
+function getNext3AppointmentDates($slots, $zoneId) {
+    global $conn;
     $next3Days = [];
     $currentDate = new DateTime();
     $currentDayOfWeek = $currentDate->format('N'); // Day of the week (1 = Monday, 7 = Sunday)
@@ -109,7 +99,12 @@ function getNext3AppointmentDates($slots) {
             $daysUntilSlot = ($slotDayOfWeek - $currentDayOfWeek + 7) % 7;
             $appointmentDate = clone $currentDate;
             $appointmentDate->modify("+$daysUntilSlot days");
-            $next3Days[$appointmentDate->format('Y-m-d')][] = $slot['time'];
+            $formattedDate = $appointmentDate->format('Y-m-d');
+
+            // Check if slot is available
+            if (isAppointmentAvailable($zoneId, $formattedDate, $slot['time'])) {
+                $next3Days[$formattedDate][] = $slot['time'];
+            }
         }
         $currentDate->modify('+1 week');
     }
@@ -197,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                 $slots = getSlotsForZone($zone['id']);
                 if (!empty($slots)) {
                     echo "<h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona {$zone['name']}:</h4>";
-                    $next3Days = getNext3AppointmentDates($slots);
+                    $next3Days = getNext3AppointmentDates($slots, $zone['id']);
                     foreach ($next3Days as $date => $times) {
                         echo "<p>Data: {$date}</p>";
                         echo "<p>Fasce orarie disponibili: ";
