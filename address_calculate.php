@@ -56,15 +56,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
 
         echo "Address Coordinates: Latitude={$latitude}, Longitude={$longitude}\n\n";
 
+        $zonesFound = false;
         foreach ($zones as $zone) {
             $destination = [$zone['latitude'], $zone['longitude']];
             $distance = calculateDistance($origin, $destination);
             $difference = $distance - $zone['radius_km'];
+
             echo "Zone: {$zone['name']}\n";
             echo "Zone Coordinates: Latitude={$zone['latitude']}, Longitude={$zone['longitude']}\n";
             echo "Distance: {$distance} km\n";
             echo "Radius: {$zone['radius_km']} km\n";
             echo "Difference: {$difference} km\n\n";
+
+            if ($distance <= $zone['radius_km']) {
+                $zonesFound = true;
+            }
+        }
+
+        if ($zonesFound) {
+            echo "The address is within one or more zones.\n";
+        } else {
+            echo "The address is not within any zones.\n";
         }
     } catch (Exception $e) {
         error_log("Exception: " . $e->getMessage());
