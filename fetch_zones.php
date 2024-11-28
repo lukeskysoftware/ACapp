@@ -1,6 +1,11 @@
 <?php
 include 'db.php';
 
+// Silent error handling
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+error_reporting(E_ALL);
+
 function calculateDistance($lat1, $lon1, $lat2, $lon2) {
     $theta = $lon1 - $lon2;
     $distance = sin(deg2rad($lat1)) * sin(deg2rad($lat2)) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * cos(deg2rad($theta));
@@ -23,9 +28,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         $zones = getZonesFromCoordinates($latitude, $longitude);
 
+        // Handle empty response
+        if (!isset($zones)) {
+            $zones = [];
+        }
+
+        ob_end_clean();
         header('Content-Type: application/json');
         echo json_encode(['zones' => $zones]);
     } catch (Exception $e) {
+        ob_end_clean();
         header('Content-Type: application/json');
         echo json_encode(['error' => $e->getMessage()]);
     }
@@ -35,7 +47,12 @@ function getZonesFromCoordinates($latitude, $longitude) {
     global $conn;
     $sql = "SELECT id, zone_name, latitude, longitude, day_of_week, start_time, end_time FROM cp_zones";
     $stmt = $conn->prepare($sql);
-    $stmt->execute();
+
+    // Handle database execution errors
+    if (!$stmt->execute()) {
+        throw new Exception("Database query failed: " . $stmt->errorInfo()[2]);
+    }
+
     $zones = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $assigned_zones = [];
