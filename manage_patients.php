@@ -9,34 +9,28 @@ function getPatients($search = '') {
     if (!empty($search)) {
         $conditions[] = "(p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
     }
-    $sql = "SELECT p.id, p.name, p.surname, p.phone, p.email, a.id AS appointment_id, a.appointment_date, a.appointment_time, a.notes, z.name AS zone
-            FROM cp_patients p
-            LEFT JOIN cp_appointments a ON p.id = a.patient_id
-            LEFT JOIN cp_zones z ON a.zone_id = z.id";
+    $sql = "SELECT p.id, p.name, p.surname, p.phone, p.email
+            FROM cp_patients p";
     if (!empty($conditions)) {
         $sql .= " WHERE " . implode(' AND ', $conditions);
     }
-    $sql .= " ORDER BY p.id, a.appointment_date";
+    $sql .= " ORDER BY p.id";
     $result = mysqli_query($conn, $sql);
-    $patients = [];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $patients[$row['id']]['info'] = [
-            'name' => $row['name'],
-            'surname' => $row['surname'],
-            'phone' => $row['phone'],
-            'email' => $row['email']
-        ];
-        if (!empty($row['appointment_id'])) {
-            $patients[$row['id']]['appointments'][] = [
-                'appointment_id' => $row['appointment_id'],
-                'appointment_date' => $row['appointment_date'],
-                'appointment_time' => $row['appointment_time'],
-                'notes' => $row['notes'],
-                'zone' => $row['zone']
-            ];
-        }
-    }
+    $patients = mysqli_fetch_all($result, MYSQLI_ASSOC);
     return $patients;
+}
+
+// Function to get appointments for a specific patient
+function getAppointments($patient_id) {
+    global $conn;
+    $sql = "SELECT a.id AS appointment_id, a.appointment_date, a.appointment_time, a.notes, z.name AS zone
+            FROM cp_appointments a
+            LEFT JOIN cp_zones z ON a.zone_id = z.id
+            WHERE a.patient_id = $patient_id
+            ORDER BY a.appointment_date";
+    $result = mysqli_query($conn, $sql);
+    $appointments = mysqli_fetch_all($result, MYSQLI_ASSOC);
+    return $appointments;
 }
 
 // Function to update a patient
@@ -145,16 +139,18 @@ $patients = getPatients($search);
             <th>Appointments</th>
             <th>Actions</th>
         </tr>
-        <?php foreach ($patients as $patient_id => $patient) { ?>
+        <?php foreach ($patients as $patient) { ?>
         <tr>
-            <td><?php echo htmlspecialchars($patient['info']['name']); ?></td>
-            <td><?php echo htmlspecialchars($patient['info']['surname']); ?></td>
-            <td><?php echo htmlspecialchars($patient['info']['phone']); ?></td>
-            <td><?php echo htmlspecialchars($patient['info']['email']); ?></td>
+            <td><?php echo htmlspecialchars($patient['name']); ?></td>
+            <td><?php echo htmlspecialchars($patient['surname']); ?></td>
+            <td><?php echo htmlspecialchars($patient['phone']); ?></td>
+            <td><?php echo htmlspecialchars($patient['email']); ?></td>
             <td>
-                <?php if (isset($patient['appointments'])) { ?>
+                <?php
+                $appointments = getAppointments($patient['id']);
+                if (!empty($appointments)) { ?>
                 <ul>
-                    <?php foreach ($patient['appointments'] as $appointment) { ?>
+                    <?php foreach ($appointments as $appointment) { ?>
                     <li><?php echo htmlspecialchars($appointment['appointment_date']) . ' ' . htmlspecialchars($appointment['appointment_time']) . ' (' . htmlspecialchars($appointment['zone']) . ')'; ?> - <?php echo htmlspecialchars($appointment['notes']); ?></li>
                     <?php } ?>
                 </ul>
@@ -163,21 +159,21 @@ $patients = getPatients($search);
                 <?php } ?>
             </td>
             <td>
-                <button class="modifica-btn" onclick="showActions(<?php echo $patient_id; ?>)">Modifica</button>
+                <button class="modifica-btn" onclick="showActions(<?php echo $patient['id']; ?>)">Modifica</button>
                 <form method="post" action="manage_patients.php" style="display:inline;">
-                    <input type="hidden" name="patient_id" value="<?php echo $patient_id; ?>">
+                    <input type="hidden" name="patient_id" value="<?php echo $patient['id']; ?>">
                     <input type="submit" name="delete" value="Cancella" class="cancella-btn">
                 </form>
             </td>
         </tr>
-        <tr id="action-<?php echo $patient_id; ?>" class="action-row" style="display:none;">
+        <tr id="action-<?php echo $patient['id']; ?>" class="action-row" style="display:none;">
             <td colspan="6">
                 <form method="post" action="manage_patients.php" style="display:inline;">
-                    <input type="hidden" name="patient_id" value="<?php echo $patient_id; ?>">
-                    <input type="text" name="name" value="<?php echo htmlspecialchars($patient['info']['name']); ?>" required>
-                    <input type="text" name="surname" value="<?php echo htmlspecialchars($patient['info']['surname']); ?>" required>
-                    <input type="text" name="phone" value="<?php echo htmlspecialchars($patient['info']['phone']); ?>" required>
-                    <input type="email" name="email" value="<?php echo htmlspecialchars($patient['info']['email']); ?>" required>
+                    <input type="hidden" name="patient_id" value="<?php echo $patient['id']; ?>">
+                    <input type="text" name="name" value="<?php echo htmlspecialchars($patient['name']); ?>" required>
+                    <input type="text" name="surname" value="<?php echo htmlspecialchars($patient['surname']); ?>" required>
+                    <input type="text" name="phone" value="<?php echo htmlspecialchars($patient['phone']); ?>" required>
+                    <input type="email" name="email" value="<?php echo htmlspecialchars($patient['email']); ?>" required>
                     <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn">
                 </form>
             </td>
