@@ -74,6 +74,17 @@ $zones = getZones();
 <html>
 <head>
     <title>Manage Appointments</title>
+    <style>
+        .delete-btn {
+            background-color: red;
+            color: white;
+        }
+        .delete-confirm-btn {
+            background-color: red;
+            color: white;
+            display: none;
+        }
+    </style>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('date').addEventListener('change', filterAppointments);
@@ -119,6 +130,14 @@ $zones = getZones();
                 actionRow.style.display = 'table-row';
             }
         }
+
+        function confirmDelete(id, name, surname, phone, notes, date, time, zone) {
+            const confirmationMessage = `Sei sicuro di voler cancellare l'appuntamento?\n\nDettagli Appuntamento:\nNome: ${name}\nCognome: ${surname}\nTelefono: ${phone}\nNote: ${notes}\nData: ${date}\nOra: ${time}\nZona: ${zone}`;
+            const confirmationCheckbox = confirm(`${confirmationMessage}\n\nSpunta la casella per abilitare il bottone di cancellazione.`);
+            if (confirmationCheckbox) {
+                document.querySelector(`#delete-confirm-${id}`).style.display = 'inline';
+            }
+        }
     </script>
 </head>
 <body>
@@ -157,7 +176,14 @@ $zones = getZones();
             <td><?php echo htmlspecialchars($appointment['appointment_date']); ?></td>
             <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
-            <td><button onclick="showActions(<?php echo $appointment['id']; ?>)">Edit</button></td>
+            <td>
+                <button onclick="showActions(<?php echo $appointment['id']; ?>)">Edit</button>
+                <button class="delete-btn" onclick="confirmDelete(<?php echo $appointment['id']; ?>, '<?php echo htmlspecialchars($appointment['name']); ?>', '<?php echo htmlspecialchars($appointment['surname']); ?>', '<?php echo htmlspecialchars($appointment['phone']); ?>', '<?php echo htmlspecialchars($appointment['notes']); ?>', '<?php echo htmlspecialchars($appointment['appointment_date']); ?>', '<?php echo htmlspecialchars($appointment['appointment_time']); ?>', '<?php echo htmlspecialchars($appointment['zone']); ?>')">Delete</button>
+                <form method="post" action="manage_appointments.php" style="display:inline;">
+                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
+                    <input type="submit" name="delete" value="Confirm Delete" id="delete-confirm-<?php echo $appointment['id']; ?>" class="delete-confirm-btn">
+                </form>
+            </td>
         </tr>
         <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
             <td colspan="8">
