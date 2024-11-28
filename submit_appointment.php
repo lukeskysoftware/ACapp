@@ -60,7 +60,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     echo "<p>Appuntamento prenotato con successo!</p>";
-    echo "<p>Data: " . formatDateItalian($date) . " " . htmlspecialchars($time) . "</p>";
+    echo "<p>Data: " . formatDateItalian($date) . " Ora: " . htmlspecialchars($time) . "</p>";
     echo "<p>Cognome: " . htmlspecialchars($surname) . "</p>";
     echo "<p>Nome: " . htmlspecialchars($name) . "</p>";
     echo "<p>Telefono: " . htmlspecialchars($phone) . "</p>";
