@@ -16,6 +16,14 @@ function getPatients($search = '') {
     }
     $sql .= " ORDER BY p.id";
     $result = mysqli_query($conn, $sql);
+
+    // Debugging: Log SQL query and result
+    error_log("SQL Query: ".$sql);
+    if (!$result) {
+        error_log("SQL Error: " . mysqli_error($conn));
+        return [];
+    }
+
     $patients = mysqli_fetch_all($result, MYSQLI_ASSOC);
     return $patients;
 }
@@ -139,45 +147,51 @@ $patients = getPatients($search);
             <th>Appointments</th>
             <th>Actions</th>
         </tr>
-        <?php foreach ($patients as $patient) { ?>
-        <tr>
-            <td><?php echo htmlspecialchars($patient['name']); ?></td>
-            <td><?php echo htmlspecialchars($patient['surname']); ?></td>
-            <td><?php echo htmlspecialchars($patient['phone']); ?></td>
-            <td><?php echo htmlspecialchars($patient['email']); ?></td>
-            <td>
-                <?php
-                $appointments = getAppointments($patient['id']);
-                if (!empty($appointments)) { ?>
-                <ul>
-                    <?php foreach ($appointments as $appointment) { ?>
-                    <li><?php echo htmlspecialchars($appointment['appointment_date']) . ' ' . htmlspecialchars($appointment['appointment_time']) . ' (' . htmlspecialchars($appointment['zone']) . ')'; ?> - <?php echo htmlspecialchars($appointment['notes']); ?></li>
+        <?php if (!empty($patients)) { ?>
+            <?php foreach ($patients as $patient) { ?>
+            <tr>
+                <td><?php echo htmlspecialchars($patient['name']); ?></td>
+                <td><?php echo htmlspecialchars($patient['surname']); ?></td>
+                <td><?php echo htmlspecialchars($patient['phone']); ?></td>
+                <td><?php echo htmlspecialchars($patient['email']); ?></td>
+                <td>
+                    <?php
+                    $appointments = getAppointments($patient['id']);
+                    if (!empty($appointments)) { ?>
+                    <ul>
+                        <?php foreach ($appointments as $appointment) { ?>
+                        <li><?php echo htmlspecialchars($appointment['appointment_date']) . ' ' . htmlspecialchars($appointment['appointment_time']) . ' (' . htmlspecialchars($appointment['zone']) . ')'; ?> - <?php echo htmlspecialchars($appointment['notes']); ?></li>
+                        <?php } ?>
+                    </ul>
+                    <?php } else { ?>
+                    No appointments
                     <?php } ?>
-                </ul>
-                <?php } else { ?>
-                No appointments
-                <?php } ?>
-            </td>
-            <td>
-                <button class="modifica-btn" onclick="showActions(<?php echo $patient['id']; ?>)">Modifica</button>
-                <form method="post" action="manage_patients.php" style="display:inline;">
-                    <input type="hidden" name="patient_id" value="<?php echo $patient['id']; ?>">
-                    <input type="submit" name="delete" value="Cancella" class="cancella-btn">
-                </form>
-            </td>
-        </tr>
-        <tr id="action-<?php echo $patient['id']; ?>" class="action-row" style="display:none;">
-            <td colspan="6">
-                <form method="post" action="manage_patients.php" style="display:inline;">
-                    <input type="hidden" name="patient_id" value="<?php echo $patient['id']; ?>">
-                    <input type="text" name="name" value="<?php echo htmlspecialchars($patient['name']); ?>" required>
-                    <input type="text" name="surname" value="<?php echo htmlspecialchars($patient['surname']); ?>" required>
-                    <input type="text" name="phone" value="<?php echo htmlspecialchars($patient['phone']); ?>" required>
-                    <input type="email" name="email" value="<?php echo htmlspecialchars($patient['email']); ?>" required>
-                    <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn">
-                </form>
-            </td>
-        </tr>
+                </td>
+                <td>
+                    <button class="modifica-btn" onclick="showActions(<?php echo $patient['id']; ?>)">Modifica</button>
+                    <form method="post" action="manage_patients.php" style="display:inline;">
+                        <input type="hidden" name="patient_id" value="<?php echo $patient['id']; ?>">
+                        <input type="submit" name="delete" value="Cancella" class="cancella-btn">
+                    </form>
+                </td>
+            </tr>
+            <tr id="action-<?php echo $patient['id']; ?>" class="action-row" style="display:none;">
+                <td colspan="6">
+                    <form method="post" action="manage_patients.php" style="display:inline;">
+                        <input type="hidden" name="patient_id" value="<?php echo $patient['id']; ?>">
+                        <input type="text" name="name" value="<?php echo htmlspecialchars($patient['name']); ?>" required>
+                        <input type="text" name="surname" value="<?php echo htmlspecialchars($patient['surname']); ?>" required>
+                        <input type="text" name="phone" value="<?php echo htmlspecialchars($patient['phone']); ?>" required>
+                        <input type="email" name="email" value="<?php echo htmlspecialchars($patient['email']); ?>" required>
+                        <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn">
+                    </form>
+                </td>
+            </tr>
+            <?php } ?>
+        <?php } else { ?>
+            <tr>
+                <td colspan="6">No patients found</td>
+            </tr>
         <?php } ?>
     </table>
 </body>
