@@ -38,6 +38,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     $stmt->execute();
     $result = $stmt->get_result();
     $patients = $result->fetch_all(MYSQLI_ASSOC);
+
+    // Debugging: Log the JSON response
+    error_log("JSON response: " . json_encode($patients));
+
     echo json_encode($patients);
     exit;
 }
@@ -50,8 +54,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     <title>Prenota Appuntamento</title>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const surnameInput = document.getElementById('surname');
+            const surnameInput = document.getElementById('surname_search');
             const nameInput = document.getElementById('name');
+            const surnameField = document.getElementById('surname');
             const phoneInput = document.getElementById('phone');
             const patientsList = document.createElement('ul');
             patientsList.id = 'patientsList';
@@ -75,12 +80,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
                             listItem.textContent = `${patient.name} ${patient.surname} - ${patient.phone}`;
                             listItem.addEventListener('click', function() {
                                 nameInput.value = patient.name;
-                                surnameInput.value = patient.surname;
+                                surnameField.value = patient.surname;
                                 phoneInput.value = patient.phone;
                                 patientsList.innerHTML = '';
                             });
                             patientsList.appendChild(listItem);
                         });
+                    })
+                    .catch(error => {
+                        console.error('Error parsing JSON:', error);
+                        patientsList.innerHTML = 'Error loading patients';
                     });
                 } else {
                     patientsList.innerHTML = '';
@@ -91,7 +100,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
 </head>
 <body>
     <h1>Prenota Appuntamento</h1>
-    <label for="surname">Cerca Paziente per Cognome:</label>
+    <label for="surname_search">Cerca Paziente per Cognome:</label>
     <input type="text" id="surname_search" name="surname_search"><br><br>
 
     <form method="POST" action="submit_appointment.php">
