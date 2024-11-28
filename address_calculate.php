@@ -194,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                     echo "<h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona {$zone['name']}:</h4>";
                     $next3Days = getNext3AppointmentDates($slots, $zone['id']);
                     foreach ($next3Days as $date => $times) {
-                        $formattedDisplayDate = DateTime::createFromFormat('Y-m-d', $date)->format('d-m-Y'); // Change format for display
+                        $formattedDisplayDate = DateTime::createFromFormat('Y-m-d', $date)->format('d F Y'); // Change format for display
                         echo "<p>Data: {$formattedDisplayDate}</p>";
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
@@ -235,9 +235,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
         if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime)) {
             $patientId = addPatient($name, $surname, $phone, $notes);
             addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime);
-            
+
             // Ensure correct date formatting
-            $appointmentDateFormatted = DateTime::createFromFormat('Y-m-d', $appointmentDate)->format('d-m-Y'); // Italian format
+            $appointmentDateFormatted = DateTime::createFromFormat('Y-m-d', $appointmentDate)->format('d F Y'); // Italian format with month name
 
             echo "<p>Appuntamento prenotato con successo per il {$appointmentDateFormatted} alle {$appointmentTime}.</p>";
         } else {
