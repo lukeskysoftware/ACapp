@@ -2,7 +2,7 @@
 include 'db.php';
 include 'menu.php';
 
-// Funzione per ottenere tutti gli appuntamenti con informazioni sul paziente e la zona
+// Function to get all appointments with patient and zone information
 function getAppointments($filter = [], $search = '') {
     global $conn;
     $conditions = [];
@@ -27,7 +27,7 @@ function getAppointments($filter = [], $search = '') {
     return $appointments;
 }
 
-// Funzione per eliminare un appuntamento
+// Function to delete an appointment
 if (isset($_POST['delete'])) {
     $id = $_POST['appointment_id'];
     $sql = "DELETE FROM cp_appointments WHERE id = $id";
@@ -35,7 +35,7 @@ if (isset($_POST['delete'])) {
     header('Location: manage_appointments.php');
 }
 
-// Funzione per aggiornare un appuntamento
+// Function to update an appointment
 if (isset($_POST['update'])) {
     $id = $_POST['appointment_id'];
     $name = $_POST['name'];
@@ -65,12 +65,36 @@ $appointments = getAppointments($filter, $search);
 <head>
     <title>Manage Appointments</title>
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('date').addEventListener('change', filterAppointments);
+            document.getElementById('zone').addEventListener('input', filterAppointments);
+            document.getElementById('search').addEventListener('input', filterAppointments);
+        });
+
+        function filterAppointments() {
+            const date = document.getElementById('date').value;
+            const zone = document.getElementById('zone').value;
+            const search = document.getElementById('search').value;
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}`, true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(xhr.responseText, 'text/html');
+                    const newTable = doc.querySelector('table');
+                    document.querySelector('table').innerHTML = newTable.innerHTML;
+                }
+            };
+            xhr.send();
+        }
+
         function showActions(id) {
-            var rows = document.querySelectorAll('.action-row');
+            const rows = document.querySelectorAll('.action-row');
             rows.forEach(function(row) {
                 row.style.display = 'none';
             });
-            var row = document.getElementById('action-' + id);
+            const row = document.getElementById('action-' + id);
             if (row) {
                 row.style.display = 'table-row';
             }
@@ -79,14 +103,13 @@ $appointments = getAppointments($filter, $search);
 </head>
 <body>
     <h2>Manage Appointments</h2>
-    <form method="get" action="manage_appointments.php">
+    <form onsubmit="return false;">
         <label for="date">Filter by Date:</label>
         <input type="date" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
         <label for="zone">Filter by Zone:</label>
         <input type="text" id="zone" name="zone" value="<?php echo htmlspecialchars($filter['zone']); ?>">
         <label for="search">Search by Name:</label>
         <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
-        <button type="submit">Apply</button>
     </form>
     <table border="1">
         <tr>
