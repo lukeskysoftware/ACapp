@@ -91,6 +91,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
 </head>
 <body>
     <h1>Prenota Appuntamento</h1>
+    <label for="surname">Cerca Paziente per Cognome:</label>
+    <input type="text" id="surname" name="surname"><br><br>
+
     <form method="POST" action="submit_appointment.php">
         <input type="hidden" name="zone_id" value="<?php echo htmlspecialchars($zone_id); ?>">
         <input type="hidden" name="date" value="<?php echo htmlspecialchars($date); ?>">
