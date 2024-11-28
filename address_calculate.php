@@ -1,10 +1,6 @@
 <?php
 include 'db.php';
 
-// Enable error reporting for debugging
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
-
 function calculateDistance($lat1, $lon1, $lat2, $lon2) {
     $theta = $lon1 - $lon2;
     $distance = sin(deg2rad($lat1)) * sin(deg2rad($lat2)) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * cos(deg2rad($theta));
@@ -28,23 +24,41 @@ function getZonesFromCoordinates($latitude, $longitude) {
     return $zones;
 }
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['latitude']) && isset($_POST['longitude'])) {
-    $latitude = $_POST['latitude'];
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['longitude'])) {
+    $address = $_POST['address'];
     $longitude = $_POST['longitude'];
+
+    // Use a geocoding API to get the latitude from the address
+    $latitude = getLatitudeFromAddress($address);
 
     $zones = getZonesFromCoordinates($latitude, $longitude);
     $result = [];
+    $debugInfo = [];
 
     foreach ($zones as $zone) {
         $distance = calculateDistance($latitude, $longitude, $zone['latitude'], $zone['longitude']);
+        $debugInfo[] = [
+            'zone_name' => $zone['zone_name'],
+            'zone_latitude' => $zone['latitude'],
+            'zone_longitude' => $zone['longitude'],
+            'distance' => $distance,
+            'radius_km' => $zone['radius_km']
+        ];
         if ($distance <= $zone['radius_km']) {
             $result[] = $zone;
         }
     }
 
     header('Content-Type: application/json');
-    echo json_encode(['zones_in_radius' => $result]);
+    echo json_encode(['zones_in_radius' => $result, 'debug_info' => $debugInfo]);
     exit;
+}
+
+function getLatitudeFromAddress($address) {
+    // Example function to simulate getting latitude from address
+    // In real implementation, this should call a geocoding API
+    // For illustration purposes, we'll return a static value
+    return 41.9028; // Example latitude for Rome, Italy
 }
 ?>
 
@@ -88,11 +102,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['latitude']) && isset($
         }
 
         function checkAddressInRadius() {
-            const latitude = document.getElementById('latitude').value;
+            const address = document.getElementById('address').value;
             const longitude = document.getElementById('longitude').value;
 
             const formData = new FormData();
-            formData.append('latitude', latitude);
+            formData.append('address', address);
             formData.append('longitude', longitude);
 
             fetch('address_calculate.php', {
@@ -106,6 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['latitude']) && isset($
                 } else {
                     alert('No zones within the radius found for this location.');
                 }
+                displayDebugInfo(data.debug_info);
             })
             .catch(error => {
                 console.error('Error fetching zones:', error);
@@ -123,6 +138,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['latitude']) && isset($
             });
             zoneDetails.style.display = 'block';
         }
+
+        function displayDebugInfo(debugInfo) {
+            const debugDetails = document.getElementById('debugDetails');
+            debugDetails.innerHTML = '<h3>Debug Information:</h3>';
+            debugInfo.forEach(info => {
+                const infoDiv = document.createElement('div');
+                infoDiv.innerHTML = `
+                    <strong>Zone Name:</strong> ${info.zone_name}<br>
+                    <strong>Zone Latitude:</strong> ${info.zone_latitude}<br>
+                    <strong>Zone Longitude:</strong> ${info.zone_longitude}<br>
+                    <strong>Distance:</strong> ${info.distance} km<br>
+                    <strong>Radius:</strong> ${info.radius_km} km<br><br>
+                `;
+                debugDetails.appendChild(infoDiv);
+            });
+            debugDetails.style.display = 'block';
+        }
     </script>
 </head>
 <body>
@@ -137,6 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['latitude']) && isset($
         </form>
 
         <div id="zoneDetails" style="display:none;"></div>
+        <div id="debugDetails" style="display:none;"></div>
     </div>
     <div class="container">
         <a href="dashboard.php">Torna alla dashboard</a>
