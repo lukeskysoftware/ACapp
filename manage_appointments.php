@@ -79,6 +79,7 @@ $zones = getZones();
             document.getElementById('date').addEventListener('change', filterAppointments);
             document.getElementById('zone').addEventListener('input', filterAppointments);
             document.getElementById('search').addEventListener('input', filterAppointments);
+            document.getElementById('clear-filters').addEventListener('click', clearFilters);
         });
 
         function filterAppointments() {
@@ -97,6 +98,13 @@ $zones = getZones();
                 }
             };
             xhr.send();
+        }
+
+        function clearFilters() {
+            document.getElementById('date').value = '';
+            document.getElementById('zone').value = '';
+            document.getElementById('search').value = '';
+            filterAppointments();
         }
 
         function showActions(id) {
@@ -127,6 +135,7 @@ $zones = getZones();
         </select>
         <label for="search">Search by Name:</label>
         <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
+        <button id="clear-filters">Clear Filters</button>
     </form>
     <table border="1">
         <tr>
