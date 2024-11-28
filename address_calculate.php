@@ -3,6 +3,9 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 include 'db.php';
 
+// Set locale to Italian
+setlocale(LC_TIME, 'it_IT.UTF-8');
+
 // Function to calculate distance between two coordinates
 function calculateDistance($origin, $destination) {
     $earthRadiusKm = 6371;
@@ -194,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                     echo "<h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona {$zone['name']}:</h4>";
                     $next3Days = getNext3AppointmentDates($slots, $zone['id']);
                     foreach ($next3Days as $date => $times) {
-                        $formattedDisplayDate = DateTime::createFromFormat('Y-m-d', $date)->format('d F Y'); // Change format for display
+                        $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
                         echo "<p>Data: {$formattedDisplayDate}</p>";
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
@@ -238,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime);
 
             // Ensure correct date formatting
-            $appointmentDateFormatted = DateTime::createFromFormat('Y-m-d', $appointmentDate)->format('d F Y'); // Italian format with month name
+            $appointmentDateFormatted = strftime('%d %B %Y', strtotime($appointmentDate)); // Italian format with month name
 
             $formattedAppointmentTime = date('H:i', strtotime($appointmentTime)); // Remove seconds
 
