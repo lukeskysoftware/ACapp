@@ -84,6 +84,10 @@ $zones = getZones();
             color: white;
             display: none;
         }
+        .modifica-btn {
+            background-color: green;
+            color: white;
+        }
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -177,7 +181,7 @@ $zones = getZones();
             <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
             <td>
-                <button onclick="showActions(<?php echo $appointment['id']; ?>)">Edit</button>
+                <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
                 <button class="cancella-btn" onclick="confirmDelete(<?php echo $appointment['id']; ?>, '<?php echo htmlspecialchars($appointment['name']); ?>', '<?php echo htmlspecialchars($appointment['surname']); ?>', '<?php echo htmlspecialchars($appointment['phone']); ?>', '<?php echo htmlspecialchars($appointment['notes']); ?>', '<?php echo htmlspecialchars($appointment['appointment_date']); ?>', '<?php echo htmlspecialchars($appointment['appointment_time']); ?>', '<?php echo htmlspecialchars($appointment['zone']); ?>')">Cancella</button>
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
