@@ -53,6 +53,14 @@ if (isset($_POST['update'])) {
     header('Location: manage_appointments.php');
 }
 
+// Function to delete an appointment
+if (isset($_POST['delete'])) {
+    $id = $_POST['appointment_id'];
+    $sql = "DELETE FROM cp_appointments WHERE id = $id";
+    mysqli_query($conn, $sql);
+    header('Location: manage_appointments.php');
+}
+
 $filter = [
     'date' => isset($_GET['date']) ? $_GET['date'] : '',
     'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
@@ -69,6 +77,10 @@ $zones = getZones();
     <style>
         .modifica-btn {
             background-color: green;
+            color: white;
+        }
+        .cancella-btn {
+            background-color: red;
             color: white;
         }
     </style>
@@ -156,7 +168,11 @@ $zones = getZones();
             <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
             <td>
-                <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>)">Conferma Modifica</button>
+                <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
+                <form method="post" action="manage_appointments.php" style="display:inline;">
+                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
+                    <input type="submit" name="delete" value="Cancella" class="cancella-btn">
+                </form>
             </td>
         </tr>
         <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
@@ -169,7 +185,7 @@ $zones = getZones();
                     <input type="text" name="notes" value="<?php echo htmlspecialchars($appointment['notes']); ?>">
                     <input type="date" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
                     <input type="time" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
-                    <input type="submit" name="update" value="Update">
+                    <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn">
                 </form>
             </td>
         </tr>
