@@ -42,6 +42,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     // Debugging: Log the JSON response
     error_log("JSON response: " . json_encode($patients));
 
+    header('Content-Type: application/json; charset=UTF-8');
     // Ensure JSON response is valid
     if (json_last_error() === JSON_ERROR_NONE) {
         echo json_encode($patients);
