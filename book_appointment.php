@@ -42,7 +42,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     // Debugging: Log the JSON response
     error_log("JSON response: " . json_encode($patients));
 
-    echo json_encode($patients);
+    // Ensure JSON response is valid
+    if (json_last_error() === JSON_ERROR_NONE) {
+        echo json_encode($patients);
+    } else {
+        error_log("JSON encoding error: " . json_last_error_msg());
+        echo json_encode(["error" => "Failed to encode JSON"]);
+    }
     exit;
 }
 ?>
@@ -74,21 +80,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
                     })
                     .then(response => response.json())
                     .then(data => {
-                        patientsList.innerHTML = '';
-                        data.forEach(patient => {
-                            const listItem = document.createElement('li');
-                            listItem.textContent = `${patient.name} ${patient.surname} - ${patient.phone}`;
-                            listItem.addEventListener('click', function() {
-                                nameInput.value = patient.name;
-                                surnameField.value = patient.surname;
-                                phoneInput.value = patient.phone;
-                                patientsList.innerHTML = '';
+                        if (data.error) {
+                            console.error('Error:', data.error);
+                            patientsList.innerHTML = 'Error loading patients';
+                        } else {
+                            patientsList.innerHTML = '';
+                            data.forEach(patient => {
+                                const listItem = document.createElement('li');
+                                listItem.textContent = `${patient.name} ${patient.surname} - ${patient.phone}`;
+                                listItem.addEventListener('click', function() {
+                                    nameInput.value = patient.name;
+                                    surnameField.value = patient.surname;
+                                    phoneInput.value = patient.phone;
+                                    patientsList.innerHTML = '';
+                                });
+                                patientsList.appendChild(listItem);
                             });
-                            patientsList.appendChild(listItem);
-                        });
+                        }
                     })
                     .catch(error => {
-                        console.error('Error parsing JSON:', error);
+                        console.error('Fetch error:', error);
                         patientsList.innerHTML = 'Error loading patients';
                     });
                 } else {
