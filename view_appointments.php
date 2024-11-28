@@ -3,15 +3,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <link href='https://fullcalendar.io/releases/fullcalendar/4.0.0/core/main.css' rel='stylesheet' />
-    <link href='https://fullcalendar.io/releases/fullcalendar/4.0.0/daygrid/main.css' rel='stylesheet' />
-    <link href='https://fullcalendar.io/releases/fullcalendar/4.0.0/timegrid/main.css' rel='stylesheet' />
-    <link href='https://fullcalendar.io/releases/fullcalendar/4.0.0/list/main.css' rel='stylesheet' />
-    <script src='https://fullcalendar.io/releases/fullcalendar/4.0.0/core/main.js'></script>
-    <script src='https://fullcalendar.io/releases/fullcalendar/4.0.0/daygrid/main.js'></script>
-    <script src='https://fullcalendar.io/releases/fullcalendar/4.0.0/timegrid/main.js'></script>
-    <script src='https://fullcalendar.io/releases/fullcalendar/4.0.0/list/main.js'></script>
-    <script src='https://fullcalendar.io/releases/fullcalendar/4.0.0/interaction/main.js'></script>
+    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/core/main.min.css' rel='stylesheet' />
+    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/daygrid/main.min.css' rel='stylesheet' />
+    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/timegrid/main.min.css' rel='stylesheet' />
+    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/list/main.min.css' rel='stylesheet' />
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/core/main.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/daygrid/main.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/timegrid/main.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/list/main.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/interaction/main.min.js'></script>
 </head>
 <body>
     <form id="filters" onsubmit="return false;">
