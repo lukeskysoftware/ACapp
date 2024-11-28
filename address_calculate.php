@@ -120,6 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                 document.head.appendChild(script);
             } catch (error) {
                 console.error('Error fetching API key:', error);
+                displayMessage('Error fetching API key: ' + error.message);
             }
         }
 
@@ -158,17 +159,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                     if (data.zones_in_radius && data.zones_in_radius.length > 0) {
                         displayZonesInRadius(data.zones_in_radius);
                     } else {
-                        alert('No zones within the radius found for this location.');
+                        displayMessage('No zones within the radius found for this location.');
                     }
                     displayDebugInfo(data.debug_info);
                 } catch (error) {
                     console.error('Error parsing JSON:', error);
-                    alert('Error parsing JSON: ' + error.message);
+                    displayMessage('Error parsing JSON: ' + error.message);
                 }
             })
             .catch(error => {
                 console.error('Error fetching zones:', error);
-                alert('Error fetching zones: ' + error.message);
+                displayMessage('Error fetching zones: ' + error.message);
             });
         }
 
@@ -199,6 +200,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
             });
             debugDetails.style.display = 'block';
         }
+
+        function displayMessage(message) {
+            const messageContainer = document.getElementById('messageContainer');
+            messageContainer.innerHTML = `<p>${message}</p>`;
+            messageContainer.style.display = 'block';
+        }
     </script>
 </head>
 <body>
@@ -212,6 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
             <input type="hidden" id="longitude" name="longitude">
         </form>
 
+        <div id="messageContainer" style="display:none;"></div>
         <div id="zoneDetails" style="display:none;"></div>
         <div id="debugDetails" style="display:none;"></div>
     </div>
