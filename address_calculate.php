@@ -1,6 +1,10 @@
 <?php
 include 'db.php';
 
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+include 'db.php';
+
 // Function to get API key from the database
 function getAPIKey() {
     global $conn;
