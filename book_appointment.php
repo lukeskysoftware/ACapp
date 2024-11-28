@@ -2,16 +2,16 @@
 include 'db.php';
 include 'menu.php';
 
-if ($_SERVER["REQUEST_METHOD"] == "GET") {
-    $zone_id = $_GET['zone_id'];
-    $date = $_GET['date'];
-    $time = $_GET['time'];
+$zone_id = isset($_GET['zone_id']) ? $_GET['zone_id'] : null;
+$date = isset($_GET['date']) ? $_GET['date'] : null;
+$time = isset($_GET['time']) ? $_GET['time'] : null;
 
+if ($_SERVER["REQUEST_METHOD"] == "GET") {
     // Debugging: Log the received GET data
     error_log("Received GET data: zone_id={$zone_id}, date={$date}, time={$time}");
 
     // Ensure all parameters are received
-    if (!isset($zone_id) || !isset($date) || !isset($time)) {
+    if (!$zone_id || !$date || !$time) {
         echo "Missing parameters!";
         exit;
     }
@@ -92,7 +92,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
 <body>
     <h1>Prenota Appuntamento</h1>
     <label for="surname">Cerca Paziente per Cognome:</label>
-    <input type="text" id="surname" name="surname"><br><br>
+    <input type="text" id="surname_search" name="surname_search"><br><br>
 
     <form method="POST" action="submit_appointment.php">
         <input type="hidden" name="zone_id" value="<?php echo htmlspecialchars($zone_id); ?>">
