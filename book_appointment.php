@@ -15,6 +15,18 @@ if ($_SERVER["REQUEST_METHOD"] == "GET") {
         echo "Missing parameters!";
         exit;
     }
+
+    // Check if the appointment time slot is already booked
+    $query = $conn->prepare("SELECT COUNT(*) AS count FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? AND appointment_time = ?");
+    $query->bind_param("iss", $zone_id, $date, $time);
+    $query->execute();
+    $result = $query->get_result();
+    $row = $result->fetch_assoc();
+
+    if ($row['count'] > 0) {
+        echo "This time slot is already booked. Please choose another time.";
+        exit;
+    }
 }
 ?>
 
