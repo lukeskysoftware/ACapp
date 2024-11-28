@@ -1,3 +1,53 @@
+<?php
+include 'db.php';
+include 'menu.php';
+
+$zone_id = isset($_GET['zone_id']) ? $_GET['zone_id'] : null;
+$date = isset($_GET['date']) ? $_GET['date'] : null;
+$time = isset($_GET['time']) ? $_GET['time'] : null;
+
+if ($_SERVER["REQUEST_METHOD"] == "GET") {
+    // Debugging: Log the received GET data
+    error_log("Received GET data: zone_id={$zone_id}, date={$date}, time={$time}");
+
+    // Ensure all parameters are received
+    if (!$zone_id || !$date || !$time) {
+        echo "Missing parameters!";
+        exit;
+    }
+
+    // Check if the appointment time slot is already booked
+    $query = $conn->prepare("SELECT COUNT(*) AS count FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? AND appointment_time = ?");
+    $query->bind_param("iss", $zone_id, $date, $time);
+    $query->execute();
+    $result = $query->get_result();
+    $row = $result->fetch_assoc();
+
+    if ($row['count'] > 0) {
+        echo "This time slot is already booked. Please choose another time.";
+        exit;
+    }
+}
+
+// Endpoint to fetch patients by surname
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
+    $surname_search = $_POST['surname_search'];
+    $stmt = $conn->prepare("SELECT id, name, surname, phone FROM cp_patients WHERE surname LIKE ?");
+    $search_param = "%{$surname_search}%";
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $patients = $result->fetch_all(MYSQLI_ASSOC);
+
+    echo '<ul>';
+    foreach ($patients as $patient) {
+        echo '<li onclick="selectPatient(\'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . ' - ' . $patient['phone'] . '</li>';
+    }
+    echo '</ul>';
+    exit;
+}
+?>
+
 <!DOCTYPE html>
 <html lang="it">
 <head>
