@@ -39,6 +39,28 @@ function getZonesFromCoordinates($latitude, $longitude) {
     return $zones;
 }
 
+// Function to get appointments for the next 3 days for a specific zone
+function getAppointmentsForNext3Days($zoneId) {
+    global $conn;
+    $sql = "SELECT date, available_slots FROM cp_appointments WHERE zone_id = ? AND date >= CURDATE() AND date < CURDATE() + INTERVAL 3 DAY";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        error_log("Database prepare failed for appointments: " . mysqli_error($conn));
+        throw new Exception("Database prepare failed for appointments: " . mysqli_error($conn));
+    }
+
+    $stmt->bind_param("i", $zoneId);
+
+    if (!$stmt->execute()) {
+        error_log("Database query failed for appointments: " . mysqli_error($conn));
+        throw new Exception("Database query failed for appointments: " . mysqli_error($conn));
+    }
+
+    $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    return $appointments;
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
     header('Content-Type: text/plain');
     $latitude = $_POST['latitude'];
@@ -70,6 +92,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
 
             if ($distance <= $zone['radius_km']) {
                 $zonesFound = true;
+                $appointments = getAppointmentsForNext3Days($zone['id']);
+                if (!empty($appointments)) {
+                    echo "Available Appointments for the next 3 days:\n";
+                    foreach ($appointments as $appointment) {
+                        $date = date('l, j F Y', strtotime($appointment['date']));
+                        echo "Date: {$date}\n";
+                        echo "Available Slots: ";
+                        $slots = explode(',', $appointment['available_slots']);
+                        foreach ($slots as $slot) {
+                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$appointment['date']}&slot={$slot}'>{$slot}</a> ";
+                        }
+                        echo "\n\n";
+                    }
+                } else {
+                    echo "No available appointments for the next 3 days.\n\n";
+                }
             }
         }
 
