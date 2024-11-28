@@ -57,14 +57,20 @@ function calculateDistance($origin, $destination, $apiKey) {
 // Function to get zones from coordinates
 function getZonesFromCoordinates($latitude, $longitude) {
     global $conn;
-    $sql = "SELECT id, zone_name, latitude, longitude, radius_km FROM cp_zones";
+    $sql = "SELECT id, name, latitude, longitude, radius_km FROM cp_zones";
     $stmt = $conn->prepare($sql);
 
-    if (!$stmt->execute()) {
-        throw new Exception("Database query failed: " . $stmt->errorInfo()[2]);
+    if (!$stmt) {
+        error_log("Database prepare failed: " . mysqli_error($conn));
+        throw new Exception("Database prepare failed: " . mysqli_error($conn));
     }
 
-    $zones = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$stmt->execute()) {
+        error_log("Database query failed: " . mysqli_error($conn));
+        throw new Exception("Database query failed: " . mysqli_error($conn));
+    }
+
+    $zones = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     return $zones;
 }
 
@@ -75,6 +81,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
     $latitude = $_POST['latitude'];
     $longitude = $_POST['longitude'];
 
+    // Debugging: Log the received POST data
+    error_log("Received POST data: address={$address}, latitude={$latitude}, longitude={$longitude}");
+
     $apiKey = getAPIKey();
     if (!$apiKey) {
         echo 'Unable to retrieve API key.';
@@ -83,14 +92,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
 
     $origin = [$latitude, $longitude];
 
+    // Debugging: Log the origin coordinates
+    error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
+
     if ($origin) {
-        $zones = getZonesFromCoordinates($latitude, $longitude);
-        foreach ($zones as $zone) {
-            $destination = [$zone['latitude'], $zone['longitude']];
-            $distance = calculateDistance($origin, $destination, $apiKey);
-            if ($distance !== null && $distance <= $zone['radius_km']) {
-                echo "Zone: {$zone['zone_name']}\n";
+        try {
+            $zones = getZonesFromCoordinates($latitude, $longitude);
+            foreach ($zones as $zone) {
+                $destination = [$zone['latitude'], $zone['longitude']];
+                $distance = calculateDistance($origin, $destination, $apiKey);
+                if ($distance !== null && $distance <= $zone['radius_km']) {
+                    echo "Zone: {$zone['name']}\n";
+                }
             }
+        } catch (Exception $e) {
+            error_log("Exception: " . $e->getMessage());
+            echo 'Error occurred: ' . $e->getMessage();
         }
     } else {
         echo 'Unable to get coordinates for the given address.';
