@@ -101,32 +101,38 @@ function getLatitudeFromAddress($address) {
             });
         }
 
-        function checkAddressInRadius() {
-            const address = document.getElementById('address').value;
-            const longitude = document.getElementById('longitude').value;
+       function checkAddressInRadius() {
+    const address = document.getElementById('address').value;
+    const longitude = document.getElementById('longitude').value;
 
-            const formData = new FormData();
-            formData.append('address', address);
-            formData.append('longitude', longitude);
+    const formData = new FormData();
+    formData.append('address', address);
+    formData.append('longitude', longitude);
 
-            fetch('address_calculate.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.zones_in_radius && data.zones_in_radius.length > 0) {
-                    displayZonesInRadius(data.zones_in_radius);
-                } else {
-                    alert('No zones within the radius found for this location.');
-                }
-                displayDebugInfo(data.debug_info);
-            })
-            .catch(error => {
-                console.error('Error fetching zones:', error);
-                alert('Error fetching zones: ' + error.message);
-            });
+    fetch('address_calculate.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.text()) // Read response as text first
+    .then(text => {
+        try {
+            const data = JSON.parse(text); // Attempt to parse JSON
+            if (data.zones_in_radius && data.zones_in_radius.length > 0) {
+                displayZonesInRadius(data.zones_in_radius);
+            } else {
+                alert('No zones within the radius found for this location.');
+            }
+            displayDebugInfo(data.debug_info);
+        } catch (error) {
+            console.error('Error parsing JSON:', error);
+            alert('Error parsing JSON: ' + error.message);
         }
+    })
+    .catch(error => {
+        console.error('Error fetching zones:', error);
+        alert('Error fetching zones: ' + error.message);
+    });
+}
 
         function displayZonesInRadius(zones) {
             const zoneDetails = document.getElementById('zoneDetails');
