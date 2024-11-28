@@ -1,105 +1,3 @@
-<?php
-include 'db.php';
-
-function getAPIKey() {
-    global $conn;
-    $sql = "SELECT api_key FROM cp_api_keys LIMIT 1";
-    $result = mysqli_query($conn, $sql);
-
-    if ($result && mysqli_num_rows($result) > 0) {
-        $row = mysqli_fetch_assoc($result);
-        return $row['api_key'];
-    } else {
-        return null;
-    }
-}
-
-function getCoordinates($address, $apiKey) {
-    $address = urlencode($address);
-    $url = "https://maps.googleapis.com/maps/api/geocode/json?address={$address}&key={$apiKey}";
-
-    $response = file_get_contents($url);
-    $json = json_decode($response, true);
-
-    if ($json['status'] == 'OK') {
-        $lat = $json['results'][0]['geometry']['location']['lat'];
-        $lng = $json['results'][0]['geometry']['location']['lng'];
-        return [$lat, $lng];
-    } else {
-        return null;
-    }
-}
-
-function calculateDistance($origin, $destination, $apiKey) {
-    $origins = $origin[0] . ',' . $origin[1];
-    $destinations = $destination[0] . ',' . $destination[1];
-    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins={$origins}&destinations={$destinations}&key={$apiKey}";
-
-    $response = file_get_contents($url);
-    $json = json_decode($response, true);
-
-    if ($json['status'] == 'OK' && $json['rows'][0]['elements'][0]['status'] == 'OK') {
-        $distance = $json['rows'][0]['elements'][0]['distance']['value'] / 1000; // Convert meters to kilometers
-        return $distance;
-    } else {
-        return null;
-    }
-}
-
-function getZonesFromCoordinates($latitude, $longitude) {
-    global $conn;
-    $sql = "SELECT id, zone_name, latitude, longitude, radius_km FROM cp_zones";
-    $stmt = $conn->prepare($sql);
-
-    if (!$stmt->execute()) {
-        throw new Exception("Database query failed: " . $stmt->errorInfo()[2]);
-    }
-
-    $zones = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    return $zones;
-}
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['longitude'])) {
-    $address = $_POST['address'];
-    $longitude = $_POST['longitude'];
-
-    $apiKey = getAPIKey();
-    if (!$apiKey) {
-        echo json_encode(['error' => 'Unable to retrieve API key.']);
-        exit;
-    }
-
-    $origin = getCoordinates($address, $apiKey);
-
-    if ($origin) {
-        $zones = getZonesFromCoordinates($origin[0], $origin[1]);
-        $result = [];
-        $debugInfo = [];
-
-        foreach ($zones as $zone) {
-            $destination = [$zone['latitude'], $zone['longitude']];
-            $distance = calculateDistance($origin, $destination, $apiKey);
-            $debugInfo[] = [
-                'zone_name' => $zone['zone_name'],
-                'zone_latitude' => $zone['latitude'],
-                'zone_longitude' => $zone['longitude'],
-                'distance' => $distance,
-                'radius_km' => $zone['radius_km']
-            ];
-            if ($distance !== null && $distance <= $zone['radius_km']) {
-                $result[] = $zone;
-            }
-        }
-
-        header('Content-Type: application/json');
-        echo json_encode(['zones_in_radius' => $result, 'debug_info' => $debugInfo]);
-    } else {
-        echo json_encode(['error' => 'Unable to get coordinates for the given address.']);
-    }
-    exit;
-}
-?>
-
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -161,7 +59,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                     } else {
                         displayMessage('No zones within the radius found for this location.');
                     }
-                    displayDebugInfo(data.debug_info);
+                    if (data.debug_info) {
+                        displayDebugInfo(data.debug_info);
+                    } else {
+                        displayMessage('No debug information available.');
+                    }
                 } catch (error) {
                     console.error('Error parsing JSON:', error);
                     displayMessage('Error parsing JSON: ' + error.message);
