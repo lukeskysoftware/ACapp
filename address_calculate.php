@@ -23,11 +23,16 @@ function getCoordinates($address, $apiKey) {
     $response = file_get_contents($url);
     $json = json_decode($response, true);
 
+    // Debugging: Log the API response
+    error_log("API Response: " . print_r($json, true));
+
     if ($json['status'] == 'OK') {
         $lat = $json['results'][0]['geometry']['location']['lat'];
         $lng = $json['results'][0]['geometry']['location']['lng'];
         return [$lat, $lng];
     } else {
+        // Debugging: Log the error
+        error_log("Error: Unable to get coordinates. Status: " . $json['status']);
         return null;
     }
 }
