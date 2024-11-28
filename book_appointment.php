@@ -83,7 +83,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
                     .then(data => {
                         if (data.error) {
                             console.error('Error:', data.error);
-                            patientsList.innerHTML = 'Error loading patients';
+                            patientsList.innerHTML = '<li>Error loading patients</li>';
                         } else {
                             patientsList.innerHTML = '';
                             data.forEach(patient => {
@@ -102,7 +102,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
                     })
                     .catch(error => {
                         console.error('Fetch error:', error);
-                        patientsList.innerHTML = 'Error loading patients';
+                        patientsList.innerHTML = '<li>Error loading patients</li>';
                     });
                 } else {
                     patientsList.innerHTML = '';
