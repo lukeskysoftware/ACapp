@@ -27,6 +27,15 @@ function getAppointments($filter = [], $search = '') {
     return $appointments;
 }
 
+// Function to get distinct zones
+function getZones() {
+    global $conn;
+    $sql = "SELECT DISTINCT z.name FROM cp_appointments a JOIN cp_zones z ON a.zone_id = z.id";
+    $result = mysqli_query($conn, $sql);
+    $zones = mysqli_fetch_all($result, MYSQLI_ASSOC);
+    return array_column($zones, 'name');
+}
+
 // Function to delete an appointment
 if (isset($_POST['delete'])) {
     $id = $_POST['appointment_id'];
@@ -58,6 +67,7 @@ $filter = [
 ];
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 $appointments = getAppointments($filter, $search);
+$zones = getZones();
 ?>
 
 <!DOCTYPE html>
@@ -109,7 +119,12 @@ $appointments = getAppointments($filter, $search);
         <label for="date">Filter by Date:</label>
         <input type="date" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
         <label for="zone">Filter by Zone:</label>
-        <input type="text" id="zone" name="zone" value="<?php echo htmlspecialchars($filter['zone']); ?>">
+        <select id="zone" name="zone">
+            <option value="">Select Zone</option>
+            <?php foreach ($zones as $zone) { ?>
+                <option value="<?php echo htmlspecialchars($zone); ?>"><?php echo htmlspecialchars($zone); ?></option>
+            <?php } ?>
+        </select>
         <label for="search">Search by Name:</label>
         <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
     </form>
