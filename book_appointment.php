@@ -1,17 +1,17 @@
 <?php
 include 'db.php';
-include 'menu.php';
 
 $zone_id = isset($_GET['zone_id']) ? $_GET['zone_id'] : null;
 $date = isset($_GET['date']) ? $_GET['date'] : null;
 $time = isset($_GET['time']) ? $_GET['time'] : null;
+$address = isset($_GET['address']) ? $_GET['address'] : null;
 
 if ($_SERVER["REQUEST_METHOD"] == "GET") {
     // Debugging: Log the received GET data
-    error_log("Received GET data: zone_id={$zone_id}, date={$date}, time={$time}");
+    error_log("Received GET data: zone_id={$zone_id}, date={$date}, time={$time}, address={$address}");
 
     // Ensure all parameters are received
-    if (!$zone_id || !$date || !$time) {
+    if (!$zone_id || !$date || !$time || !$address) {
         echo "Missing parameters!";
         exit;
     }
@@ -41,7 +41,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
 
     echo '<ul>';
     foreach ($patients as $patient) {
-        echo '<li onclick="selectPatient(\'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . ' - ' . $patient['phone'] . '</li>';
+        echo '<li style="cursor: pointer;" onclick="selectPatient(\'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . ' - ' . $patient['phone'] . '</li>';
     }
     echo '</ul>';
     exit;
@@ -89,6 +89,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
         <input type="hidden" name="zone_id" value="<?php echo htmlspecialchars($zone_id); ?>">
         <input type="hidden" name="date" value="<?php echo htmlspecialchars($date); ?>">
         <input type="hidden" name="time" value="<?php echo htmlspecialchars($time); ?>">
+        <input type="hidden" name="address" value="<?php echo htmlspecialchars($address); ?>">
 
         <label for="name">Nome:</label>
         <input type="text" id="name" name="name" required><br><br>
@@ -98,9 +99,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
 
         <label for="phone">Telefono:</label>
         <input type="text" id="phone" name="phone" required><br><br>
-
-        <label for="address">Indirizzo:</label>
-        <input type="text" id="address" name="address" required><br><br>
 
         <label for="notes">Note:</label>
         <textarea id="notes" name="notes"></textarea><br><br>
