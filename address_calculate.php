@@ -42,7 +42,7 @@ function getZonesFromCoordinates($latitude, $longitude) {
 // Function to get slots for a specific zone
 function getSlotsForZone($zoneId) {
     global $conn;
-    $sql = "SELECT day, time FROM cp_slots WHERE zone_id = ?";
+    $sql = "SELECT day, time FROM cp_slots WHERE zone_id = ? AND CONCAT(day, ' ', time) NOT IN (SELECT CONCAT(appointment_date, ' ', appointment_time) FROM cp_appointments WHERE zone_id = ?)";
     $stmt = $conn->prepare($sql);
 
     if (!$stmt) {
@@ -50,7 +50,7 @@ function getSlotsForZone($zoneId) {
         throw new Exception("Database prepare failed for slots: " . mysqli_error($conn));
     }
 
-    $stmt->bind_param("i", $zoneId);
+    $stmt->bind_param("ii", $zoneId, $zoneId);
 
     if (!$stmt->execute()) {
         error_log("Database query failed for slots: " . mysqli_error($conn));
