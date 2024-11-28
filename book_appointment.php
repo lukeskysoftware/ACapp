@@ -28,6 +28,19 @@ if ($_SERVER["REQUEST_METHOD"] == "GET") {
         exit;
     }
 }
+
+// Endpoint to fetch patients by surname
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
+    $surname_search = $_POST['surname_search'];
+    $stmt = $conn->prepare("SELECT id, name, surname, phone FROM cp_patients WHERE surname LIKE ?");
+    $search_param = "%{$surname_search}%";
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $patients = $result->fetch_all(MYSQLI_ASSOC);
+    echo json_encode($patients);
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -35,6 +48,46 @@ if ($_SERVER["REQUEST_METHOD"] == "GET") {
 <head>
     <meta charset="UTF-8">
     <title>Prenota Appuntamento</title>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const surnameInput = document.getElementById('surname');
+            const nameInput = document.getElementById('name');
+            const phoneInput = document.getElementById('phone');
+            const patientsList = document.createElement('ul');
+            patientsList.id = 'patientsList';
+            surnameInput.parentNode.appendChild(patientsList);
+
+            surnameInput.addEventListener('input', function() {
+                const surname = surnameInput.value;
+                if (surname.length > 2) {
+                    fetch('book_appointment.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: 'surname_search=' + encodeURIComponent(surname)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        patientsList.innerHTML = '';
+                        data.forEach(patient => {
+                            const listItem = document.createElement('li');
+                            listItem.textContent = `${patient.name} ${patient.surname} - ${patient.phone}`;
+                            listItem.addEventListener('click', function() {
+                                nameInput.value = patient.name;
+                                surnameInput.value = patient.surname;
+                                phoneInput.value = patient.phone;
+                                patientsList.innerHTML = '';
+                            });
+                            patientsList.appendChild(listItem);
+                        });
+                    });
+                } else {
+                    patientsList.innerHTML = '';
+                }
+            });
+        });
+    </script>
 </head>
 <body>
     <h1>Prenota Appuntamento</h1>
