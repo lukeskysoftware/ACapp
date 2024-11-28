@@ -202,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
                             $formattedTime = date('H:i', strtotime($time)); // Remove seconds
-                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}'>{$formattedTime}</a> ";
+                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}&address=" . urlencode($address) . "'>{$formattedTime}</a> ";
                         }
                         echo "</p>";
                     }
@@ -309,7 +309,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
                 event.preventDefault();
                 document.getElementById('zone_id').value = this.href.split('zone_id=')[1].split('&')[0];
                 document.getElementById('date').value = this.href.split('date=')[1].split('&')[0];
-                document.getElementById('time').value = this.href.split('time=')[1];
+                document.getElementById('time').value = this.href.split('time=')[1].split('&')[0];
                 document.getElementById('appointmentForm').style.display = 'block';
                 window.scrollTo(0, document.getElementById('appointmentForm').offsetTop);
             });
