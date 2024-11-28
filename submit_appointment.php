@@ -19,16 +19,29 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit;
     }
 
-    // Insert patient data
-    $sql1 = "INSERT INTO cp_patients (name, surname, phone, notes) VALUES (?, ?, ?, ?)";
-    $stmt1 = $conn->prepare($sql1);
-    $stmt1->bind_param("ssss", $name, $surname, $phone, $notes);
-    if (!$stmt1->execute()) {
-        error_log("Database query failed for adding patient: " . mysqli_error($conn));
-        echo "Database query failed for adding patient: " . mysqli_error($conn);
-        exit;
+    // Check if patient already exists
+    $sql_check = "SELECT id FROM cp_patients WHERE name = ? AND surname = ? AND phone = ?";
+    $stmt_check = $conn->prepare($sql_check);
+    $stmt_check->bind_param("sss", $name, $surname, $phone);
+    $stmt_check->execute();
+    $result_check = $stmt_check->get_result();
+
+    if ($result_check->num_rows > 0) {
+        // Patient exists, get the patient ID
+        $patient = $result_check->fetch_assoc();
+        $patient_id = $patient['id'];
+    } else {
+        // Insert patient data
+        $sql1 = "INSERT INTO cp_patients (name, surname, phone, notes) VALUES (?, ?, ?, ?)";
+        $stmt1 = $conn->prepare($sql1);
+        $stmt1->bind_param("ssss", $name, $surname, $phone, $notes);
+        if (!$stmt1->execute()) {
+            error_log("Database query failed for adding patient: " . mysqli_error($conn));
+            echo "Database query failed for adding patient: " . mysqli_error($conn);
+            exit;
+        }
+        $patient_id = $conn->insert_id;
     }
-    $patient_id = $conn->insert_id;
 
     // Insert appointment data
     $sql2 = "INSERT INTO cp_appointments (zone_id, patient_id, appointment_date, appointment_time) VALUES (?, ?, ?, ?)";
