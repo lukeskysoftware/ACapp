@@ -31,10 +31,17 @@
             autocomplete.addListener('place_changed', function() {
                 var place = autocomplete.getPlace();
                 if (place.geometry) {
-                    document.getElementById('latitude').value = place.geometry.location.lat();
-                    document.getElementById('longitude').value = place.geometry.location.lng();
+                    var lat = place.geometry.location.lat();
+                    var lng = place.geometry.location.lng();
+                    document.getElementById('latitude').value = lat;
+                    document.getElementById('longitude').value = lng;
+                    displayCoordinates(lat, lng);
                 }
             });
+        }
+
+        function displayCoordinates(lat, lng) {
+            document.getElementById('coordinates').innerText = `Latitudine: ${lat}, Longitudine: ${lng}`;
         }
 
         function displayMessage(message) {
@@ -50,11 +57,14 @@
         <form id="addressForm" method="POST" action="address_calculate.php">
             <label for="address">Indirizzo:</label>
             <input type="text" id="address" name="address" required><br>
-            <input type="hidden" id="latitude" name="latitude">
-            <input type="hidden" id="longitude" name="longitude">
+            <label for="latitude">Latitudine:</label>
+            <input type="text" id="latitude" name="latitude" readonly><br>
+            <label for="longitude">Longitudine:</label>
+            <input type="text" id="longitude" name="longitude" readonly><br>
             <button type="submit">Submit</button>
         </form>
 
+        <div id="coordinates" style="margin-top: 10px;"></div>
         <div id="messageContainer" style="display:none;"></div>
     </div>
     <div class="container">
