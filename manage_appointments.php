@@ -37,7 +37,7 @@ function getZones() {
 }
 
 // Function to delete an appointment
-if (isset($_POST['delete'])) {
+if (isset($_POST['cancella'])) {
     $id = $_POST['appointment_id'];
     $sql = "DELETE FROM cp_appointments WHERE id = $id";
     mysqli_query($conn, $sql);
@@ -75,11 +75,11 @@ $zones = getZones();
 <head>
     <title>Manage Appointments</title>
     <style>
-        .delete-btn {
+        .cancella-btn {
             background-color: red;
             color: white;
         }
-        .delete-confirm-btn {
+        .cancella-confirm-btn {
             background-color: red;
             color: white;
             display: none;
@@ -133,9 +133,9 @@ $zones = getZones();
 
         function confirmDelete(id, name, surname, phone, notes, date, time, zone) {
             const confirmationMessage = `Sei sicuro di voler cancellare l'appuntamento?\n\nDettagli Appuntamento:\nNome: ${name}\nCognome: ${surname}\nTelefono: ${phone}\nNote: ${notes}\nData: ${date}\nOra: ${time}\nZona: ${zone}`;
-            const confirmationCheckbox = confirm(`${confirmationMessage}\n\nSpunta la casella per abilitare il bottone di cancellazione.`);
+            const confirmationCheckbox = confirm(`${confirmationMessage}`);
             if (confirmationCheckbox) {
-                document.querySelector(`#delete-confirm-${id}`).style.display = 'inline';
+                document.querySelector(`#cancella-confirm-${id}`).style.display = 'inline';
             }
         }
     </script>
@@ -178,10 +178,10 @@ $zones = getZones();
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
             <td>
                 <button onclick="showActions(<?php echo $appointment['id']; ?>)">Edit</button>
-                <button class="delete-btn" onclick="confirmDelete(<?php echo $appointment['id']; ?>, '<?php echo htmlspecialchars($appointment['name']); ?>', '<?php echo htmlspecialchars($appointment['surname']); ?>', '<?php echo htmlspecialchars($appointment['phone']); ?>', '<?php echo htmlspecialchars($appointment['notes']); ?>', '<?php echo htmlspecialchars($appointment['appointment_date']); ?>', '<?php echo htmlspecialchars($appointment['appointment_time']); ?>', '<?php echo htmlspecialchars($appointment['zone']); ?>')">Delete</button>
+                <button class="cancella-btn" onclick="confirmDelete(<?php echo $appointment['id']; ?>, '<?php echo htmlspecialchars($appointment['name']); ?>', '<?php echo htmlspecialchars($appointment['surname']); ?>', '<?php echo htmlspecialchars($appointment['phone']); ?>', '<?php echo htmlspecialchars($appointment['notes']); ?>', '<?php echo htmlspecialchars($appointment['appointment_date']); ?>', '<?php echo htmlspecialchars($appointment['appointment_time']); ?>', '<?php echo htmlspecialchars($appointment['zone']); ?>')">Cancella</button>
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="delete" value="Confirm Delete" id="delete-confirm-<?php echo $appointment['id']; ?>" class="delete-confirm-btn">
+                    <input type="submit" name="cancella" value="Conferma Cancella" id="cancella-confirm-<?php echo $appointment['id']; ?>" class="cancella-confirm-btn">
                 </form>
             </td>
         </tr>
@@ -189,7 +189,7 @@ $zones = getZones();
             <td colspan="8">
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="delete" value="Delete">
+                    <input type="submit" name="cancella" value="Cancella">
                 </form>
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
