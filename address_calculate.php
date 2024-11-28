@@ -1,61 +1,22 @@
 <?php
-
-
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 include 'db.php';
 
-// Function to get API key from the database
-function getAPIKey() {
-    global $conn;
-    $sql = "SELECT api_key FROM cp_api_keys LIMIT 1";
-    $result = mysqli_query($conn, $sql);
-
-    if ($result && mysqli_num_rows($result) > 0) {
-        $row = mysqli_fetch_assoc($result);
-        return $row['api_key'];
-    } else {
-        return null;
-    }
-}
-
-// Function to get coordinates for an address using Google Maps API
-function getCoordinates($address, $apiKey) {
-    $address = urlencode($address);
-    $url = "https://maps.googleapis.com/maps/api/geocode/json?address={$address}&key={$apiKey}";
-
-    $response = file_get_contents($url);
-    $json = json_decode($response, true);
-
-    // Debugging: Log the API response
-    error_log("API Response: " . print_r($json, true));
-
-    if ($json['status'] == 'OK') {
-        $lat = $json['results'][0]['geometry']['location']['lat'];
-        $lng = $json['results'][0]['geometry']['location']['lng'];
-        return [$lat, $lng];
-    } else {
-        // Debugging: Log the error
-        error_log("Error: Unable to get coordinates. Status: " . $json['status']);
-        return null;
-    }
-}
-
 // Function to calculate distance between two coordinates
-function calculateDistance($origin, $destination, $apiKey) {
-    $origins = $origin[0] . ',' . $origin[1];
-    $destinations = $destination[0] . ',' . $destination[1];
-    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins={$origins}&destinations={$destinations}&key={$apiKey}";
+function calculateDistance($origin, $destination) {
+    $earthRadiusKm = 6371;
 
-    $response = file_get_contents($url);
-    $json = json_decode($response, true);
+    $dLat = deg2rad($destination[0] - $origin[0]);
+    $dLng = deg2rad($destination[1] - $origin[1]);
 
-    if ($json['status'] == 'OK' && $json['rows'][0]['elements'][0]['status'] == 'OK') {
-        $distance = $json['rows'][0]['elements'][0]['distance']['value'] / 1000; // Convert meters to kilometers
-        return $distance;
-    } else {
-        return null;
-    }
+    $a = sin($dLat/2) * sin($dLat/2) +
+         cos(deg2rad($origin[0])) * cos(deg2rad($destination[0])) *
+         sin($dLng/2) * sin($dLng/2);
+
+    $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+
+    return $earthRadiusKm * $c;
 }
 
 // Function to get zones from coordinates
@@ -78,46 +39,56 @@ function getZonesFromCoordinates($latitude, $longitude) {
     return $zones;
 }
 
-header('Content-Type: text/plain');
-
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
-    $address = $_POST['address'];
+    header('Content-Type: text/plain');
     $latitude = $_POST['latitude'];
     $longitude = $_POST['longitude'];
 
     // Debugging: Log the received POST data
-    error_log("Received POST data: address={$address}, latitude={$latitude}, longitude={$longitude}");
+    error_log("Received POST data: latitude={$latitude}, longitude={$longitude}");
 
-    $apiKey = getAPIKey();
-    if (!$apiKey) {
-        echo 'Unable to retrieve API key.';
-        exit;
-    }
+    try {
+        $zones = getZonesFromCoordinates($latitude, $longitude);
+        $origin = [$latitude, $longitude];
 
-    $origin = [$latitude, $longitude];
+        // Debugging: Log the origin coordinates
+        error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
 
-    // Debugging: Log the origin coordinates
-    error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
-
-    if ($origin) {
-        try {
-            $zones = getZonesFromCoordinates($latitude, $longitude);
-            foreach ($zones as $zone) {
-                $destination = [$zone['latitude'], $zone['longitude']];
-                $distance = calculateDistance($origin, $destination, $apiKey);
-                if ($distance !== null && $distance <= $zone['radius_km']) {
-                    echo "Zone: {$zone['name']}\n";
-                }
+        foreach ($zones as $zone) {
+            $destination = [$zone['latitude'], $zone['longitude']];
+            $distance = calculateDistance($origin, $destination);
+            if ($distance <= $zone['radius_km']) {
+                echo "Zone: {$zone['name']}\n";
             }
-        } catch (Exception $e) {
-            error_log("Exception: " . $e->getMessage());
-            echo 'Error occurred: ' . $e->getMessage();
         }
-    } else {
-        echo 'Unable to get coordinates for the given address.';
+    } catch (Exception $e) {
+        error_log("Exception: " . $e->getMessage());
+        echo 'Error occurred: ' . $e->getMessage();
     }
     exit;
-} else {
-    echo 'Invalid request.';
 }
 ?>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Address Calculate</title>
+</head>
+<body>
+    <h1>Address Calculate</h1>
+    <form method="POST" action="address_calculate.php">
+        <label for="address">Address:</label>
+        <input type="text" id="address" name="address" required><br><br>
+
+        <label for="latitude">Latitude:</label>
+        <input type="text" id="latitude" name="latitude" required><br><br>
+
+        <label for="longitude">Longitude:</label>
+        <input type="text" id="longitude" name="longitude" required><br><br>
+
+        <button type="submit">Calculate</button>
+    </form>
+
+    <div id="result"></div>
+</body>
+</html>
