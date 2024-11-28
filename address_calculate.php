@@ -105,6 +105,7 @@ function addPatient($name, $surname, $phone, $notes) {
 // Function to add appointment information to the cp_appointments table
 function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime) {
     global $conn;
+    $formattedDate = date('Y-m-d', strtotime($appointmentDate)); // Ensure correct date format
     $sql = "INSERT INTO cp_appointments (zone_id, patient_id, appointment_date, appointment_time) VALUES (?, ?, ?, ?)";
     $stmt = $conn->prepare($sql);
 
@@ -113,7 +114,7 @@ function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime)
         throw new Exception("Database prepare failed for adding appointment: " . mysqli_error($conn));
     }
 
-    $stmt->bind_param("iiss", $zoneId, $patientId, $appointmentDate, $appointmentTime);
+    $stmt->bind_param("iiss", $zoneId, $patientId, $formattedDate, $appointmentTime);
 
     if (!$stmt->execute()) {
         error_log("Database query failed for adding appointment: " . mysqli_error($conn));
