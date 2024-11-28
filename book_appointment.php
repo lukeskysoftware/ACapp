@@ -2,20 +2,22 @@
 include 'db.php';
 include 'menu.php';
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $zone_id = $_POST['zone_id'];
-    $name = $_POST['name'];
-    $phone = $_POST['phone'];
-    $notes = $_POST['notes'];
-    $appointment_date = $_POST['appointment_date'];
-    $appointment_time = $_POST['appointment_time'];
+if ($_SERVER["REQUEST_METHOD"] == "GET") {
+    $zone_id = $_GET['zone_id'];
+    $date = $_GET['date'];
+    $time = $_GET['time'];
 
-    $sql = "INSERT INTO appointments (zone_id, name, phone, notes, appointment_date, appointment_time) VALUES ('$zone_id', '$name', '$phone', '$notes', '$appointment_date', '$appointment_time')";
-    if (mysqli_query($conn, $sql)) {
-        echo "Appointment booked successfully";
-    } else {
-        echo "Error: " . $sql . "<br>" . mysqli_error($conn);
+    // Debugging: Log the received GET data
+    error_log("Received GET data: zone_id={$zone_id}, date={$date}, time={$time}");
+
+    // Ensure all parameters are received
+    if (!isset($zone_id) || !isset($date) || !isset($time)) {
+        echo "Missing parameters!";
+        exit;
     }
-    mysqli_close($conn);
+
+    // (Rest of your booking logic here)
+
+    echo "Booking details: Zone ID: $zone_id, Date: $date, Time: $time";
 }
 ?>
