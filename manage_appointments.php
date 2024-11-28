@@ -90,13 +90,15 @@ $appointments = getAppointments($filter, $search);
         }
 
         function showActions(id) {
-            const rows = document.querySelectorAll('.action-row');
+            const rows = document.querySelectorAll('tr');
             rows.forEach(function(row) {
-                row.style.display = 'none';
+                if (!row.classList.contains('action-row') && row.id !== 'action-' + id) {
+                    row.style.display = 'none';
+                }
             });
-            const row = document.getElementById('action-' + id);
-            if (row) {
-                row.style.display = 'table-row';
+            const actionRow = document.getElementById('action-' + id);
+            if (actionRow) {
+                actionRow.style.display = 'table-row';
             }
         }
     </script>
@@ -123,7 +125,7 @@ $appointments = getAppointments($filter, $search);
             <th>Actions</th>
         </tr>
         <?php foreach ($appointments as $appointment) { ?>
-        <tr onclick="showActions(<?php echo $appointment['id']; ?>)">
+        <tr>
             <td><?php echo htmlspecialchars($appointment['name']); ?></td>
             <td><?php echo htmlspecialchars($appointment['surname']); ?></td>
             <td><?php echo htmlspecialchars($appointment['phone']); ?></td>
@@ -131,7 +133,7 @@ $appointments = getAppointments($filter, $search);
             <td><?php echo htmlspecialchars($appointment['appointment_date']); ?></td>
             <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
-            <td>Click to show actions</td>
+            <td><button onclick="showActions(<?php echo $appointment['id']; ?>)">Edit</button></td>
         </tr>
         <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
             <td colspan="8">
