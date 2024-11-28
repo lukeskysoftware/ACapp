@@ -194,7 +194,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                     echo "<h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona {$zone['name']}:</h4>";
                     $next3Days = getNext3AppointmentDates($slots, $zone['id']);
                     foreach ($next3Days as $date => $times) {
-                        echo "<p>Data: {$date}</p>";
+                        $formattedDisplayDate = DateTime::createFromFormat('Y-m-d', $date)->format('d-m-Y'); // Change format for display
+                        echo "<p>Data: {$formattedDisplayDate}</p>";
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
                             echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$time}'>{$time}</a> ";
