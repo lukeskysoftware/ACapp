@@ -1,6 +1,12 @@
 <?php
 include 'db.php';
 
+function formatDateItalian($date) {
+    setlocale(LC_TIME, 'it_IT.UTF-8');
+    $timestamp = strtotime($date);
+    return strftime("%A %d %B %Y", $timestamp);
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $zone_id = $_POST['zone_id'];
     $date = $_POST['date'];
@@ -53,6 +59,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit;
     }
 
-    echo "Appuntamento prenotato con successo!";
+    echo "<p>Appuntamento prenotato con successo!</p>";
+    echo "<p>Data: " . formatDateItalian($date) . " " . htmlspecialchars($time) . "</p>";
+    echo "<p>Cognome: " . htmlspecialchars($surname) . "</p>";
+    echo "<p>Nome: " . htmlspecialchars($name) . "</p>";
+    echo "<p>Telefono: " . htmlspecialchars($phone) . "</p>";
+    echo "<p>Note: " . htmlspecialchars($notes) . "</p>";
+    echo '<button onclick="window.location.href=\'dashboard.php\'">Vai alla Dashboard</button>';
 }
 ?>
