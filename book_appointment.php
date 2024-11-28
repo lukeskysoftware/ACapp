@@ -39,17 +39,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     $result = $stmt->get_result();
     $patients = $result->fetch_all(MYSQLI_ASSOC);
 
-    // Debugging: Log the JSON response
-    error_log("JSON response: " . json_encode($patients));
-
-    header('Content-Type: application/json; charset=UTF-8');
-    // Ensure JSON response is valid
-    if (json_last_error() === JSON_ERROR_NONE) {
-        echo json_encode($patients);
-    } else {
-        error_log("JSON encoding error: " . json_last_error_msg());
-        echo json_encode(["error" => "Failed to encode JSON"]);
+    echo '<ul>';
+    foreach ($patients as $patient) {
+        echo '<li onclick="selectPatient(\'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . ' - ' . $patient['phone'] . '</li>';
     }
+    echo '</ul>';
     exit;
 }
 ?>
@@ -60,61 +54,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     <meta charset="UTF-8">
     <title>Prenota Appuntamento</title>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const surnameInput = document.getElementById('surname_search');
-            const nameInput = document.getElementById('name');
-            const surnameField = document.getElementById('surname');
-            const phoneInput = document.getElementById('phone');
-            const patientsList = document.createElement('ul');
-            patientsList.id = 'patientsList';
-            surnameInput.parentNode.appendChild(patientsList);
+        function searchSurname() {
+            const surnameInput = document.getElementById('surname_search').value;
+            if (surnameInput.length > 2) {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', 'book_appointment.php', true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        document.getElementById('patientsList').innerHTML = xhr.responseText;
+                    }
+                };
+                xhr.send('surname_search=' + encodeURIComponent(surnameInput));
+            } else {
+                document.getElementById('patientsList').innerHTML = '';
+            }
+        }
 
-            surnameInput.addEventListener('input', function() {
-                const surname = surnameInput.value;
-                if (surname.length > 2) {
-                    fetch('book_appointment.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        },
-                        body: 'surname_search=' + encodeURIComponent(surname)
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.error) {
-                            console.error('Error:', data.error);
-                            patientsList.innerHTML = '<li>Error loading patients</li>';
-                        } else {
-                            patientsList.innerHTML = '';
-                            data.forEach(patient => {
-                                const listItem = document.createElement('li');
-                                listItem.textContent = `${patient.name} ${patient.surname} - ${patient.phone}`;
-                                listItem.style.cursor = 'pointer';
-                                listItem.addEventListener('click', function() {
-                                    nameInput.value = patient.name;
-                                    surnameField.value = patient.surname;
-                                    phoneInput.value = patient.phone;
-                                    patientsList.innerHTML = '';
-                                });
-                                patientsList.appendChild(listItem);
-                            });
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Fetch error:', error);
-                        patientsList.innerHTML = '<li>Error loading patients</li>';
-                    });
-                } else {
-                    patientsList.innerHTML = '';
-                }
-            });
-        });
+        function selectPatient(name, surname, phone) {
+            document.getElementById('name').value = name;
+            document.getElementById('surname').value = surname;
+            document.getElementById('phone').value = phone;
+            document.getElementById('patientsList').innerHTML = '';
+        }
     </script>
 </head>
 <body>
     <h1>Prenota Appuntamento</h1>
     <label for="surname_search">Cerca Paziente per Cognome:</label>
-    <input type="text" id="surname_search" name="surname_search"><br><br>
+    <input type="text" id="surname_search" name="surname_search" oninput="searchSurname()"><br><br>
+    <div id="patientsList"></div>
 
     <form method="POST" action="submit_appointment.php">
         <input type="hidden" name="zone_id" value="<?php echo htmlspecialchars($zone_id); ?>">
