@@ -42,7 +42,7 @@ function getZonesFromCoordinates($latitude, $longitude) {
 // Function to get slots for a specific zone
 function getSlotsForZone($zoneId) {
     global $conn;
-    $sql = "SELECT day, time FROM cp_slots WHERE zone_id = ? AND CONCAT(day, ' ', time) NOT IN (SELECT CONCAT(appointment_date, ' ', appointment_time) FROM cp_appointments WHERE zone_id = ?)";
+    $sql = "SELECT day, time FROM cp_slots WHERE zone_id = ?";
     $stmt = $conn->prepare($sql);
 
     if (!$stmt) {
@@ -50,7 +50,7 @@ function getSlotsForZone($zoneId) {
         throw new Exception("Database prepare failed for slots: " . mysqli_error($conn));
     }
 
-    $stmt->bind_param("ii", $zoneId, $zoneId);
+    $stmt->bind_param("i", $zoneId);
 
     if (!$stmt->execute()) {
         error_log("Database query failed for slots: " . mysqli_error($conn));
@@ -58,7 +58,19 @@ function getSlotsForZone($zoneId) {
     }
 
     $slots = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    return $slots;
+
+    // Filter out booked slots
+    $availableSlots = [];
+    foreach ($slots as $slot) {
+        $slotDate = $slot['day'];
+        $slotTime = $slot['time'];
+        $isAvailable = isAppointmentAvailable($zoneId, $slotDate, $slotTime);
+        if ($isAvailable) {
+            $availableSlots[] = $slot;
+        }
+    }
+
+    return $availableSlots;
 }
 
 // Function to get the next 3 available appointment dates and times
