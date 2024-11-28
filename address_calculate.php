@@ -83,11 +83,12 @@ function getNext3AppointmentDates($slots) {
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
     header('Content-Type: text/html; charset=UTF-8');
+    $address = $_POST['address'];
     $latitude = $_POST['latitude'];
     $longitude = $_POST['longitude'];
 
     // Debugging: Log the received POST data
-    error_log("Received POST data: latitude={$latitude}, longitude={$longitude}");
+    error_log("Received POST data: address={$address}, latitude={$latitude}, longitude={$longitude}");
 
     try {
         $zones = getZonesFromCoordinates($latitude, $longitude);
@@ -96,25 +97,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         // Debugging: Log the origin coordinates
         error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
 
-        echo "<h2>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</h2>";
+        echo "<h2>Indirizzo: {$address}</h2>";
+        echo "<p>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</p>";
 
         $zonesFound = false;
+        $zoneNames = [];
         foreach ($zones as $zone) {
             $destination = [$zone['latitude'], $zone['longitude']];
             $distance = calculateDistance($origin, $destination);
             $difference = $distance - $zone['radius_km'];
 
-            echo "<h3>Zona: {$zone['name']}</h3>";
-            echo "<p>Coordinate della zona: Latitudine={$zone['latitude']}, Longitudine={$zone['longitude']}</p>";
-            echo "<p>Distanza: {$distance} km</p>";
-            echo "<p>Raggio: {$zone['radius_km']} km</p>";
-            echo "<p>Differenza: {$difference} km</p>";
+            // Hidden div for calculations
+            echo "<div style='display:none;'>Zona: {$zone['name']}<br>";
+            echo "Coordinate della zona: Latitudine={$zone['latitude']}, Longitudine={$zone['longitude']}<br>";
+            echo "Distanza: {$distance} km<br>";
+            echo "Raggio: {$zone['radius_km']} km<br>";
+            echo "Differenza: {$difference} km<br></div>";
 
             if ($distance <= $zone['radius_km']) {
                 $zonesFound = true;
+                $zoneNames[] = $zone['name'];
                 $slots = getSlotsForZone($zone['id']);
                 if (!empty($slots)) {
-                    echo "<h4>Appuntamenti disponibili per i prossimi 3 giorni:</h4>";
+                    echo "<h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona {$zone['name']}:</h4>";
                     $next3Days = getNext3AppointmentDates($slots);
                     foreach ($next3Days as $date => $times) {
                         echo "<p>Data: {$date}</p>";
@@ -125,13 +130,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                         echo "</p>";
                     }
                 } else {
-                    echo "<p>Nessun appuntamento disponibile per i prossimi 3 giorni.</p>";
+                    echo "<p>Nessun appuntamento disponibile per i prossimi 3 giorni per la zona {$zone['name']}.</p>";
                 }
             }
         }
 
         if ($zonesFound) {
-            echo "<p>L'indirizzo si trova in una o più zone.</p>";
+            $zoneText = implode(', ', $zoneNames);
+            echo "<p>L'indirizzo appartiene alla zona {$zoneText}.</p>";
         } else {
             echo "<p>L'indirizzo non si trova in nessuna zona.</p>";
         }
