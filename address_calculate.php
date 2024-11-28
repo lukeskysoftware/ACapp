@@ -81,6 +81,46 @@ function getNext3AppointmentDates($slots) {
     return array_slice($next3Days, 0, 3, true);
 }
 
+// Function to add patient information to the cp_patients table
+function addPatient($name, $surname, $phone, $notes) {
+    global $conn;
+    $sql = "INSERT INTO cp_patients (name, surname, phone, notes) VALUES (?, ?, ?, ?)";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        error_log("Database prepare failed for adding patient: " . mysqli_error($conn));
+        throw new Exception("Database prepare failed for adding patient: " . mysqli_error($conn));
+    }
+
+    $stmt->bind_param("ssss", $name, $surname, $phone, $notes);
+
+    if (!$stmt->execute()) {
+        error_log("Database query failed for adding patient: " . mysqli_error($conn));
+        throw new Exception("Database query failed for adding patient: " . mysqli_error($conn));
+    }
+
+    return $conn->insert_id;
+}
+
+// Function to add appointment information to the cp_appointments table
+function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime) {
+    global $conn;
+    $sql = "INSERT INTO cp_appointments (zone_id, patient_id, appointment_date, appointment_time) VALUES (?, ?, ?, ?)";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        error_log("Database prepare failed for adding appointment: " . mysqli_error($conn));
+        throw new Exception("Database prepare failed for adding appointment: " . mysqli_error($conn));
+    }
+
+    $stmt->bind_param("iiss", $zoneId, $patientId, $appointmentDate, $appointmentTime);
+
+    if (!$stmt->execute()) {
+        error_log("Database query failed for adding appointment: " . mysqli_error($conn));
+        throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
     header('Content-Type: text/html; charset=UTF-8');
     $address = $_POST['address'];
@@ -147,6 +187,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
     }
     exit;
 }
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone']) && isset($_POST['notes'])) {
+    header('Content-Type: text/html; charset=UTF-8');
+    $zoneId = $_POST['zone_id'];
+    $appointmentDate = $_POST['date'];
+    $appointmentTime = $_POST['time'];
+    $name = $_POST['name'];
+    $surname = $_POST['surname'];
+    $phone = $_POST['phone'];
+    $notes = $_POST['notes'];
+
+    try {
+        $patientId = addPatient($name, $surname, $phone, $notes);
+        addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime);
+        echo "<p>Appuntamento prenotato con successo per il {$appointmentDate} alle {$appointmentTime}.</p>";
+    } catch (Exception $e) {
+        error_log("Exception: " . $e->getMessage());
+        echo 'Si è verificato un errore: ' . $e->getMessage();
+    }
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -171,5 +232,41 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
     </form>
 
     <div id="result"></div>
+
+    <div id="appointmentForm" style="display:none;">
+        <h2>Prenota Appuntamento</h2>
+        <form method="POST" action="address_calculate.php">
+            <input type="hidden" id="zone_id" name="zone_id">
+            <input type="hidden" id="date" name="date">
+            <input type="hidden" id="time" name="time">
+            
+            <label for="name">Nome:</label>
+            <input type="text" id="name" name="name" required><br><br>
+
+            <label for="surname">Cognome:</label>
+            <input type="text" id="surname" name="surname" required><br><br>
+
+            <label for="phone">Telefono:</label>
+            <input type="text" id="phone" name="phone" required><br><br>
+
+            <label for="notes">Note:</label>
+            <textarea id="notes" name="notes"></textarea><br><br>
+
+            <button type="submit">Prenota</button>
+        </form>
+    </div>
+
+    <script>
+        document.querySelectorAll("a[href^='book_appointment.php']").forEach(function(el) {
+            el.addEventListener('click', function(event) {
+                event.preventDefault();
+                document.getElementById('zone_id').value = this.href.split('zone_id=')[1].split('&')[0];
+                document.getElementById('date').value = this.href.split('date=')[1].split('&')[0];
+                document.getElementById('time').value = this.href.split('time=')[1];
+                document.getElementById('appointmentForm').style.display = 'block';
+                window.scrollTo(0, document.getElementById('appointmentForm').offsetTop);
+            });
+        });
+    </script>
 </body>
 </html>
