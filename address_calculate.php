@@ -39,30 +39,50 @@ function getZonesFromCoordinates($latitude, $longitude) {
     return $zones;
 }
 
-// Function to get appointments for the next 3 days for a specific zone
-function getAppointmentsForNext3Days($zoneId) {
+// Function to get slots for a specific zone
+function getSlotsForZone($zoneId) {
     global $conn;
-    $sql = "SELECT date, available_slots FROM cp_appointments WHERE zone_id = ? AND date >= CURDATE() AND date < CURDATE() + INTERVAL 3 DAY";
+    $sql = "SELECT day, time FROM cp_slots WHERE zone_id = ?";
     $stmt = $conn->prepare($sql);
 
     if (!$stmt) {
-        error_log("Database prepare failed for appointments: " . mysqli_error($conn));
-        throw new Exception("Database prepare failed for appointments: " . mysqli_error($conn));
+        error_log("Database prepare failed for slots: " . mysqli_error($conn));
+        throw new Exception("Database prepare failed for slots: " . mysqli_error($conn));
     }
 
     $stmt->bind_param("i", $zoneId);
 
     if (!$stmt->execute()) {
-        error_log("Database query failed for appointments: " . mysqli_error($conn));
-        throw new Exception("Database query failed for appointments: " . mysqli_error($conn));
+        error_log("Database query failed for slots: " . mysqli_error($conn));
+        throw new Exception("Database query failed for slots: " . mysqli_error($conn));
     }
 
-    $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    return $appointments;
+    $slots = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    return $slots;
+}
+
+// Function to get the next 3 available appointment dates and times
+function getNext3AppointmentDates($slots) {
+    $next3Days = [];
+    $currentDate = new DateTime();
+    $currentDayOfWeek = $currentDate->format('N'); // Day of the week (1 = Monday, 7 = Sunday)
+
+    while (count($next3Days) < 3) {
+        foreach ($slots as $slot) {
+            $slotDayOfWeek = date('N', strtotime($slot['day']));
+            $daysUntilSlot = ($slotDayOfWeek - $currentDayOfWeek + 7) % 7;
+            $appointmentDate = clone $currentDate;
+            $appointmentDate->modify("+$daysUntilSlot days");
+            $next3Days[$appointmentDate->format('d-m-Y')][] = $slot['time'];
+        }
+        $currentDate->modify('+1 week');
+    }
+
+    return array_slice($next3Days, 0, 3, true);
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
-    header('Content-Type: text/plain');
+    header('Content-Type: text/html; charset=UTF-8');
     $latitude = $_POST['latitude'];
     $longitude = $_POST['longitude'];
 
@@ -76,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         // Debugging: Log the origin coordinates
         error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
 
-        echo "Address Coordinates: Latitude={$latitude}, Longitude={$longitude}\n\n";
+        echo "<h2>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</h2>";
 
         $zonesFound = false;
         foreach ($zones as $zone) {
@@ -84,64 +104,64 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
             $distance = calculateDistance($origin, $destination);
             $difference = $distance - $zone['radius_km'];
 
-            echo "Zone: {$zone['name']}\n";
-            echo "Zone Coordinates: Latitude={$zone['latitude']}, Longitude={$zone['longitude']}\n";
-            echo "Distance: {$distance} km\n";
-            echo "Radius: {$zone['radius_km']} km\n";
-            echo "Difference: {$difference} km\n\n";
+            echo "<h3>Zona: {$zone['name']}</h3>";
+            echo "<p>Coordinate della zona: Latitudine={$zone['latitude']}, Longitudine={$zone['longitude']}</p>";
+            echo "<p>Distanza: {$distance} km</p>";
+            echo "<p>Raggio: {$zone['radius_km']} km</p>";
+            echo "<p>Differenza: {$difference} km</p>";
 
             if ($distance <= $zone['radius_km']) {
                 $zonesFound = true;
-                $appointments = getAppointmentsForNext3Days($zone['id']);
-                if (!empty($appointments)) {
-                    echo "Available Appointments for the next 3 days:\n";
-                    foreach ($appointments as $appointment) {
-                        $date = date('l, j F Y', strtotime($appointment['date']));
-                        echo "Date: {$date}\n";
-                        echo "Available Slots: ";
-                        $slots = explode(',', $appointment['available_slots']);
-                        foreach ($slots as $slot) {
-                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$appointment['date']}&slot={$slot}'>{$slot}</a> ";
+                $slots = getSlotsForZone($zone['id']);
+                if (!empty($slots)) {
+                    echo "<h4>Appuntamenti disponibili per i prossimi 3 giorni:</h4>";
+                    $next3Days = getNext3AppointmentDates($slots);
+                    foreach ($next3Days as $date => $times) {
+                        echo "<p>Data: {$date}</p>";
+                        echo "<p>Fasce orarie disponibili: ";
+                        foreach ($times as $time) {
+                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$time}'>{$time}</a> ";
                         }
-                        echo "\n\n";
+                        echo "</p>";
                     }
                 } else {
-                    echo "No available appointments for the next 3 days.\n\n";
+                    echo "<p>Nessun appuntamento disponibile per i prossimi 3 giorni.</p>";
                 }
             }
         }
 
         if ($zonesFound) {
-            echo "The address is within one or more zones.\n";
+            echo "<p>L'indirizzo si trova in una o più zone.</p>";
         } else {
-            echo "The address is not within any zones.\n";
+            echo "<p>L'indirizzo non si trova in nessuna zona.</p>";
         }
     } catch (Exception $e) {
         error_log("Exception: " . $e->getMessage());
-        echo 'Error occurred: ' . $e->getMessage();
+        echo 'Si è verificato un errore: ' . $e->getMessage();
     }
     exit;
 }
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="it">
 <head>
-    <title>Address Calculate</title>
+    <meta charset="UTF-8">
+    <title>Calcolo Indirizzo</title>
 </head>
 <body>
-    <h1>Address Calculate</h1>
+    <h1>Calcolo Indirizzo</h1>
     <form method="POST" action="address_calculate.php">
-        <label for="address">Address:</label>
+        <label for="address">Indirizzo:</label>
         <input type="text" id="address" name="address" required><br><br>
 
-        <label for="latitude">Latitude:</label>
+        <label for="latitude">Latitudine:</label>
         <input type="text" id="latitude" name="latitude" required><br><br>
 
-        <label for="longitude">Longitude:</label>
+        <label for="longitude">Longitudine:</label>
         <input type="text" id="longitude" name="longitude" required><br><br>
 
-        <button type="submit">Calculate</button>
+        <button type="submit">Calcola</button>
     </form>
 
     <div id="result"></div>
