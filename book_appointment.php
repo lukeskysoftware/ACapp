@@ -99,6 +99,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
 
         <label for="phone">Telefono:</label>
         <input type="text" id="phone" name="phone" required><br><br>
+        
+        <p>Indirizzo: <?php echo htmlspecialchars($address); ?></p>
 
         <label for="notes">Note:</label>
         <textarea id="notes" name="notes"></textarea><br><br>
