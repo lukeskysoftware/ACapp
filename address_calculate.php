@@ -70,8 +70,9 @@ function getZonesFromCoordinates($latitude, $longitude) {
 
 header('Content-Type: text/plain');
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['longitude'])) {
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
     $address = $_POST['address'];
+    $latitude = $_POST['latitude'];
     $longitude = $_POST['longitude'];
 
     $apiKey = getAPIKey();
@@ -80,10 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         exit;
     }
 
-    $origin = getCoordinates($address, $apiKey);
+    $origin = [$latitude, $longitude];
 
     if ($origin) {
-        $zones = getZonesFromCoordinates($origin[0], $origin[1]);
+        $zones = getZonesFromCoordinates($latitude, $longitude);
         foreach ($zones as $zone) {
             $destination = [$zone['latitude'], $zone['longitude']];
             $distance = calculateDistance($origin, $destination, $apiKey);
