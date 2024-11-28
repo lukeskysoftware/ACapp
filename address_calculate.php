@@ -227,7 +227,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
         if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime)) {
             $patientId = addPatient($name, $surname, $phone, $notes);
             addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime);
-            echo "<p>Appuntamento prenotato con successo per il {$appointmentDate} alle {$appointmentTime}.</p>";
+            // Ensure correct date formatting
+$appointmentDate = DateTime::createFromFormat('Y-m-d', $_POST['date']);
+$appointmentDateFormatted = $appointmentDate->format('d-m-Y'); // Italian format
+
+echo "<p>Appuntamento prenotato con successo per il {$appointmentDateFormatted} alle {$appointmentTime}.</p>";
         } else {
             echo "<p>L'orario selezionato non è disponibile. Si prega di scegliere un altro orario.</p>";
         }
