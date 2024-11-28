@@ -31,11 +31,10 @@ function getPatients($search = '') {
 // Function to get appointments for a specific patient
 function getAppointments($patient_id) {
     global $conn;
-    $sql = "SELECT a.id AS appointment_id, a.appointment_date, a.appointment_time, a.notes, z.name AS zone
+    $sql = "SELECT a.id AS appointment_id, a.appointment_date, a.appointment_time, a.notes, z.name AS zone, z.address AS zone_address
             FROM cp_appointments a
             LEFT JOIN cp_zones z ON a.zone_id = z.id
-            WHERE a.patient_id = $patient_id
-            ORDER BY a.appointment_date";
+            WHERE a.patient_id = $patient_id";
     $result = mysqli_query($conn, $sql);
     $appointments = mysqli_fetch_all($result, MYSQLI_ASSOC);
     return $appointments;
@@ -157,7 +156,7 @@ $patients = getPatients($search);
                     if (!empty($appointments)) { ?>
                     <ul>
                         <?php foreach ($appointments as $appointment) { ?>
-                        <li><?php echo htmlspecialchars($appointment['appointment_date']) . ' ' . htmlspecialchars($appointment['appointment_time']) . ' (' . htmlspecialchars($appointment['zone']) . ')'; ?> - <?php echo htmlspecialchars($appointment['notes']); ?></li>
+                        <li><?php echo htmlspecialchars($appointment['appointment_date']) . ' ' . htmlspecialchars($appointment['appointment_time']) . ' (' . htmlspecialchars($appointment['zone']) . ' - ' . htmlspecialchars($appointment['zone_address']) . ')'; ?> - <?php echo htmlspecialchars($appointment['notes']); ?></li>
                         <?php } ?>
                     </ul>
                     <?php } else { ?>
