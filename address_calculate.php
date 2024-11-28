@@ -1,13 +1,49 @@
 <?php
 include 'db.php';
 
-function calculateDistance($lat1, $lon1, $lat2, $lon2) {
-    $theta = $lon1 - $lon2;
-    $distance = sin(deg2rad($lat1)) * sin(deg2rad($lat2)) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * cos(deg2rad($theta));
-    $distance = acos($distance);
-    $distance = rad2deg($distance);
-    $distance = $distance * 60 * 1.1515 * 1.609344;
-    return $distance;
+function getAPIKey() {
+    global $conn;
+    $sql = "SELECT api_key FROM cp_api_keys LIMIT 1";
+    $result = mysqli_query($conn, $sql);
+
+    if ($result && mysqli_num_rows($result) > 0) {
+        $row = mysqli_fetch_assoc($result);
+        return $row['api_key'];
+    } else {
+        return null;
+    }
+}
+
+function getCoordinates($address, $apiKey) {
+    $address = urlencode($address);
+    $url = "https://maps.googleapis.com/maps/api/geocode/json?address={$address}&key={$apiKey}";
+
+    $response = file_get_contents($url);
+    $json = json_decode($response, true);
+
+    if ($json['status'] == 'OK') {
+        $lat = $json['results'][0]['geometry']['location']['lat'];
+        $lng = $json['results'][0]['geometry']['location']['lng'];
+        return [$lat, $lng];
+    } else {
+        return null;
+    }
+}
+
+function calculateDistance($origin, $destination, $apiKey) {
+    $origins = $origin[0] . ',' . $origin[1];
+    $destinations = $destination[0] . ',' . $destination[1];
+    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins={$origins}&destinations={$destinations}&key={$apiKey}";
+
+    $response = file_get_contents($url);
+    $json = json_decode($response, true);
+
+    if ($json['status'] == 'OK' && $json['rows'][0]['elements'][0]['status'] == 'OK') {
+        $distance = $json['rows'][0]['elements'][0]['distance']['value'] / 1000; // Convert meters to kilometers
+        return $distance;
+    } else {
+        return null;
+    }
 }
 
 function getZonesFromCoordinates($latitude, $longitude) {
@@ -15,7 +51,6 @@ function getZonesFromCoordinates($latitude, $longitude) {
     $sql = "SELECT id, zone_name, latitude, longitude, radius_km FROM cp_zones";
     $stmt = $conn->prepare($sql);
 
-    // Handle database execution errors
     if (!$stmt->execute()) {
         throw new Exception("Database query failed: " . $stmt->errorInfo()[2]);
     }
@@ -28,37 +63,40 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
     $address = $_POST['address'];
     $longitude = $_POST['longitude'];
 
-    // Use a geocoding API to get the latitude from the address
-    $latitude = getLatitudeFromAddress($address);
-
-    $zones = getZonesFromCoordinates($latitude, $longitude);
-    $result = [];
-    $debugInfo = [];
-
-    foreach ($zones as $zone) {
-        $distance = calculateDistance($latitude, $longitude, $zone['latitude'], $zone['longitude']);
-        $debugInfo[] = [
-            'zone_name' => $zone['zone_name'],
-            'zone_latitude' => $zone['latitude'],
-            'zone_longitude' => $zone['longitude'],
-            'distance' => $distance,
-            'radius_km' => $zone['radius_km']
-        ];
-        if ($distance <= $zone['radius_km']) {
-            $result[] = $zone;
-        }
+    $apiKey = getAPIKey();
+    if (!$apiKey) {
+        echo json_encode(['error' => 'Unable to retrieve API key.']);
+        exit;
     }
 
-    header('Content-Type: application/json');
-    echo json_encode(['zones_in_radius' => $result, 'debug_info' => $debugInfo]);
-    exit;
-}
+    $origin = getCoordinates($address, $apiKey);
 
-function getLatitudeFromAddress($address) {
-    // Example function to simulate getting latitude from address
-    // In real implementation, this should call a geocoding API
-    // For illustration purposes, we'll return a static value
-    return 41.9028; // Example latitude for Rome, Italy
+    if ($origin) {
+        $zones = getZonesFromCoordinates($origin[0], $origin[1]);
+        $result = [];
+        $debugInfo = [];
+
+        foreach ($zones as $zone) {
+            $destination = [$zone['latitude'], $zone['longitude']];
+            $distance = calculateDistance($origin, $destination, $apiKey);
+            $debugInfo[] = [
+                'zone_name' => $zone['zone_name'],
+                'zone_latitude' => $zone['latitude'],
+                'zone_longitude' => $zone['longitude'],
+                'distance' => $distance,
+                'radius_km' => $zone['radius_km']
+            ];
+            if ($distance !== null && $distance <= $zone['radius_km']) {
+                $result[] = $zone;
+            }
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode(['zones_in_radius' => $result, 'debug_info' => $debugInfo]);
+    } else {
+        echo json_encode(['error' => 'Unable to get coordinates for the given address.']);
+    }
+    exit;
 }
 ?>
 
@@ -101,38 +139,38 @@ function getLatitudeFromAddress($address) {
             });
         }
 
-       function checkAddressInRadius() {
-    const address = document.getElementById('address').value;
-    const longitude = document.getElementById('longitude').value;
+        function checkAddressInRadius() {
+            const address = document.getElementById('address').value;
+            const longitude = document.getElementById('longitude').value;
 
-    const formData = new FormData();
-    formData.append('address', address);
-    formData.append('longitude', longitude);
+            const formData = new FormData();
+            formData.append('address', address);
+            formData.append('longitude', longitude);
 
-    fetch('address_calculate.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.text()) // Read response as text first
-    .then(text => {
-        try {
-            const data = JSON.parse(text); // Attempt to parse JSON
-            if (data.zones_in_radius && data.zones_in_radius.length > 0) {
-                displayZonesInRadius(data.zones_in_radius);
-            } else {
-                alert('No zones within the radius found for this location.');
-            }
-            displayDebugInfo(data.debug_info);
-        } catch (error) {
-            console.error('Error parsing JSON:', error);
-            alert('Error parsing JSON: ' + error.message);
+            fetch('address_calculate.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text()) // Read response as text first
+            .then(text => {
+                try {
+                    const data = JSON.parse(text); // Attempt to parse JSON
+                    if (data.zones_in_radius && data.zones_in_radius.length > 0) {
+                        displayZonesInRadius(data.zones_in_radius);
+                    } else {
+                        alert('No zones within the radius found for this location.');
+                    }
+                    displayDebugInfo(data.debug_info);
+                } catch (error) {
+                    console.error('Error parsing JSON:', error);
+                    alert('Error parsing JSON: ' + error.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching zones:', error);
+                alert('Error fetching zones: ' + error.message);
+            });
         }
-    })
-    .catch(error => {
-        console.error('Error fetching zones:', error);
-        alert('Error fetching zones: ' + error.message);
-    });
-}
 
         function displayZonesInRadius(zones) {
             const zoneDetails = document.getElementById('zoneDetails');
