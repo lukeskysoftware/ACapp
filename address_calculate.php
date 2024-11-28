@@ -73,7 +73,7 @@ function getNext3AppointmentDates($slots) {
             $daysUntilSlot = ($slotDayOfWeek - $currentDayOfWeek + 7) % 7;
             $appointmentDate = clone $currentDate;
             $appointmentDate->modify("+$daysUntilSlot days");
-            $next3Days[$appointmentDate->format('d-m-Y')][] = $slot['time'];
+            $next3Days[$appointmentDate->format('Y-m-d')][] = $slot['time'];
         }
         $currentDate->modify('+1 week');
     }
@@ -120,6 +120,30 @@ function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime)
         error_log("Database query failed for adding appointment: " . mysqli_error($conn));
         throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
     }
+}
+
+// Check if appointment is available
+function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime) {
+    global $conn;
+    $sql = "SELECT COUNT(*) FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? AND appointment_time = ?";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        error_log("Database prepare failed for checking appointment availability: " . mysqli_error($conn));
+        throw new Exception("Database prepare failed for checking appointment availability: " . mysqli_error($conn));
+    }
+
+    $stmt->bind_param("iss", $zoneId, $appointmentDate, $appointmentTime);
+
+    if (!$stmt->execute()) {
+        error_log("Database query failed for checking appointment availability: " . mysqli_error($conn));
+        throw new Exception("Database query failed for checking appointment availability: " . mysqli_error($conn));
+    }
+
+    $stmt->bind_result($count);
+    $stmt->fetch();
+
+    return $count === 0;
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
@@ -200,9 +224,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     $notes = $_POST['notes'];
 
     try {
-        $patientId = addPatient($name, $surname, $phone, $notes);
-        addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime);
-        echo "<p>Appuntamento prenotato con successo per il {$appointmentDate} alle {$appointmentTime}.</p>";
+        if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime)) {
+            $patientId = addPatient($name, $surname, $phone, $notes);
+            addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime);
+            echo "<p>Appuntamento prenotato con successo per il {$appointmentDate} alle {$appointmentTime}.</p>";
+        } else {
+            echo "<p>L'orario selezionato non è disponibile. Si prega di scegliere un altro orario.</p>";
+        }
     } catch (Exception $e) {
         error_log("Exception: " . $e->getMessage());
         echo 'Si è verificato un errore: ' . $e->getMessage();
