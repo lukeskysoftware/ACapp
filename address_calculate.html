@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
     <title>Calcolo Indirizzo</title>
-    <link rel="stylesheet" href="styles.css">
+       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+ <link rel="stylesheet" href="styles.css">
+  
     <script>
         async function loadAPIKey() {
             try {
@@ -53,23 +54,29 @@
     </script>
 </head>
 <body>
-    <div class="container">
-        <h2>Calcolo Indirizzo</h2>
-        <form id="addressForm" method="POST" action="address_calculate.php">
+    <script>
+    <?php include 'menu.php'; ?>
+    </script>
+    <div class="pure-g aria">
+        <h2 class="centrato">A quale indirizzo?</h2>
+        </div>
+        <div class="pure-g aria">
+        <form id="addressForm" method="POST" action="address_calculate.php" class="pure-form aria centrato centro" >
             <label for="address">Indirizzo:</label>
             <input type="text" id="address" name="address" required><br>
             <label for="latitude">Latitudine:</label>
             <input type="text" id="latitude" name="latitude" readonly><br>
             <label for="longitude">Longitudine:</label>
             <input type="text" id="longitude" name="longitude" readonly><br>
-            <button type="submit">Submit</button>
+            <button type="submit" class="pure-button button-small button-green">Avanti</button>
         </form>
-
-        <div id="coordinates" style="margin-top: 10px;"></div>
+        </div>
+<div class="pure-g aria centrato">
+        <div id="coordinates" class="centrato"  style="margin-top: 10px;"></div>
         <div id="messageContainer" style="display:none;"></div>
     </div>
-    <div class="container">
-        <a href="dashboard.php">Torna alla dashboard</a>
+    <div class="pure-g aria centrato">
+        <a class="centrato" href="dashboard.php">Torna alla dashboard</a>
     </div>
 </body>
 </html>
