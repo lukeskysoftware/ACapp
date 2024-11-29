@@ -15,7 +15,7 @@ function getAppointments($filter = [], $search = '') {
     if (!empty($search)) {
         $conditions[] = "(p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
     }
-    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, z.name as zone
+    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, z.name as zone, p.address
             FROM cp_appointments a
             JOIN cp_patients p ON a.patient_id = p.id
             JOIN cp_zones z ON a.zone_id = z.id";
@@ -128,7 +128,7 @@ $zones = getZones();
         }
 
         function confirmDelete(appointment) {
-            if (confirm(`Sei sicuro di voler cancellare l'appuntamento con ${appointment.name} ${appointment.surname}, note: ${appointment.notes}, data: ${appointment.appointment_date}, ora: ${appointment.appointment_time}?`)) {
+            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes} il ${appointment.appointment_date} all'ora ${appointment.appointment_time}?`)) {
                 document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
                 document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
             }
