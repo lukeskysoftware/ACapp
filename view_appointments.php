@@ -42,7 +42,6 @@
     <?php
     include_once 'db.php';
 
-    // Function to get all appointments with patient and zone information
     function getAppointments($conn) {
         $sql = "SELECT a.id, p.name, p.surname, CONCAT('+39', p.phone) as phone, a.notes, a.appointment_date, a.appointment_time, a.address, z.name as zone
                 FROM cp_appointments a
@@ -66,7 +65,7 @@
         var calendarEl = document.getElementById('calendar');
         var detailsPanel = document.getElementById('detailsPanel');
         var calendar = new FullCalendar.Calendar(calendarEl, {
-          locale: 'it', // Set the locale to Italian
+          locale: 'it',
           initialView: 'timeGridWeek',
           themeSystem: 'bootstrap5',
           headerToolbar: {
@@ -78,7 +77,7 @@
             dayGridMonth: {
               eventContent: function(arg) {
                 let italicEl = document.createElement('div');
-                italicEl.innerHTML = `<b>${arg.event.title} (${arg.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})})</b>`;
+                italicEl.innerHTML = `<div><b>${arg.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</b></div><div>${arg.event.title}</div>`;
                 let arrayOfDomNodes = [ italicEl ];
                 return { domNodes: arrayOfDomNodes };
               }
@@ -115,12 +114,12 @@
             }));
             successCallback(events);
           },
-          eventTimeFormat: { // like '14:30'
+          eventTimeFormat: {
             hour: '2-digit',
             minute: '2-digit',
             meridiem: false
           },
-          slotLabelFormat: { // time labels in 24-hour format
+          slotLabelFormat: {
             hour: '2-digit',
             minute: '2-digit',
             hour12: false
