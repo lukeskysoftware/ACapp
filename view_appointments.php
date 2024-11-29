@@ -63,6 +63,12 @@
         return $dates;
     }
 
+    function formatItalianDate($date) {
+        setlocale(LC_TIME, 'it_IT.UTF-8');
+        $timestamp = strtotime($date);
+        return strftime('%d %B %Y', $timestamp);
+    }
+
     $appointments = getAppointments($conn);
     $appointmentDates = getAppointmentDates($appointments);
     ?>
@@ -75,7 +81,7 @@
             <select id="itineraryDropdown" class="form-select">
                 <option selected>Scegli data</option>
                 <?php foreach ($appointmentDates as $date): ?>
-                    <option value="<?php echo $date; ?>"><?php echo $date; ?></option>
+                    <option value="<?php echo $date; ?>"><?php echo formatItalianDate($date); ?></option>
                 <?php endforeach; ?>
             </select>
         </button>
