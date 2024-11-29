@@ -174,8 +174,9 @@ $showTable = !empty($appointments);
         <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
         <button id="clear-filters">Clear Filters</button>
     </form>
-    <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?>">Non sono presenti appuntamenti</p>
+    <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?>">Non ci sono appuntamenti</p>
     <table border="1" class="<?php echo $showTable ? '' : 'hidden'; ?>">
+        <thead>
         <tr>
             <th>Name</th>
             <th>Surname</th>
@@ -187,6 +188,8 @@ $showTable = !empty($appointments);
             <th>Zone</th>
             <th>Actions</th>
         </tr>
+        </thead>
+        <tbody>
         <?php foreach ($appointments as $appointment) { ?>
         <tr>
             <td><?php echo htmlspecialchars($appointment['name']); ?></td>
@@ -222,6 +225,7 @@ $showTable = !empty($appointments);
             </td>
         </tr>
         <?php } ?>
+        </tbody>
     </table>
 </body>
 </html>
