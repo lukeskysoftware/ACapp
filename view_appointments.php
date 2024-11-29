@@ -40,7 +40,7 @@
         const zone_filter = document.getElementById('zone_filter').value;
 
         const xhr = new XMLHttpRequest();
-        xhr.open('GET', `manage_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
+        xhr.open('GET', `fetch_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4 && xhr.status === 200) {
                 document.getElementById('appointments-list').innerHTML = xhr.responseText;
@@ -60,25 +60,20 @@
             const zone_filter = document.getElementById('zone_filter').value;
 
             const xhr = new XMLHttpRequest();
-            xhr.open('GET', `manage_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
+            xhr.open('GET', `fetch_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4 && xhr.status === 200) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(xhr.responseText, 'text/html');
-                    const events = [];
-                    doc.querySelectorAll('table tr').forEach(row => {
-                        const cells = row.querySelectorAll('td');
-                        events.push({
-                            id: cells[0].innerText,
-                            title: cells[1].innerText + ' ' + cells[2].innerText,
-                            start: cells[5].innerText + 'T' + cells[6].innerText,
-                            extendedProps: {
-                                phone: cells[3].innerText,
-                                notes: cells[4].innerText,
-                                zone: cells[7].innerText
-                            }
-                        });
-                    });
+                    const appointments = JSON.parse(xhr.responseText);
+                    const events = appointments.map(appointment => ({
+                        id: appointment.id,
+                        title: `${appointment.name} ${appointment.surname}`,
+                        start: `${appointment.appointment_date}T${appointment.appointment_time}`,
+                        extendedProps: {
+                            phone: appointment.phone,
+                            notes: appointment.notes,
+                            zone: appointment.zone
+                        }
+                    }));
                     successCallback(events);
                 } else if (xhr.readyState === 4) {
                     failureCallback(xhr.statusText);
