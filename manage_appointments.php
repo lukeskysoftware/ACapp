@@ -125,7 +125,7 @@ $zones = getZones();
                         }
                     } else {
                         tableElement.innerHTML = '';
-                        if (appointmentsMessage) {
+                        if (appointmentsMessage && !document.querySelector('#no-appointments-message')) {
                             tableElement.insertAdjacentHTML('afterend', appointmentsMessage.outerHTML);
                         }
                     }
