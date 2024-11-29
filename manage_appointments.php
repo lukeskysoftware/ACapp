@@ -75,6 +75,7 @@ $filter = [
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 $appointments = getAppointments($filter, $search);
 $zones = getZones();
+$showTable = !empty($appointments);
 ?>
 
 <!DOCTYPE html>
@@ -93,6 +94,9 @@ $zones = getZones();
         .confirm-btn {
             background-color: darkred;
             color: white;
+        }
+        .hidden {
+            display: none;
         }
     </style>
     <script>
@@ -120,13 +124,18 @@ $zones = getZones();
                     const tableElement = document.querySelector('table');
                     if (newTable && newTable.querySelector('tbody').children.length > 0) {
                         tableElement.innerHTML = newTable.innerHTML;
+                        tableElement.classList.remove('hidden');
                         if (appointmentsMessage) {
-                            appointmentsMessage.remove();
+                            appointmentsMessage.classList.add('hidden');
                         }
                     } else {
                         tableElement.innerHTML = '';
+                        tableElement.classList.add('hidden');
                         if (appointmentsMessage && !document.querySelector('#no-appointments-message')) {
                             tableElement.insertAdjacentHTML('afterend', appointmentsMessage.outerHTML);
+                        }
+                        if (appointmentsMessage) {
+                            appointmentsMessage.classList.remove('hidden');
                         }
                     }
                 }
@@ -165,10 +174,8 @@ $zones = getZones();
         <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
         <button id="clear-filters">Clear Filters</button>
     </form>
-    <?php if (empty($appointments)) { ?>
-        <p id="no-appointments-message">Non sono presenti appuntamenti</p>
-    <?php } ?>
-    <table border="1">
+    <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?>">Non sono presenti appuntamenti</p>
+    <table border="1" class="<?php echo $showTable ? '' : 'hidden'; ?>">
         <tr>
             <th>Name</th>
             <th>Surname</th>
