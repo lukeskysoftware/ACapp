@@ -181,7 +181,7 @@ $showTable = !empty($appointments);
         }
 
         function confirmDelete(appointment) {
-            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes}?`)) {
+            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointm[...]
                 document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
                 document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
             }
@@ -292,7 +292,7 @@ $showTable = !empty($appointments);
             <td><?php echo htmlspecialchars($appointment['address']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
             <td>
-                <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>); fetchAvailableDatesAndTimeslots('<?php echo $appointment['zone']; ?>', <?php echo $appointment['id']; ?>)">Modifica</button>
+                <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>); fetchAvailableDatesAndTimeslots('<?php echo $appointment['zone']; ?>', <?php echo $appointment['id[...]
                 <button class="cancella-btn" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
