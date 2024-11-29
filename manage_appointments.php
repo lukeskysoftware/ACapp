@@ -167,7 +167,7 @@ $zones = getZones();
     </form>
     <?php if (empty($appointments)) { ?>
         <p id="no-appointments-message">Non sono presenti appuntamenti</p>
-    <?php } else { ?>
+    <?php } ?>
     <table border="1">
         <tr>
             <th>Name</th>
@@ -216,6 +216,5 @@ $zones = getZones();
         </tr>
         <?php } ?>
     </table>
-    <?php } ?>
 </body>
 </html>
