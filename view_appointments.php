@@ -5,10 +5,10 @@
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
 </head>
 <body>
-    <?php include 'menu.php'; ?>
+    <?php include_once 'menu.php'; ?>
     <?php
-    include 'db.php'; // Include database connection
-    include 'manage_appointments.php'; // Include the file where getZones() is defined
+    include_once 'db.php'; // Include database connection
+    include_once 'manage_appointments.php'; // Include the file where getZones() is defined
     ?>
 
     <form id="filters" onsubmit="return false;">
