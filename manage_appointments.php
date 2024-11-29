@@ -15,7 +15,7 @@ function getAppointments($filter = [], $search = '') {
     if (!empty($search)) {
         $conditions[] = "(p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
     }
-    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, z.name as zone, p.address
+    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, z.name as zone
             FROM cp_appointments a
             JOIN cp_patients p ON a.patient_id = p.id
             JOIN cp_zones z ON a.zone_id = z.id";
@@ -51,9 +51,10 @@ if (isset($_POST['update'])) {
     $notes = $_POST['notes'];
     $appointment_date = $_POST['appointment_date'];
     $appointment_time = $_POST['appointment_time'];
+    $address = $_POST['address'];
     $sql = "UPDATE cp_appointments a
             JOIN cp_patients p ON a.patient_id = p.id
-            SET p.name='$name', p.surname='$surname', p.phone='$phone', a.notes='$notes', a.appointment_date='$appointment_date', a.appointment_time='$appointment_time'
+            SET p.name='$name', p.surname='$surname', p.phone='$phone', a.notes='$notes', a.appointment_date='$appointment_date', a.appointment_time='$appointment_time', a.address='$address'
             WHERE a.id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_appointments.php');
@@ -128,7 +129,7 @@ $zones = getZones();
         }
 
         function confirmDelete(appointment) {
-            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes} il ${appointment.appointment_date} all'ora ${appointment.appointment_time}?`)) {
+            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes} il ${appointment.appointment_date} alle ore ${appointment.appointment_time}?`)) {
                 document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
                 document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
             }
@@ -162,6 +163,7 @@ $zones = getZones();
             <th>Notes</th>
             <th>Appointment Date</th>
             <th>Appointment Time</th>
+            <th>Address</th>
             <th>Zone</th>
             <th>Actions</th>
         </tr>
@@ -173,6 +175,7 @@ $zones = getZones();
             <td><?php echo htmlspecialchars($appointment['notes']); ?></td>
             <td><?php echo htmlspecialchars($appointment['appointment_date']); ?></td>
             <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
+            <td><?php echo htmlspecialchars($appointment['address']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
             <td>
                 <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
@@ -184,12 +187,13 @@ $zones = getZones();
             </td>
         </tr>
         <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
-            <td colspan="8">
+            <td colspan="9">
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
                     <input type="text" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>" required>
                     <input type="text" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>" required>
                     <input type="text" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
+                    <input type="text" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>" required>
                     <input type="text" name="notes" value="<?php echo htmlspecialchars($appointment['notes']); ?>">
                     <input type="date" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
                     <input type="time" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
