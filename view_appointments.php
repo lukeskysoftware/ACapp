@@ -127,7 +127,7 @@
               <p><a href="tel:${info.event.extendedProps.phone}">${info.event.extendedProps.phone}</a></p>
               <p>${info.event.extendedProps.address}</p>
               <p>${info.event.extendedProps.notes}</p>
-              <p><strong>Zone:</strong> ${info.event.extendedProps.zone}</p>
+              <p><strong>Zona:</strong> ${info.event.extendedProps.zone}</p>
             `;
             detailsPanel.style.display = 'block';
           }
