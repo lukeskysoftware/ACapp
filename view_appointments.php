@@ -178,6 +178,7 @@
             location: appointment.address,
             stopover: true
           }));
+          waypoints.unshift({ location: '', stopover: true }); // Add a blank address as the first position
           let origin = waypoints.shift().location; // First address as the origin
           let destination = waypoints.pop().location; // Last address as the destination
           let mapUrl;
