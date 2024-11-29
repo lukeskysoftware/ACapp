@@ -31,6 +31,10 @@
             padding: 20px;
             display: none;
         }
+        .timeslot {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -74,7 +78,7 @@
             dayGridMonth: {
               eventContent: function(arg) {
                 let italicEl = document.createElement('div');
-                italicEl.innerHTML = `<b>${arg.event.title}</b>`;
+                italicEl.innerHTML = `<b>${arg.event.title} (${arg.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})})</b>`;
                 let arrayOfDomNodes = [ italicEl ];
                 return { domNodes: arrayOfDomNodes };
               }
@@ -125,6 +129,7 @@
           eventClick: function(info) {
             detailsPanel.innerHTML = `
               <h5>${info.event.title}</h5>
+              <p class="timeslot">${info.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</p>
               <p><a href="tel:${info.event.extendedProps.phone}">${info.event.extendedProps.phone}</a></p>
               <p>${info.event.extendedProps.address}</p>
               <p>${info.event.extendedProps.notes}</p>
