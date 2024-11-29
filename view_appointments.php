@@ -54,12 +54,13 @@
                     address: appointment.address,
                     notes: appointment.notes,
                     zone: appointment.zone
-                }
+                },
+                description: `Phone: ${appointment.phone}\nAddress: ${appointment.address}\nNotes: ${appointment.notes}`
             }));
             successCallback(events);
           },
           eventDidMount: function(info) {
-            info.el.title = `Phone: ${info.event.extendedProps.phone}\nAddress: ${info.event.extendedProps.address}\nNotes: ${info.event.extendedProps.notes}`;
+            info.el.title = info.event.extendedProps.description;
           }
         });
         calendar.render();
