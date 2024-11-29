@@ -183,9 +183,11 @@
           let destination = waypoints.pop().location; // Correct destination assignment
           let mapUrl;
 
-          if (navigator.userAgent.match(/(iPhone|iPod|iPad|Android)/)) {
-            mapUrl = `comgooglemaps://?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&directionsmode=driving`;
+          if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            // For mobile devices
+            mapUrl = `https://maps.google.com/maps?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}`;
           } else {
+            // For desktop browsers
             mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&travelmode=driving`;
           }
 
