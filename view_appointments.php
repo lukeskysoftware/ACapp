@@ -164,19 +164,22 @@
             event.preventDefault();
             const selectedDate = event.target.getAttribute('data-date');
             const appointments = <?php echo json_encode($appointments); ?>;
-            const todaysAppointments = appointments.filter(appointment => appointment.appointment_date === selectedDate);
+            const todaysAppointments = appointments.filter(appointment => appointment.appointment_date === selectedDate).sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
             if (todaysAppointments.length === 0) {
               alert('Nessun appuntamento per questa data.');
               return;
             }
-            let waypoints = todaysAppointments.slice(1, -1).map(appointment => ({
-              location: appointment.address,
-              stopover: true
-            }));
-            let origin = todaysAppointments[0].address;
-            let destination = todaysAppointments[todaysAppointments.length - 1].address;
-            let mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&travelmode=driving`;
-            window.open(mapUrl, '_blank');
+            navigator.geolocation.getCurrentPosition(function(position) {
+              const currentLocation = `${position.coords.latitude},${position.coords.longitude}`;
+              let waypoints = todaysAppointments.map(appointment => ({
+                location: appointment.address,
+                stopover: true
+              }));
+              let origin = currentLocation;
+              let destination = todaysAppointments[todaysAppointments.length - 1].address;
+              let mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&travelmode=driving`;
+              window.open(mapUrl, '_blank');
+            });
           });
         });
       });
