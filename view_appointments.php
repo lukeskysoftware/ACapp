@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.15/index.global.min.css' rel='stylesheet' />
+    <!-- Removed the FullCalendar CSS link -->
 </head>
 <body>
     <form id="filters" onsubmit="return false;">
@@ -19,7 +19,7 @@
 
     <div id='calendar'></div>
 
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.15/index.global.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar/index.global.min.js'></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
