@@ -117,15 +117,16 @@ $zones = getZones();
                     const newTable = doc.querySelector('table');
                     const appointmentsMessage = doc.querySelector('#no-appointments-message');
                     
+                    const tableElement = document.querySelector('table');
                     if (newTable) {
-                        document.querySelector('table').innerHTML = newTable.innerHTML;
+                        tableElement.innerHTML = newTable.innerHTML;
                         if (appointmentsMessage) {
                             appointmentsMessage.remove();
                         }
-                    } else if (appointmentsMessage) {
-                        document.querySelector('table').innerHTML = '';
-                        if (!document.querySelector('#no-appointments-message')) {
-                            document.querySelector('table').insertAdjacentHTML('afterend', appointmentsMessage.outerHTML);
+                    } else {
+                        tableElement.innerHTML = '';
+                        if (appointmentsMessage) {
+                            tableElement.insertAdjacentHTML('afterend', appointmentsMessage.outerHTML);
                         }
                     }
                 }
