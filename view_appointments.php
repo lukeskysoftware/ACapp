@@ -73,6 +73,7 @@
         <button class="btn btn-primary dropdown-toggle" type="button" id="itineraryButton" data-bs-toggle="dropdown" aria-expanded="false">
             Vuoi l'itinerario per gli appuntamenti del
             <select id="itineraryDropdown" class="form-select">
+                <option selected>Scegli data</option>
                 <?php foreach ($appointmentDates as $date): ?>
                     <option value="<?php echo $date; ?>"><?php echo $date; ?></option>
                 <?php endforeach; ?>
