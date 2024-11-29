@@ -43,6 +43,34 @@
             center: 'title',
             right: 'dayGridMonth,timeGridWeek,timeGridDay'
           },
+          views: {
+            timeGridWeek: {
+              eventContent: function(arg) {
+                let italicEl = document.createElement('div');
+                italicEl.innerHTML = `
+                  <b>${arg.event.title}</b><br/>
+                  <i>Phone: ${arg.event.extendedProps.phone}</i><br/>
+                  <i>Address: ${arg.event.extendedProps.address}</i><br/>
+                  <i>Notes: ${arg.event.extendedProps.notes}</i>
+                `;
+                let arrayOfDomNodes = [ italicEl ]
+                return { domNodes: arrayOfDomNodes }
+              }
+            },
+            timeGridDay: {
+              eventContent: function(arg) {
+                let italicEl = document.createElement('div');
+                italicEl.innerHTML = `
+                  <b>${arg.event.title}</b><br/>
+                  <i>Phone: ${arg.event.extendedProps.phone}</i><br/>
+                  <i>Address: ${arg.event.extendedProps.address}</i><br/>
+                  <i>Notes: ${arg.event.extendedProps.notes}</i>
+                `;
+                let arrayOfDomNodes = [ italicEl ]
+                return { domNodes: arrayOfDomNodes }
+              }
+            }
+          },
           events: function(fetchInfo, successCallback, failureCallback) {
             const appointments = <?php echo json_encode($appointments); ?>;
             const events = appointments.map(appointment => ({
@@ -54,13 +82,19 @@
                     address: appointment.address,
                     notes: appointment.notes,
                     zone: appointment.zone
-                },
-                description: `Phone: ${appointment.phone}\nAddress: ${appointment.address}\nNotes: ${appointment.notes}`
+                }
             }));
             successCallback(events);
           },
-          eventDidMount: function(info) {
-            info.el.title = info.event.extendedProps.description;
+          eventTimeFormat: { // like '14:30'
+            hour: '2-digit',
+            minute: '2-digit',
+            meridiem: false
+          },
+          headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
           }
         });
         calendar.render();
