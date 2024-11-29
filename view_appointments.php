@@ -176,16 +176,15 @@
           }
 
           let waypoints = todaysAppointments.map(appointment => appointment.address);
-          let origin = waypoints.shift(); // First address as the origin
           let destination = waypoints.pop(); // Last address as the destination
           let mapUrl;
 
           if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
             // For mobile devices
-            mapUrl = `https://maps.google.com/maps?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(destination)}${waypoints.map(waypoint => `=${encodeURIComponent(waypoint)}`).join('')}&dirflg=d`;
+            mapUrl = `https://maps.google.com/maps?saddr=My+Location&daddr=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&dirflg=d`;
           } else {
             // For desktop browsers
-            mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
+            mapUrl = `https://www.google.com/maps/dir/?api=1&origin=My+Location&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
           }
 
           window.open(mapUrl, '_blank');
