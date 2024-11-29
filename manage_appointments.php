@@ -1,6 +1,5 @@
 <?php
 include 'db.php';
-include 'menu.php';
 
 // Function to get all appointments with patient and zone information
 function getAppointments($filter = [], $search = '') {
@@ -82,6 +81,8 @@ $showTable = !empty($appointments);
 <html>
 <head>
     <title>Manage Appointments</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+ <link rel="stylesheet" href="styles.css">
     <style>
         .modifica-btn {
             background-color: green;
@@ -186,6 +187,7 @@ function hideActions(id) {
     </script>
 </head>
 <body>
+    <?php include 'menu.php'; ?>
     <h2>Manage Appointments</h2>
     <form onsubmit="return false;">
         <label for="date">Filter by Date:</label>
@@ -202,7 +204,7 @@ function hideActions(id) {
         <button id="clear-filters">Clear Filters</button>
     </form>
     <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?>">Non ci sono appuntamenti</p>
-    <table border="1" class="<?php echo $showTable ? '' : 'hidden'; ?>">
+    <table border="0" class="<?php echo $showTable ? '' : 'hidden'; ?> pure-table pure-table-bordered">
         <thead>
         <tr>
             <th>Name</th>
