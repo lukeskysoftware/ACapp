@@ -180,7 +180,7 @@
           }));
           waypoints.unshift({ location: '', stopover: true }); // Add a blank address as the first position
           let origin = ''; // Blank address at the start
-          let destination = todaysAppointments[todaysAppointments.length - 1].address;
+          let destination = waypoints.pop().location; // Correct destination assignment
           let mapUrl;
 
           if (navigator.userAgent.match(/(iPhone|iPod|iPad|Android)/)) {
