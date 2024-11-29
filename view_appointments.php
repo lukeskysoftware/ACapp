@@ -27,56 +27,28 @@
         <button id="clear-filters">Clear Filters</button>
     </form>
 
-    <?php
-    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        $filter = [
-            'date' => isset($_GET['date']) ? $_GET['date'] : '',
-            'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
-        ];
-        $search = isset($_GET['search']) ? $_GET['search'] : '';
-
-        // Get appointments based on filters
-        $appointmentsQuery = "SELECT a.id, p.name, p.surname, a.appointment_date, a.appointment_time, a.notes, p.phone, z.name as zone
-                              FROM cp_appointments a
-                              JOIN cp_patients p ON a.patient_id = p.id
-                              JOIN cp_zones z ON a.zone_id = z.id
-                              WHERE 1=1";
-        if (!empty($filter['date'])) {
-            $appointmentsQuery .= " AND a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
-        }
-        if (!empty($filter['zone'])) {
-            $appointmentsQuery .= " AND z.name = '" . mysqli_real_escape_string($conn, $filter['zone']) . "'";
-        }
-        if (!empty($search)) {
-            $appointmentsQuery .= " AND (p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
-        }
-        $appointmentsResult = mysqli_query($conn, $appointmentsQuery);
-        if ($appointmentsResult) {
-            echo '<h2>Appointments List</h2>';
-            echo '<table border="1">';
-            echo '<thead><tr><th>Name</th><th>Surname</th><th>Phone</th><th>Notes</th><th>Appointment Date</th><th>Appointment Time</th><th>Zone</th></tr></thead>';
-            echo '<tbody>';
-            while ($appointment = mysqli_fetch_assoc($appointmentsResult)) {
-                echo '<tr>';
-                echo '<td>' . htmlspecialchars($appointment['name']) . '</td>';
-                echo '<td>' . htmlspecialchars($appointment['surname']) . '</td>';
-                echo '<td>' . htmlspecialchars($appointment['phone']) . '</td>';
-                echo '<td>' . htmlspecialchars($appointment['notes']) . '</td>';
-                echo '<td>' . htmlspecialchars($appointment['appointment_date']) . '</td>';
-                echo '<td>' . htmlspecialchars($appointment['appointment_time']) . '</td>';
-                echo '<td>' . htmlspecialchars($appointment['zone']) . '</td>';
-                echo '</tr>';
-            }
-            echo '</tbody></table>';
-        }
-    }
-    ?>
-
+    <div id="appointments-list"></div>
     <div id='calendar'></div>
 
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
 
     <script>
+      function fetchAppointments() {
+        const search = document.getElementById('search').value;
+        const date_filter = document.getElementById('date_filter').value;
+        const zone_filter = document.getElementById('zone_filter').value;
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', `view_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                document.getElementById('appointments-list').innerHTML = xhr.responseText;
+                calendar.refetchEvents();
+            }
+        };
+        xhr.send();
+      }
+
       document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         var calendar = new FullCalendar.Calendar(calendarEl, {
@@ -116,16 +88,62 @@
         });
         calendar.render();
 
-        document.getElementById('search').addEventListener('input', () => calendar.refetchEvents());
-        document.getElementById('date_filter').addEventListener('change', () => calendar.refetchEvents());
-        document.getElementById('zone_filter').addEventListener('change', () => calendar.refetchEvents());
+        document.getElementById('search').addEventListener('input', fetchAppointments);
+        document.getElementById('date_filter').addEventListener('change', fetchAppointments);
+        document.getElementById('zone_filter').addEventListener('change', fetchAppointments);
         document.getElementById('clear-filters').addEventListener('click', () => {
           document.getElementById('search').value = '';
           document.getElementById('date_filter').value = '';
           document.getElementById('zone_filter').value = '';
-          calendar.refetchEvents();
+          fetchAppointments();
         });
+
+        // Initial fetch
+        fetchAppointments();
       });
     </script>
 </body>
 </html>
+
+<?php
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $filter = [
+        'date' => isset($_GET['date']) ? $_GET['date'] : '',
+        'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
+    ];
+    $search = isset($_GET['search']) ? $_GET['search'] : '';
+
+    // Get appointments based on filters
+    $appointmentsQuery = "SELECT a.id, p.name, p.surname, a.appointment_date, a.appointment_time, a.notes, p.phone, z.name as zone
+                          FROM cp_appointments a
+                          JOIN cp_patients p ON a.patient_id = p.id
+                          JOIN cp_zones z ON a.zone_id = z.id
+                          WHERE 1=1";
+    if (!empty($filter['date'])) {
+        $appointmentsQuery .= " AND a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
+    }
+    if (!empty($filter['zone'])) {
+        $appointmentsQuery .= " AND z.name = '" . mysqli_real_escape_string($conn, $filter['zone']) . "'";
+    }
+    if (!empty($search)) {
+        $appointmentsQuery .= " AND (p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
+    }
+    $appointmentsResult = mysqli_query($conn, $appointmentsQuery);
+    if ($appointmentsResult) {
+        echo '<table id="appointmentsTable" style="display:none;"><tbody>';
+        while ($appointment = mysqli_fetch_assoc($appointmentsResult)) {
+            echo '<tr>';
+            echo '<td>' . htmlspecialchars($appointment['id']) . '</td>';
+            echo '<td>' . htmlspecialchars($appointment['name']) . '</td>';
+            echo '<td>' . htmlspecialchars($appointment['surname']) . '</td>';
+            echo '<td>' . htmlspecialchars($appointment['phone']) . '</td>';
+            echo '<td>' . htmlspecialchars($appointment['notes']) . '</td>';
+            echo '<td>' . htmlspecialchars($appointment['appointment_date']) . '</td>';
+            echo '<td>' . htmlspecialchars($appointment['appointment_time']) . '</td>';
+            echo '<td>' . htmlspecialchars($appointment['zone']) . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
+    }
+}
+?>
