@@ -54,18 +54,38 @@
         return mysqli_fetch_all($result, MYSQLI_ASSOC);
     }
 
+    // Function to get unique dates with appointments
+    function getAppointmentDates($appointments) {
+        $dates = array_unique(array_map(function($appointment) {
+            return $appointment['appointment_date'];
+        }, $appointments));
+        sort($dates);
+        return $dates;
+    }
+
     $appointments = getAppointments($conn);
+    $appointmentDates = getAppointmentDates($appointments);
     ?>
 
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
+    <div class="dropdown mt-3">
+        <button class="btn btn-primary dropdown-toggle" type="button" id="itineraryDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+            Vuoi l'itinerario per gli appuntamenti di oggi?
+        </button>
+        <ul class="dropdown-menu" aria-labelledby="itineraryDropdown">
+            <?php foreach ($appointmentDates as $date): ?>
+                <li><a class="dropdown-item itinerary-date" href="#" data-date="<?php echo $date; ?>"><?php echo $date; ?></a></li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         var detailsPanel = document.getElementById('detailsPanel');
         var calendar = new FullCalendar.Calendar(calendarEl, {
-          locale: 'it',
+          locale: 'it', // Set the locale to Italian
           initialView: 'timeGridWeek',
           themeSystem: 'bootstrap5',
           headerToolbar: {
@@ -114,12 +134,12 @@
             }));
             successCallback(events);
           },
-          eventTimeFormat: {
+          eventTimeFormat: { // like '14:30'
             hour: '2-digit',
             minute: '2-digit',
             meridiem: false
           },
-          slotLabelFormat: {
+          slotLabelFormat: { // time labels in 24-hour format
             hour: '2-digit',
             minute: '2-digit',
             hour12: false
@@ -138,6 +158,27 @@
           }
         });
         calendar.render();
+
+        document.querySelectorAll('.itinerary-date').forEach(function(element) {
+          element.addEventListener('click', function(event) {
+            event.preventDefault();
+            const selectedDate = event.target.getAttribute('data-date');
+            const appointments = <?php echo json_encode($appointments); ?>;
+            const todaysAppointments = appointments.filter(appointment => appointment.appointment_date === selectedDate);
+            if (todaysAppointments.length === 0) {
+              alert('Nessun appuntamento per questa data.');
+              return;
+            }
+            let waypoints = todaysAppointments.slice(1, -1).map(appointment => ({
+              location: appointment.address,
+              stopover: true
+            }));
+            let origin = todaysAppointments[0].address;
+            let destination = todaysAppointments[todaysAppointments.length - 1].address;
+            let mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&travelmode=driving`;
+            window.open(mapUrl, '_blank');
+          });
+        });
       });
     </script>
 </body>
