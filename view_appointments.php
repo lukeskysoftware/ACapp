@@ -6,7 +6,10 @@
 </head>
 <body>
     <?php include 'menu.php'; ?>
-    <?php include 'db.php'; // Include database connection ?>
+    <?php
+    include 'db.php'; // Include database connection
+    include 'manage_appointments.php'; // Include the file where getZones() is defined
+    ?>
 
     <form id="filters" onsubmit="return false;">
         <label for="search">Search by Name:</label>
