@@ -1,4 +1,4 @@
-it<?php
+<?php
 include 'db.php';
 include 'menu.php';
 
@@ -28,12 +28,14 @@ function getAppointments($filter = [], $search = '') {
 }
 
 // Function to get distinct zones
-function getZones() {
-    global $conn;
-    $sql = "SELECT DISTINCT z.name FROM cp_appointments a JOIN cp_zones z ON a.zone_id = z.id";
-    $result = mysqli_query($conn, $sql);
-    $zones = mysqli_fetch_all($result, MYSQLI_ASSOC);
-    return array_column($zones, 'name');
+if (!function_exists('getZones')) {
+    function getZones() {
+        global $conn;
+        $sql = "SELECT DISTINCT z.name FROM cp_appointments a JOIN cp_zones z ON a.zone_id = z.id";
+        $result = mysqli_query($conn, $sql);
+        $zones = mysqli_fetch_all($result, MYSQLI_ASSOC);
+        return array_column($zones, 'name');
+    }
 }
 
 // Function to update an appointment
