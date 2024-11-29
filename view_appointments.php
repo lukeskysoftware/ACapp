@@ -174,11 +174,12 @@
             alert('Nessun appuntamento per questa data.');
             return;
           }
-          let waypoints = todaysAppointments.slice(1, -1).map(appointment => ({
+          let waypoints = todaysAppointments.map(appointment => ({
             location: appointment.address,
             stopover: true
           }));
-          let origin = todaysAppointments[0].address;
+          waypoints.unshift({ location: '', stopover: true }); // Add a blank address as the first position
+          let origin = ''; // Blank address at the start
           let destination = todaysAppointments[todaysAppointments.length - 1].address;
           let mapUrl;
 
