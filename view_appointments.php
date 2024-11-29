@@ -70,14 +70,14 @@
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
     <div class="dropdown mt-3">
-        <button class="btn btn-primary dropdown-toggle" type="button" id="itineraryDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-            Vuoi l'itinerario per gli appuntamenti di oggi?
+        <button class="btn btn-primary dropdown-toggle" type="button" id="itineraryButton" data-bs-toggle="dropdown" aria-expanded="false">
+            Vuoi l'itinerario per gli appuntamenti del
+            <select id="itineraryDropdown" class="form-select">
+                <?php foreach ($appointmentDates as $date): ?>
+                    <option value="<?php echo $date; ?>"><?php echo $date; ?></option>
+                <?php endforeach; ?>
+            </select>
         </button>
-        <ul class="dropdown-menu" aria-labelledby="itineraryDropdown">
-            <?php foreach ($appointmentDates as $date): ?>
-                <li><a class="dropdown-item itinerary-date" href="#" data-date="<?php echo $date; ?>"><?php echo $date; ?></a></li>
-            <?php endforeach; ?>
-        </ul>
     </div>
 
     <script>
@@ -159,28 +159,22 @@
         });
         calendar.render();
 
-        document.querySelectorAll('.itinerary-date').forEach(function(element) {
-          element.addEventListener('click', function(event) {
-            event.preventDefault();
-            const selectedDate = event.target.getAttribute('data-date');
-            const appointments = <?php echo json_encode($appointments); ?>;
-            const todaysAppointments = appointments.filter(appointment => appointment.appointment_date === selectedDate).sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
-            if (todaysAppointments.length === 0) {
-              alert('Nessun appuntamento per questa data.');
-              return;
-            }
-            navigator.geolocation.getCurrentPosition(function(position) {
-              const currentLocation = `${position.coords.latitude},${position.coords.longitude}`;
-              let waypoints = todaysAppointments.map(appointment => ({
-                location: appointment.address,
-                stopover: true
-              }));
-              let origin = currentLocation;
-              let destination = todaysAppointments[todaysAppointments.length - 1].address;
-              let mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&travelmode=driving`;
-              window.open(mapUrl, '_blank');
-            });
-          });
+        document.getElementById('itineraryDropdown').addEventListener('change', function() {
+          const selectedDate = this.value;
+          const appointments = <?php echo json_encode($appointments); ?>;
+          const todaysAppointments = appointments.filter(appointment => appointment.appointment_date === selectedDate).sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
+          if (todaysAppointments.length === 0) {
+            alert('Nessun appuntamento per questa data.');
+            return;
+          }
+          let waypoints = todaysAppointments.slice(1, -1).map(appointment => ({
+            location: appointment.address,
+            stopover: true
+          }));
+          let origin = todaysAppointments[0].address;
+          let destination = todaysAppointments[todaysAppointments.length - 1].address;
+          let mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&travelmode=driving`;
+          window.open(mapUrl, '_blank');
         });
       });
     </script>
