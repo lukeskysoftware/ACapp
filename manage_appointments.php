@@ -42,6 +42,24 @@ function getZones() {
     return array_column($zones, 'name');
 }
 
+// Function to get available dates and timeslots for a zone
+function getAvailableDatesAndTimeslots($zone) {
+    global $conn;
+    $datesAndTimeslots = [];
+    $sql = "SELECT DISTINCT appointment_date, appointment_time 
+            FROM cp_appointments 
+            WHERE zone_id = (SELECT id FROM cp_zones WHERE name = '" . mysqli_real_escape_string($conn, $zone) . "') 
+            AND appointment_date >= CURDATE() 
+            ORDER BY appointment_date, appointment_time ASC";
+    $result = mysqli_query($conn, $sql);
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $datesAndTimeslots[$row['appointment_date']][] = $row['appointment_time'];
+        }
+    }
+    return $datesAndTimeslots;
+}
+
 // Function to update an appointment
 if (isset($_POST['update'])) {
     $id = $_POST['appointment_id'];
@@ -208,17 +226,25 @@ $showTable = !empty($appointments);
             const dateSelect = document.getElementById(`appointment_date_${appointmentId}`);
             const timeSelect = document.getElementById(`appointment_time_${appointmentId}`);
             const selectedDate = dateSelect.value;
-            const data = JSON.parse(document.getElementById('available_dates_timeslots').textContent);
+            const zone = document.getElementById('zone').value;
 
-            timeSelect.innerHTML = '';
-            if (data[selectedDate]) {
-                data[selectedDate].forEach(timeslot => {
-                    const timeOption = document.createElement('option');
-                    timeOption.value = timeslot;
-                    timeOption.textContent = timeslot;
-                    timeSelect.appendChild(timeOption);
-                });
-            }
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `available_dates_timeslots.php?zone=${encodeURIComponent(zone)}`, true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    timeSelect.innerHTML = '';
+                    if (response[selectedDate]) {
+                        response[selectedDate].forEach(timeslot => {
+                            const timeOption = document.createElement('option');
+                            timeOption.value = timeslot;
+                            timeOption.textContent = timeslot;
+                            timeSelect.appendChild(timeOption);
+                        });
+                    }
+                }
+            };
+            xhr.send();
         }
     </script>
 </head>
@@ -226,7 +252,7 @@ $showTable = !empty($appointments);
     <h2>Gestione Appuntamenti</h2>
     <form onsubmit="return false;">
         <label for="date">Filtra per Data:</label>
-        <input type="hidden" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
+        <input type="date" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
         <div id="available-dates-timeslots"></div>
         <label for="zone">Filtra per Zona:</label>
         <select id="zone" name="zone" onchange="fetchAvailableDatesAndTimeslots(this.value, '')">
