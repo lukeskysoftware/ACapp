@@ -152,11 +152,21 @@ $showTable = !empty($appointments);
 
         function showActions(id) {
             const actionRow = document.getElementById(`action-${id}`);
+            const tableElement = document.querySelector('table');
             if (actionRow.style.display === 'none' || actionRow.style.display === '') {
                 actionRow.style.display = 'table-row';
+                tableElement.style.display = 'none';
             } else {
                 actionRow.style.display = 'none';
+                tableElement.style.display = 'table';
             }
+        }
+
+        function closeActions(id) {
+            const actionRow = document.getElementById(`action-${id}`);
+            const tableElement = document.querySelector('table');
+            actionRow.style.display = 'none';
+            tableElement.style.display = 'table';
         }
     </script>
 </head>
@@ -223,6 +233,7 @@ $showTable = !empty($appointments);
                     <input type="date" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
                     <input type="time" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
                     <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn">
+                    <button type="button" class="modifica-btn" onclick="closeActions(<?php echo $appointment['id']; ?>)">Chiudi</button>
                 </form>
             </td>
         </tr>
