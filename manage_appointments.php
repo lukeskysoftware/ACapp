@@ -149,12 +149,32 @@ function clearFilters() {
     filterAppointments();
 }
 
-        function confirmDelete(appointment) {
-            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes} il ${appointment.appointment_date} all'ora ${appointment.appointment_time}?`)) {
-                document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
-                document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
-            }
-        }
+function showActions(id) {
+    const actionRow = document.getElementById(`action-${id}`);
+    const editForm = document.getElementById(`edit-form-${id}`);
+    const displayStatus = actionRow.style.display === 'none' || actionRow.style.display === '';
+
+    // Hide all other action rows
+    document.querySelectorAll('.action-row').forEach(row => row.style.display = 'none');
+
+    // Hide all other edit forms
+    document.querySelectorAll('.edit-form').forEach(form => form.style.display = 'none');
+
+    if (displayStatus) {
+        actionRow.style.display = 'table-row';
+        editForm.style.display = 'inline';
+    } else {
+        actionRow.style.display = 'none';
+        editForm.style.display = 'none';
+    }
+}
+
+function confirmDelete(appointment) {
+    if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes}?`)) {
+        document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
+        document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
+    }
+}
     </script>
 </head>
 <body>
@@ -210,7 +230,7 @@ function clearFilters() {
         </tr>
         <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
             <td colspan="9">
-                <form method="post" action="manage_appointments.php" style="display:inline;">
+                <form method="post" action="manage_appointments.php" id="edit-form-<?php echo $appointment['id']; ?>" class="edit-form" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
                     <input type="text" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>" required>
                     <input type="text" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>" required>
