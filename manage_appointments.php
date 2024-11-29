@@ -42,24 +42,6 @@ function getZones() {
     return array_column($zones, 'name');
 }
 
-// Function to get available dates and timeslots for a zone
-function getAvailableDatesAndTimeslots($zone) {
-    global $conn;
-    $datesAndTimeslots = [];
-    $sql = "SELECT DISTINCT appointment_date, appointment_time 
-            FROM cp_appointments 
-            WHERE zone_id = (SELECT id FROM cp_zones WHERE name = '" . mysqli_real_escape_string($conn, $zone) . "') 
-            AND appointment_date >= CURDATE() 
-            ORDER BY appointment_date, appointment_time ASC";
-    $result = mysqli_query($conn, $sql);
-    if ($result) {
-        while ($row = mysqli_fetch_assoc($result)) {
-            $datesAndTimeslots[$row['appointment_date']][] = $row['appointment_time'];
-        }
-    }
-    return $datesAndTimeslots;
-}
-
 // Function to update an appointment
 if (isset($_POST['update'])) {
     $id = $_POST['appointment_id'];
@@ -187,38 +169,55 @@ $showTable = !empty($appointments);
             }
         }
 
-        function fetchAvailableDatesAndTimeslots(zone) {
+        function fetchAvailableDatesAndTimeslots(zone, appointmentId) {
             const xhr = new XMLHttpRequest();
             xhr.open('GET', `available_dates_timeslots.php?zone=${encodeURIComponent(zone)}`, true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     const response = JSON.parse(xhr.responseText);
-                    displayAvailableDatesAndTimeslots(response);
+                    displayAvailableDatesAndTimeslots(response, appointmentId);
                 }
             };
             xhr.send();
         }
 
-        function displayAvailableDatesAndTimeslots(data) {
-            const container = document.getElementById('available-dates-timeslots');
-            container.innerHTML = '';
+        function displayAvailableDatesAndTimeslots(data, appointmentId) {
+            const dateSelect = document.getElementById(`appointment_date_${appointmentId}`);
+            const timeSelect = document.getElementById(`appointment_time_${appointmentId}`);
+            dateSelect.innerHTML = '';
+            timeSelect.innerHTML = '';
+
             for (const [date, timeslots] of Object.entries(data)) {
-                const dateDiv = document.createElement('div');
-                dateDiv.textContent = date;
-                const timeslotDiv = document.createElement('div');
-                timeslots.forEach(timeslot => {
-                    const timeslotLink = document.createElement('a');
-                    timeslotLink.href = '#';
-                    timeslotLink.textContent = timeslot;
-                    timeslotLink.onclick = function() {
-                        document.getElementById('date').value = date;
-                        document.getElementById('time').value = timeslot;
-                        return false;
-                    };
-                    timeslotDiv.appendChild(timeslotLink);
+                const dateOption = document.createElement('option');
+                dateOption.value = date;
+                dateOption.textContent = date;
+                dateSelect.appendChild(dateOption);
+
+                if (date === dateSelect.value) {
+                    timeslots.forEach(timeslot => {
+                        const timeOption = document.createElement('option');
+                        timeOption.value = timeslot;
+                        timeOption.textContent = timeslot;
+                        timeSelect.appendChild(timeOption);
+                    });
+                }
+            }
+        }
+
+        function updateTimeslots(appointmentId) {
+            const dateSelect = document.getElementById(`appointment_date_${appointmentId}`);
+            const timeSelect = document.getElementById(`appointment_time_${appointmentId}`);
+            const selectedDate = dateSelect.value;
+            const data = JSON.parse(document.getElementById('available_dates_timeslots').textContent);
+
+            timeSelect.innerHTML = '';
+            if (data[selectedDate]) {
+                data[selectedDate].forEach(timeslot => {
+                    const timeOption = document.createElement('option');
+                    timeOption.value = timeslot;
+                    timeOption.textContent = timeslot;
+                    timeSelect.appendChild(timeOption);
                 });
-                container.appendChild(dateDiv);
-                container.appendChild(timeslotDiv);
             }
         }
     </script>
@@ -230,7 +229,7 @@ $showTable = !empty($appointments);
         <input type="hidden" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
         <div id="available-dates-timeslots"></div>
         <label for="zone">Filtra per Zona:</label>
-        <select id="zone" name="zone" onchange="fetchAvailableDatesAndTimeslots(this.value)">
+        <select id="zone" name="zone" onchange="fetchAvailableDatesAndTimeslots(this.value, '')">
             <option value="">Seleziona Zona</option>
             <?php foreach ($zones as $zone) { ?>
                 <option value="<?php echo htmlspecialchars($zone); ?>"><?php echo htmlspecialchars($zone); ?></option>
@@ -267,7 +266,7 @@ $showTable = !empty($appointments);
             <td><?php echo htmlspecialchars($appointment['address']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
             <td>
-                <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
+                <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>); fetchAvailableDatesAndTimeslots('<?php echo $appointment['zone']; ?>', <?php echo $appointment['id']; ?>)">Modifica</button>
                 <button class="cancella-btn" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
@@ -284,8 +283,10 @@ $showTable = !empty($appointments);
                     <input type="text" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
                     <input type="text" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>" required>
                     <input type="text" name="notes" value="<?php echo htmlspecialchars($appointment['notes']); ?>">
-                    <input type="hidden" name="appointment_date" id="appointment_date_<?php echo $appointment['id']; ?>" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
-                    <input type="hidden" name="appointment_time" id="appointment_time_<?php echo $appointment['id']; ?>" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
+                    <label for="appointment_date_<?php echo $appointment['id']; ?>">Data Appuntamento:</label>
+                    <select name="appointment_date" id="appointment_date_<?php echo $appointment['id']; ?>" onchange="updateTimeslots(<?php echo $appointment['id']; ?>)" required></select>
+                    <label for="appointment_time_<?php echo $appointment['id']; ?>">Ora Appuntamento:</label>
+                    <select name="appointment_time" id="appointment_time_<?php echo $appointment['id']; ?>" required></select>
                     <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn">
                 </form>
             </td>
