@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>View Appointments</title>
+    <title>Visualizza Appuntamenti</title>
     <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css' rel='stylesheet'>
     <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js'></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
@@ -62,6 +62,7 @@
         var calendarEl = document.getElementById('calendar');
         var detailsPanel = document.getElementById('detailsPanel');
         var calendar = new FullCalendar.Calendar(calendarEl, {
+          locale: 'it', // Set the locale to Italian
           initialView: 'timeGridWeek',
           themeSystem: 'bootstrap5',
           headerToolbar: {
