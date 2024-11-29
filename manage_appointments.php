@@ -42,6 +42,24 @@ function getZones() {
     return array_column($zones, 'name');
 }
 
+// Function to get available dates and timeslots for a zone
+function getAvailableDatesAndTimeslots($zone) {
+    global $conn;
+    $datesAndTimeslots = [];
+    $sql = "SELECT DISTINCT appointment_date, appointment_time 
+            FROM cp_appointments 
+            WHERE zone_id = (SELECT id FROM cp_zones WHERE name = '" . mysqli_real_escape_string($conn, $zone) . "') 
+            AND appointment_date >= CURDATE() 
+            ORDER BY appointment_date, appointment_time ASC";
+    $result = mysqli_query($conn, $sql);
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $datesAndTimeslots[$row['appointment_date']][] = $row['appointment_time'];
+        }
+    }
+    return $datesAndTimeslots;
+}
+
 // Function to update an appointment
 if (isset($_POST['update'])) {
     $id = $_POST['appointment_id'];
@@ -107,83 +125,112 @@ $showTable = !empty($appointments);
             document.getElementById('clear-filters').addEventListener('click', clearFilters);
         });
 
-    document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('date').addEventListener('change', filterAppointments);
-    document.getElementById('zone').addEventListener('input', filterAppointments);
-    document.getElementById('search').addEventListener('input', filterAppointments);
-    document.getElementById('clear-filters').addEventListener('click', clearFilters);
-});
+        function filterAppointments() {
+            const date = document.getElementById('date').value;
+            const zone = document.getElementById('zone').value;
+            const search = document.getElementById('search').value;
 
-function filterAppointments() {
-    const date = document.getElementById('date').value;
-    const zone = document.getElementById('zone').value;
-    const search = document.getElementById('search').value;
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}`, true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(xhr.responseText, 'text/html');
+                    const newTable = doc.querySelector('table');
+                    const appointmentsMessage = doc.querySelector('#no-appointments-message');
+                    
+                    const tableElement = document.querySelector('table');
+                    if (newTable && newTable.querySelector('tbody').children.length > 0) {
+                        tableElement.innerHTML = newTable.innerHTML;
+                        tableElement.classList.remove('hidden');
+                        appointmentsMessage.classList.add('hidden');
+                    } else {
+                        tableElement.classList.add('hidden');
+                        appointmentsMessage.classList.remove('hidden');
+                    }
+                }
+            };
+            xhr.send();
+        }
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}`, true);
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4 && xhr.status === 200) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(xhr.responseText, 'text/html');
-            const newTable = doc.querySelector('table');
-            const appointmentsMessage = doc.querySelector('#no-appointments-message');
-            
-            const tableElement = document.querySelector('table');
-            if (newTable && newTable.querySelector('tbody').children.length > 0) {
-                tableElement.innerHTML = newTable.innerHTML;
-                tableElement.classList.remove('hidden');
-                appointmentsMessage.classList.add('hidden');
+        function clearFilters() {
+            document.getElementById('date').value = '';
+            document.getElementById('zone').value = '';
+            document.getElementById('search').value = '';
+            filterAppointments();
+        }
+
+        function showActions(id) {
+            const actionRow = document.getElementById(`action-${id}`);
+            const editForm = document.getElementById(`edit-form-${id}`);
+            const displayStatus = actionRow.style.display === 'none' || actionRow.style.display === '';
+
+            // Hide all other action rows
+            document.querySelectorAll('.action-row').forEach(row => row.style.display = 'none');
+
+            // Hide all other edit forms
+            document.querySelectorAll('.edit-form').forEach(form => form.style.display = 'none');
+
+            if (displayStatus) {
+                actionRow.style.display = 'table-row';
+                editForm.style.display = 'inline';
             } else {
-                tableElement.classList.add('hidden');
-                appointmentsMessage.classList.remove('hidden');
+                actionRow.style.display = 'none';
+                editForm.style.display = 'none';
             }
         }
-    };
-    xhr.send();
-}
 
-function clearFilters() {
-    document.getElementById('date').value = '';
-    document.getElementById('zone').value = '';
-    document.getElementById('search').value = '';
-    filterAppointments();
-}
+        function confirmDelete(appointment) {
+            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes}?`)) {
+                document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
+                document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
+            }
+        }
 
-function showActions(id) {
-    const actionRow = document.getElementById(`action-${id}`);
-    const editForm = document.getElementById(`edit-form-${id}`);
-    const displayStatus = actionRow.style.display === 'none' || actionRow.style.display === '';
+        function fetchAvailableDatesAndTimeslots(zone) {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `available_dates_timeslots.php?zone=${encodeURIComponent(zone)}`, true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    displayAvailableDatesAndTimeslots(response);
+                }
+            };
+            xhr.send();
+        }
 
-    // Hide all other action rows
-    document.querySelectorAll('.action-row').forEach(row => row.style.display = 'none');
-
-    // Hide all other edit forms
-    document.querySelectorAll('.edit-form').forEach(form => form.style.display = 'none');
-
-    if (displayStatus) {
-        actionRow.style.display = 'table-row';
-        editForm.style.display = 'inline';
-    } else {
-        actionRow.style.display = 'none';
-        editForm.style.display = 'none';
-    }
-}
-
-function confirmDelete(appointment) {
-    if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes}?`)) {
-        document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
-        document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
-    }
-}
+        function displayAvailableDatesAndTimeslots(data) {
+            const container = document.getElementById('available-dates-timeslots');
+            container.innerHTML = '';
+            for (const [date, timeslots] of Object.entries(data)) {
+                const dateDiv = document.createElement('div');
+                dateDiv.textContent = date;
+                const timeslotDiv = document.createElement('div');
+                timeslots.forEach(timeslot => {
+                    const timeslotLink = document.createElement('a');
+                    timeslotLink.href = '#';
+                    timeslotLink.textContent = timeslot;
+                    timeslotLink.onclick = function() {
+                        document.getElementById('date').value = date;
+                        document.getElementById('time').value = timeslot;
+                        return false;
+                    };
+                    timeslotDiv.appendChild(timeslotLink);
+                });
+                container.appendChild(dateDiv);
+                container.appendChild(timeslotDiv);
+            }
+        }
     </script>
 </head>
 <body>
     <h2>Gestione Appuntamenti</h2>
     <form onsubmit="return false;">
         <label for="date">Filtra per Data:</label>
-        <input type="date" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
+        <input type="hidden" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
+        <div id="available-dates-timeslots"></div>
         <label for="zone">Filtra per Zona:</label>
-        <select id="zone" name="zone">
+        <select id="zone" name="zone" onchange="fetchAvailableDatesAndTimeslots(this.value)">
             <option value="">Seleziona Zona</option>
             <?php foreach ($zones as $zone) { ?>
                 <option value="<?php echo htmlspecialchars($zone); ?>"><?php echo htmlspecialchars($zone); ?></option>
@@ -237,8 +284,8 @@ function confirmDelete(appointment) {
                     <input type="text" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
                     <input type="text" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>" required>
                     <input type="text" name="notes" value="<?php echo htmlspecialchars($appointment['notes']); ?>">
-                    <input type="date" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
-                    <input type="time" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
+                    <input type="hidden" name="appointment_date" id="appointment_date_<?php echo $appointment['id']; ?>" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
+                    <input type="hidden" name="appointment_time" id="appointment_time_<?php echo $appointment['id']; ?>" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
                     <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn">
                 </form>
             </td>
