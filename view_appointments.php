@@ -27,9 +27,41 @@
       document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         var calendar = new FullCalendar.Calendar(calendarEl, {
-          initialView: 'dayGridMonth'
+          initialView: 'dayGridMonth',
+          events: function(fetchInfo, successCallback, failureCallback) {
+            const search = document.getElementById('search').value;
+            const date_filter = document.getElementById('date_filter').value;
+            const zone_filter = document.getElementById('zone_filter').value;
+
+            fetch(`manage_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`)
+              .then(response => response.json())
+              .then(data => {
+                const events = data.map(appointment => ({
+                  id: appointment.id,
+                  title: appointment.name + ' ' + appointment.surname,
+                  start: appointment.appointment_date + 'T' + appointment.appointment_time,
+                  extendedProps: {
+                    phone: appointment.phone,
+                    notes: appointment.notes,
+                    zone: appointment.zone
+                  }
+                }));
+                successCallback(events);
+              })
+              .catch(error => failureCallback(error));
+          }
         });
         calendar.render();
+
+        document.getElementById('search').addEventListener('input', () => calendar.refetchEvents());
+        document.getElementById('date_filter').addEventListener('change', () => calendar.refetchEvents());
+        document.getElementById('zone_filter').addEventListener('change', () => calendar.refetchEvents());
+        document.getElementById('clear-filters').addEventListener('click', () => {
+          document.getElementById('search').value = '';
+          document.getElementById('date_filter').value = '';
+          document.getElementById('zone_filter').value = '';
+          calendar.refetchEvents();
+        });
       });
     </script>
 </body>
