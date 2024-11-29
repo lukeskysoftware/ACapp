@@ -14,7 +14,21 @@
     <?php include_once 'menu.php'; ?>
     <?php
     include_once 'db.php';
-    include_once 'manage_appointments.php';
+
+    // Function to get all appointments with patient and zone information
+    function getAppointments($conn) {
+        $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, z.name as zone
+                FROM cp_appointments a
+                JOIN cp_patients p ON a.patient_id = p.id
+                JOIN cp_zones z ON a.zone_id = z.id";
+        $result = mysqli_query($conn, $sql);
+        if (!$result) {
+            die('Error: ' . mysqli_error($conn));
+        }
+        return mysqli_fetch_all($result, MYSQLI_ASSOC);
+    }
+
+    $appointments = getAppointments($conn);
     ?>
 
     <div id="calendar"></div>
@@ -30,28 +44,19 @@
             right: 'dayGridMonth,timeGridWeek,timeGridDay'
           },
           events: function(fetchInfo, successCallback, failureCallback) {
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', `fetch_appointments.php`, true);
-            xhr.onreadystatechange = function() {
-                if (xhr.readyState === 4 && xhr.status === 200) {
-                    const appointments = JSON.parse(xhr.responseText);
-                    const events = appointments.map(appointment => ({
-                        id: appointment.id,
-                        title: `${appointment.name} ${appointment.surname}`,
-                        start: `${appointment.appointment_date}T${appointment.appointment_time}`,
-                        extendedProps: {
-                            phone: appointment.phone,
-                            address: appointment.address,
-                            notes: appointment.notes,
-                            zone: appointment.zone
-                        }
-                    }));
-                    successCallback(events);
-                } else if (xhr.readyState === 4) {
-                    failureCallback(xhr.statusText);
+            const appointments = <?php echo json_encode($appointments); ?>;
+            const events = appointments.map(appointment => ({
+                id: appointment.id,
+                title: `${appointment.name} ${appointment.surname}`,
+                start: `${appointment.appointment_date}T${appointment.appointment_time}`,
+                extendedProps: {
+                    phone: appointment.phone,
+                    address: appointment.address,
+                    notes: appointment.notes,
+                    zone: appointment.zone
                 }
-            };
-            xhr.send();
+            }));
+            successCallback(events);
           },
           eventDidMount: function(info) {
             info.el.title = `Phone: ${info.event.extendedProps.phone}\nAddress: ${info.event.extendedProps.address}\nNotes: ${info.event.extendedProps.notes}`;
