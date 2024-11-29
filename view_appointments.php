@@ -3,6 +3,7 @@
 <head>
     <title>View Appointments</title>
     <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css' rel='stylesheet'>
+    <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js'></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
     <style>
         #calendar {
@@ -14,6 +15,21 @@
         }
         .fc-daygrid-event {
             height: auto !important;
+        }
+        .tooltip-inner {
+            max-width: 350px;
+        }
+        #detailsPanel {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: 300px;
+            height: 100%;
+            overflow-y: auto;
+            background: #f8f9fa;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+            padding: 20px;
+            display: none;
         }
     </style>
 </head>
@@ -39,12 +55,15 @@
     ?>
 
     <div id="calendar"></div>
+    <div id="detailsPanel"></div>
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
+        var detailsPanel = document.getElementById('detailsPanel');
         var calendar = new FullCalendar.Calendar(calendarEl, {
           initialView: 'timeGridWeek',
+          themeSystem: 'bootstrap5',
           headerToolbar: {
             left: 'prev,next today',
             center: 'title',
@@ -111,7 +130,30 @@
             minute: '2-digit',
             hour12: false
           },
-          height: 'auto'
+          height: 'auto',
+          eventDidMount: function(info) {
+            var tooltip = new bootstrap.Tooltip(info.el, {
+              title: `
+                <b>${info.event.title}</b><br/>
+                Phone: ${info.event.extendedProps.phone}<br/>
+                Address: ${info.event.extendedProps.address}<br/>
+                Notes: ${info.event.extendedProps.notes}
+              `,
+              html: true,
+              placement: 'top',
+              container: 'body'
+            });
+          },
+          eventClick: function(info) {
+            detailsPanel.innerHTML = `
+              <h5>${info.event.title}</h5>
+              <p><strong>Phone:</strong> <a href="tel:${info.event.extendedProps.phone}">${info.event.extendedProps.phone}</a></p>
+              <p><strong>Address:</strong> ${info.event.extendedProps.address}</p>
+              <p><strong>Notes:</strong> ${info.event.extendedProps.notes}</p>
+              <p><strong>Zone:</strong> ${info.event.extendedProps.zone}</p>
+            `;
+            detailsPanel.style.display = 'block';
+          }
         });
         calendar.render();
       });
