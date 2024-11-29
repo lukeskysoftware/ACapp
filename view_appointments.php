@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>View Appointments</title>
+    <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css' rel='stylesheet'>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
     <style>
         #calendar {
@@ -23,7 +24,7 @@
 
     // Function to get all appointments with patient and zone information
     function getAppointments($conn) {
-        $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, z.name as zone
+        $sql = "SELECT a.id, p.name, p.surname, CONCAT('+39', p.phone) as phone, a.notes, a.appointment_date, a.appointment_time, a.address, z.name as zone
                 FROM cp_appointments a
                 JOIN cp_patients p ON a.patient_id = p.id
                 JOIN cp_zones z ON a.zone_id = z.id";
@@ -50,17 +51,25 @@
             right: 'dayGridMonth,timeGridWeek,timeGridDay'
           },
           views: {
+            dayGridMonth: {
+              eventContent: function(arg) {
+                let italicEl = document.createElement('div');
+                italicEl.innerHTML = `<b>${arg.event.title}</b>`;
+                let arrayOfDomNodes = [ italicEl ];
+                return { domNodes: arrayOfDomNodes };
+              }
+            },
             timeGridWeek: {
               eventContent: function(arg) {
                 let italicEl = document.createElement('div');
                 italicEl.innerHTML = `
                   <b>${arg.event.title}</b><br/>
-                  <i>Phone: ${arg.event.extendedProps.phone}</i><br/>
+                  <a href="tel:${arg.event.extendedProps.phone}">${arg.event.extendedProps.phone}</a><br/>
                   <i>Address: ${arg.event.extendedProps.address}</i><br/>
                   <i>Notes: ${arg.event.extendedProps.notes}</i>
                 `;
-                let arrayOfDomNodes = [ italicEl ]
-                return { domNodes: arrayOfDomNodes }
+                let arrayOfDomNodes = [ italicEl ];
+                return { domNodes: arrayOfDomNodes };
               }
             },
             timeGridDay: {
@@ -68,12 +77,12 @@
                 let italicEl = document.createElement('div');
                 italicEl.innerHTML = `
                   <b>${arg.event.title}</b><br/>
-                  <i>Phone: ${arg.event.extendedProps.phone}</i><br/>
+                  <a href="tel:${arg.event.extendedProps.phone}">${arg.event.extendedProps.phone}</a><br/>
                   <i>Address: ${arg.event.extendedProps.address}</i><br/>
                   <i>Notes: ${arg.event.extendedProps.notes}</i>
                 `;
-                let arrayOfDomNodes = [ italicEl ]
-                return { domNodes: arrayOfDomNodes }
+                let arrayOfDomNodes = [ italicEl ];
+                return { domNodes: arrayOfDomNodes };
               }
             }
           },
@@ -97,11 +106,12 @@
             minute: '2-digit',
             meridiem: false
           },
-          headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay'
-          }
+          slotLabelFormat: { // time labels in 24-hour format
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          },
+          height: 'auto'
         });
         calendar.render();
       });
