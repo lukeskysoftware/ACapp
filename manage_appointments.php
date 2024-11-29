@@ -81,7 +81,7 @@ $showTable = !empty($appointments);
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Manage Appointments</title>
+    <title>Gestione Appuntamenti</title>
     <style>
         .modifica-btn {
             background-color: green;
@@ -178,34 +178,34 @@ function confirmDelete(appointment) {
     </script>
 </head>
 <body>
-    <h2>Manage Appointments</h2>
+    <h2>Gestione Appuntamenti</h2>
     <form onsubmit="return false;">
-        <label for="date">Filter by Date:</label>
+        <label for="date">Filtra per Data:</label>
         <input type="date" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
-        <label for="zone">Filter by Zone:</label>
+        <label for="zone">Filtra per Zona:</label>
         <select id="zone" name="zone">
-            <option value="">Select Zone</option>
+            <option value="">Seleziona Zona</option>
             <?php foreach ($zones as $zone) { ?>
                 <option value="<?php echo htmlspecialchars($zone); ?>"><?php echo htmlspecialchars($zone); ?></option>
             <?php } ?>
         </select>
-        <label for="search">Search by Name:</label>
+        <label for="search">Cerca per Nome:</label>
         <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
-        <button id="clear-filters">Clear Filters</button>
+        <button id="clear-filters">Cancella Filtri</button>
     </form>
     <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?>">Non ci sono appuntamenti</p>
     <table border="1" class="<?php echo $showTable ? '' : 'hidden'; ?>">
         <thead>
         <tr>
-            <th>Name</th>
-            <th>Surname</th>
-            <th>Phone</th>
-            <th>Notes</th>
-            <th>Appointment Date</th>
-            <th>Appointment Time</th>
-            <th>Address</th>
-            <th>Zone</th>
-            <th>Actions</th>
+            <th>Nome</th>
+            <th>Cognome</th>
+            <th>Telefono</th>
+            <th>Note</th>
+            <th>Data Appuntamento</th>
+            <th>Ora Appuntamento</th>
+            <th>Indirizzo</th>
+            <th>Zona</th>
+            <th>Azioni</th>
         </tr>
         </thead>
         <tbody>
@@ -215,7 +215,7 @@ function confirmDelete(appointment) {
             <td><?php echo htmlspecialchars($appointment['surname']); ?></td>
             <td><?php echo htmlspecialchars($appointment['phone']); ?></td>
             <td><?php echo htmlspecialchars($appointment['notes']); ?></td>
-            <td><?php echo htmlspecialchars($appointment['appointment_date']); ?></td>
+            <td><?php echo date('d/m/Y', strtotime($appointment['appointment_date'])); ?></td>
             <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
             <td><?php echo htmlspecialchars($appointment['address']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
