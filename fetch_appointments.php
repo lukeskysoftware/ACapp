@@ -1,20 +1,15 @@
 <?php
-include 'db.php';
-include 'menu.php';
+include_once 'db.php'; // Include database connection
+include_once 'manage_appointments.php'; // Include the file where getAppointments() is defined
 
-$appointments = array();
-$sql = "SELECT id, name, appointment_date, appointment_time FROM appointments";
-$result = mysqli_query($conn, $sql);
+$filter = [
+    'date' => isset($_GET['date']) ? $_GET['date'] : '',
+    'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
+];
+$search = isset($_GET['search']) ? $_GET['search'] : '';
+$appointments = getAppointments($filter, $search);
 
-while ($row = mysqli_fetch_assoc($result)) {
-    $appointments[] = array(
-        'id' => $row['id'],
-        'title' => $row['name'],
-        'start' => $row['appointment_date'] . 'T' . $row['appointment_time'],
-    );
-}
-
+// Return appointments as JSON
+header('Content-Type: application/json');
 echo json_encode($appointments);
-
-mysqli_close($conn);
 ?>
