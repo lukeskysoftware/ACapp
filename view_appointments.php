@@ -1,10 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/core/main.min.css' rel='stylesheet' />
-    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/daygrid/main.min.css' rel='stylesheet' />
-    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/timegrid/main.min.css' rel='stylesheet' />
-    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/list/main.min.css' rel='stylesheet' />
+    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.15/index.global.min.css' rel='stylesheet' />
 </head>
 <body>
     <form id="filters" onsubmit="return false;">
@@ -22,23 +19,19 @@
 
     <div id='calendar'></div>
 
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/core/main.min.js'></script>
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/daygrid/main.min.js'></script>
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/timegrid/main.min.js'></script>
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/list/main.min.js'></script>
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/interaction/main.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.15/index.global.min.js'></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var calendarEl = document.getElementById('calendar');
             var calendar = new FullCalendar.Calendar(calendarEl, {
                 plugins: [ 'dayGrid', 'timeGrid', 'list', 'interaction' ],
-                header: {
+                headerToolbar: {
                     left: 'prev,next today',
                     center: 'title',
                     right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
                 },
-                defaultView: 'dayGridMonth',
+                initialView: 'dayGridMonth',
                 events: function(fetchInfo, successCallback, failureCallback) {
                     const search = document.getElementById('search').value;
                     const date_filter = document.getElementById('date_filter').value;
