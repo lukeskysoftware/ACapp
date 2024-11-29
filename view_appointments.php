@@ -39,7 +39,7 @@
         const zone_filter = document.getElementById('zone_filter').value;
 
         const xhr = new XMLHttpRequest();
-        xhr.open('GET', `view_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
+        xhr.open('GET', `fetch_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4 && xhr.status === 200) {
                 document.getElementById('appointments-list').innerHTML = xhr.responseText;
@@ -59,7 +59,7 @@
             const zone_filter = document.getElementById('zone_filter').value;
 
             const xhr = new XMLHttpRequest();
-            xhr.open('GET', `view_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
+            xhr.open('GET', `fetch_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     const parser = new DOMParser();
@@ -130,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     }
     $appointmentsResult = mysqli_query($conn, $appointmentsQuery);
     if ($appointmentsResult) {
-        echo '<table id="appointmentsTable" style="display:none;"><tbody>';
+        echo '<table id="appointmentsTable"><thead><tr><th>ID</th><th>Name</th><th>Surname</th><th>Phone</th><th>Notes</th><th>Appointment Date</th><th>Appointment Time</th><th>Zone</th></tr></thead><tbody>';
         while ($appointment = mysqli_fetch_assoc($appointmentsResult)) {
             echo '<tr>';
             echo '<td>' . htmlspecialchars($appointment['id']) . '</td>';
