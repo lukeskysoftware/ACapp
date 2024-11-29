@@ -180,7 +180,14 @@
           }));
           let origin = todaysAppointments[0].address;
           let destination = todaysAppointments[todaysAppointments.length - 1].address;
-          let mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&travelmode=driving`;
+          let mapUrl;
+
+          if (navigator.userAgent.match(/(iPhone|iPod|iPad|Android)/)) {
+            mapUrl = `comgooglemaps://?saddr=${encodeURIComponent(origin)}&daddr=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&directionsmode=driving`;
+          } else {
+            mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint.location)).join('|')}&travelmode=driving`;
+          }
+
           window.open(mapUrl, '_blank');
         });
       });
