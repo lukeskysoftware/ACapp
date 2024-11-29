@@ -1,0 +1,27 @@
+.centrato{margin:0 auto;}
+.centro{text-align:center;}
+.pure-menu-list {
+	max-height: 60px;
+}
+.pure-menu-item {
+height: 60px !important;
+}
+
+ .button-secondary {
+            background: rgb(66, 184, 221);
+            /* this is a light blue */
+        }
+        
+        .chiudi-btn {
+    background-color: grey;
+    color: white;
+}
+    .button-red {
+            background: rgb(202, 60, 60);
+            /* this is a maroon */
+        }
+                .button-green {
+            background: rgb(28, 184, 65);
+            /* this is a green */
+        }
+.aria{margin-bottom:2rem;}
