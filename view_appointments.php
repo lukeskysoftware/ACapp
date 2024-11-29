@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <!-- Removed the FullCalendar CSS link -->
+    <title>View Appointments</title>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
 </head>
 <body>
     <?php include 'menu.php'; ?>
@@ -17,10 +18,9 @@
             <option value="">Select Zone</option>
             <?php
             // Fetch distinct zones from the database
-            $zonesQuery = "SELECT DISTINCT z.name FROM cp_appointments a JOIN cp_zones z ON a.zone_id = z.id";
-            $zonesResult = mysqli_query($conn, $zonesQuery);
-            while ($zone = mysqli_fetch_assoc($zonesResult)) {
-                echo '<option value="' . htmlspecialchars($zone['name']) . '">' . htmlspecialchars($zone['name']) . '</option>';
+            $zones = getZones();
+            foreach ($zones as $zone) {
+                echo '<option value="' . htmlspecialchars($zone) . '">' . htmlspecialchars($zone) . '</option>';
             }
             ?>
         </select>
@@ -30,8 +30,6 @@
     <div id="appointments-list"></div>
     <div id='calendar'></div>
 
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
-
     <script>
       function fetchAppointments() {
         const search = document.getElementById('search').value;
@@ -39,7 +37,7 @@
         const zone_filter = document.getElementById('zone_filter').value;
 
         const xhr = new XMLHttpRequest();
-        xhr.open('GET', `fetch_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
+        xhr.open('GET', `manage_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState === 4 && xhr.status === 200) {
                 document.getElementById('appointments-list').innerHTML = xhr.responseText;
@@ -59,13 +57,13 @@
             const zone_filter = document.getElementById('zone_filter').value;
 
             const xhr = new XMLHttpRequest();
-            xhr.open('GET', `fetch_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
+            xhr.open('GET', `manage_appointments.php?search=${encodeURIComponent(search)}&date=${encodeURIComponent(date_filter)}&zone=${encodeURIComponent(zone_filter)}`, true);
             xhr.onreadystatechange = function() {
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(xhr.responseText, 'text/html');
                     const events = [];
-                    doc.querySelectorAll('table#appointmentsTable tbody tr').forEach(row => {
+                    doc.querySelectorAll('table tr').forEach(row => {
                         const cells = row.querySelectorAll('td');
                         events.push({
                             id: cells[0].innerText,
@@ -104,49 +102,3 @@
     </script>
 </body>
 </html>
-
-<?php
-// Separate file: fetch_appointments.php
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    include 'db.php'; // Include database connection
-
-    $filter = [
-        'date' => isset($_GET['date']) ? $_GET['date'] : '',
-        'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
-    ];
-    $search = isset($_GET['search']) ? $_GET['search'] : '';
-
-    // Get appointments based on filters
-    $appointmentsQuery = "SELECT a.id, p.name, p.surname, a.appointment_date, a.appointment_time, a.notes, p.phone, z.name as zone
-                          FROM cp_appointments a
-                          JOIN cp_patients p ON a.patient_id = p.id
-                          JOIN cp_zones z ON a.zone_id = z.id
-                          WHERE 1=1";
-    if (!empty($filter['date'])) {
-        $appointmentsQuery .= " AND a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
-    }
-    if (!empty($filter['zone'])) {
-        $appointmentsQuery .= " AND z.name = '" . mysqli_real_escape_string($conn, $filter['zone']) . "'";
-    }
-    if (!empty($search)) {
-        $appointmentsQuery .= " AND (p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
-    }
-    $appointmentsResult = mysqli_query($conn, $appointmentsQuery);
-    if ($appointmentsResult) {
-        echo '<table id="appointmentsTable"><thead><tr><th>ID</th><th>Name</th><th>Surname</th><th>Phone</th><th>Notes</th><th>Appointment Date</th><th>Appointment Time</th><th>Zone</th></tr></thead><tbody>';
-        while ($appointment = mysqli_fetch_assoc($appointmentsResult)) {
-            echo '<tr>';
-            echo '<td>' . htmlspecialchars($appointment['id']) . '</td>';
-            echo '<td>' . htmlspecialchars($appointment['name']) . '</td>';
-            echo '<td>' . htmlspecialchars($appointment['surname']) . '</td>';
-            echo '<td>' . htmlspecialchars($appointment['phone']) . '</td>';
-            echo '<td>' . htmlspecialchars($appointment['notes']) . '</td>';
-            echo '<td>' . htmlspecialchars($appointment['appointment_date']) . '</td>';
-            echo '<td>' . htmlspecialchars($appointment['appointment_time']) . '</td>';
-            echo '<td>' . htmlspecialchars($appointment['zone']) . '</td>';
-            echo '</tr>';
-        }
-        echo '</tbody></table>';
-    }
-}
-?>
