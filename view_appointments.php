@@ -4,6 +4,8 @@
     <!-- Removed the FullCalendar CSS link -->
 </head>
 <body>
+    <?php include 'menu.php'; ?>
+
     <form id="filters" onsubmit="return false;">
         <label for="search">Search by Name:</label>
         <input type="text" id="search" name="search">
