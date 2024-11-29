@@ -180,7 +180,7 @@
           }));
           waypoints.unshift({ location: '', stopover: true }); // Add a blank address as the first position
           let origin = waypoints.shift().location; // First address as the origin
-          let destination = waypoints.pop().location; // Last address as the destination
+          let destination = waypoints.length > 0 ? waypoints.pop().location : origin; // Last address as the destination
           let mapUrl;
 
           if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
