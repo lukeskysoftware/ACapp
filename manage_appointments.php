@@ -175,6 +175,14 @@ function confirmDelete(appointment) {
         document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
     }
 }
+
+function hideActions(id) {
+    const actionRow = document.getElementById(`action-${id}`);
+    const editForm = document.getElementById(`edit-form-${id}`);
+    actionRow.style.display = 'none';
+    editForm.style.display = 'none';
+}
+
     </script>
 </head>
 <body>
@@ -237,9 +245,10 @@ function confirmDelete(appointment) {
                     <input type="text" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
                     <input type="text" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>" required>
                     <input type="text" name="notes" value="<?php echo htmlspecialchars($appointment['notes']); ?>">
-                    <input type="date" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
-                    <input type="time" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
+                    <!--<input type="date" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
+                    <input type="time" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required> -->
                     <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn">
+                     <button type="button" class="chiudi-btn" onclick="hideActions(<?php echo $appointment['id']; ?>)">Chiudi</button>
                 </form>
             </td>
         </tr>
