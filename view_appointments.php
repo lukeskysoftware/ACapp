@@ -31,6 +31,13 @@
             padding: 20px;
             display: none;
         }
+        .alert {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1050;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -56,11 +63,17 @@
 
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
+    <div class="alert alert-info alert-dismissible fade show" role="alert" id="infoAlert">
+        <strong>Appointment Info:</strong> <span id="alertContent"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         var detailsPanel = document.getElementById('detailsPanel');
+        var infoAlert = document.getElementById('infoAlert');
+        var alertContent = document.getElementById('alertContent');
         var calendar = new FullCalendar.Calendar(calendarEl, {
           initialView: 'timeGridWeek',
           themeSystem: 'bootstrap5',
@@ -143,6 +156,18 @@
               placement: 'top',
               container: 'body'
             });
+          },
+          eventMouseEnter: function(info) {
+            alertContent.innerHTML = `
+              <b>${info.event.title}</b><br/>
+              Phone: ${info.event.extendedProps.phone}<br/>
+              Address: ${info.event.extendedProps.address}<br/>
+              Notes: ${info.event.extendedProps.notes}
+            `;
+            infoAlert.style.display = 'block';
+          },
+          eventMouseLeave: function(info) {
+            infoAlert.style.display = 'none';
           },
           eventClick: function(info) {
             detailsPanel.innerHTML = `
