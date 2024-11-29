@@ -15,7 +15,7 @@ function getAppointments($filter = [], $search = '') {
     if (!empty($search)) {
         $conditions[] = "(p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
     }
-    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, z.name as zone
+    $sql = "SELECT a.id, p.name, p.surname, p.phone, p.address, a.notes, a.appointment_date, a.appointment_time, z.name as zone
             FROM cp_appointments a
             JOIN cp_patients p ON a.patient_id = p.id
             JOIN cp_zones z ON a.zone_id = z.id";
@@ -56,7 +56,7 @@ if (isset($_POST['update'])) {
 }
 
 // Function to delete an appointment
-if (isset($_POST['delete'])) {
+if (isset($_POST['delete_confirm'])) {
     $id = $_POST['appointment_id'];
     $sql = "DELETE FROM cp_appointments WHERE id = $id";
     mysqli_query($conn, $sql);
@@ -83,6 +83,10 @@ $zones = getZones();
         }
         .cancella-btn {
             background-color: red;
+            color: white;
+        }
+        .confirm-btn {
+            background-color: darkred;
             color: white;
         }
     </style>
@@ -119,16 +123,10 @@ $zones = getZones();
             filterAppointments();
         }
 
-        function showActions(id) {
-            const rows = document.querySelectorAll('tr');
-            rows.forEach(function(row) {
-                if (!row.classList.contains('action-row') && row.id !== 'action-' + id) {
-                    row.style.display = 'none';
-                }
-            });
-            const actionRow = document.getElementById('action-' + id);
-            if (actionRow) {
-                actionRow.style.display = 'table-row';
+        function confirmDelete(appointment) {
+            if (confirm(`Sei sicuro di voler cancellare l'appuntamento con ${appointment.name} ${appointment.surname}, indirizzo: ${appointment.address}, note: ${appointment.notes}, data: ${appointment.appointment_date}, ora: ${appointment.appointment_time}?`)) {
+                document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
+                document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
             }
         }
     </script>
@@ -149,11 +147,15 @@ $zones = getZones();
         <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
         <button id="clear-filters">Clear Filters</button>
     </form>
+    <?php if (empty($appointments)) { ?>
+        <p>Non sono presenti appuntamenti</p>
+    <?php } else { ?>
     <table border="1">
         <tr>
             <th>Name</th>
             <th>Surname</th>
             <th>Phone</th>
+            <th>Address</th>
             <th>Notes</th>
             <th>Appointment Date</th>
             <th>Appointment Time</th>
@@ -165,25 +167,28 @@ $zones = getZones();
             <td><?php echo htmlspecialchars($appointment['name']); ?></td>
             <td><?php echo htmlspecialchars($appointment['surname']); ?></td>
             <td><?php echo htmlspecialchars($appointment['phone']); ?></td>
+            <td><?php echo htmlspecialchars($appointment['address']); ?></td>
             <td><?php echo htmlspecialchars($appointment['notes']); ?></td>
             <td><?php echo htmlspecialchars($appointment['appointment_date']); ?></td>
             <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
             <td>
                 <button class="modifica-btn" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
+                <button class="cancella-btn" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="delete" value="Cancella" class="cancella-btn">
+                    <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
                 </form>
             </td>
         </tr>
         <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
-            <td colspan="8">
+            <td colspan="9">
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
                     <input type="text" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>" required>
                     <input type="text" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>" required>
                     <input type="text" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
+                    <input type="text" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>" required>
                     <input type="text" name="notes" value="<?php echo htmlspecialchars($appointment['notes']); ?>">
                     <input type="date" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
                     <input type="time" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
@@ -193,5 +198,6 @@ $zones = getZones();
         </tr>
         <?php } ?>
     </table>
+    <?php } ?>
 </body>
 </html>
