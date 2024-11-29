@@ -8,6 +8,12 @@
             max-width: 900px;
             margin: 0 auto;
         }
+        .fc-event-title {
+            white-space: normal !important;
+        }
+        .fc-daygrid-event {
+            height: auto !important;
+        }
     </style>
 </head>
 <body>
