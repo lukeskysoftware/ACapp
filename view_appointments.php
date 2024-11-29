@@ -1,17 +1,10 @@
-<?php include 'menu.php'; ?>
-
 <!DOCTYPE html>
 <html>
 <head>
-    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/core/main.min.css' rel='stylesheet' />
-    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/daygrid/main.min.css' rel='stylesheet' />
-    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/timegrid/main.min.css' rel='stylesheet' />
-    <link href='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/list/main.min.css' rel='stylesheet' />
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/core/main.min.js'></script>
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/daygrid/main.min.js'></script>
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/timegrid/main.min.js'></script>
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/list/main.min.js'></script>
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/4.0.0/interaction/main.min.js'></script>
+    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/core/main.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/daygrid/main.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/timegrid/main.min.css' rel='stylesheet' />
+    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/list/main.min.css' rel='stylesheet' />
 </head>
 <body>
     <form id="filters" onsubmit="return false;">
@@ -26,9 +19,15 @@
         </select>
         <button id="clear-filters">Clear Filters</button>
     </form>
-    
+
     <div id='calendar'></div>
-    
+
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/core/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/daygrid/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/timegrid/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/list/main.min.js'></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@4.0.0/interaction/main.min.js'></script>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             var calendarEl = document.getElementById('calendar');
