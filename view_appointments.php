@@ -106,7 +106,10 @@
 </html>
 
 <?php
+// Separate file: fetch_appointments.php
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    include 'db.php'; // Include database connection
+
     $filter = [
         'date' => isset($_GET['date']) ? $_GET['date'] : '',
         'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
