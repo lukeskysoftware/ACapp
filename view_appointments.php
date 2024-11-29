@@ -31,13 +31,6 @@
             padding: 20px;
             display: none;
         }
-        .alert {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            z-index: 1050;
-            display: none;
-        }
     </style>
 </head>
 <body>
@@ -63,17 +56,11 @@
 
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
-    <div class="alert alert-info alert-dismissible fade show" role="alert" id="infoAlert">
-        <strong>Appointment Info:</strong> <span id="alertContent"></span>
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         var detailsPanel = document.getElementById('detailsPanel');
-        var infoAlert = document.getElementById('infoAlert');
-        var alertContent = document.getElementById('alertContent');
         var calendar = new FullCalendar.Calendar(calendarEl, {
           initialView: 'timeGridWeek',
           themeSystem: 'bootstrap5',
@@ -94,12 +81,7 @@
             timeGridWeek: {
               eventContent: function(arg) {
                 let italicEl = document.createElement('div');
-                italicEl.innerHTML = `
-                  <b>${arg.event.title}</b><br/>
-                  <a href="tel:${arg.event.extendedProps.phone}">${arg.event.extendedProps.phone}</a><br/>
-                  <i>Address: ${arg.event.extendedProps.address}</i><br/>
-                  <i>Notes: ${arg.event.extendedProps.notes}</i>
-                `;
+                italicEl.innerHTML = `<b>${arg.event.title}</b>`;
                 let arrayOfDomNodes = [ italicEl ];
                 return { domNodes: arrayOfDomNodes };
               }
@@ -107,12 +89,7 @@
             timeGridDay: {
               eventContent: function(arg) {
                 let italicEl = document.createElement('div');
-                italicEl.innerHTML = `
-                  <b>${arg.event.title}</b><br/>
-                  <a href="tel:${arg.event.extendedProps.phone}">${arg.event.extendedProps.phone}</a><br/>
-                  <i>Address: ${arg.event.extendedProps.address}</i><br/>
-                  <i>Notes: ${arg.event.extendedProps.notes}</i>
-                `;
+                italicEl.innerHTML = `<b>${arg.event.title}</b>`;
                 let arrayOfDomNodes = [ italicEl ];
                 return { domNodes: arrayOfDomNodes };
               }
@@ -144,37 +121,12 @@
             hour12: false
           },
           height: 'auto',
-          eventDidMount: function(info) {
-            var tooltip = new bootstrap.Tooltip(info.el, {
-              title: `
-                <b>${info.event.title}</b><br/>
-                Phone: ${info.event.extendedProps.phone}<br/>
-                Address: ${info.event.extendedProps.address}<br/>
-                Notes: ${info.event.extendedProps.notes}
-              `,
-              html: true,
-              placement: 'top',
-              container: 'body'
-            });
-          },
-          eventMouseEnter: function(info) {
-            alertContent.innerHTML = `
-              <b>${info.event.title}</b><br/>
-              Phone: ${info.event.extendedProps.phone}<br/>
-              Address: ${info.event.extendedProps.address}<br/>
-              Notes: ${info.event.extendedProps.notes}
-            `;
-            infoAlert.style.display = 'block';
-          },
-          eventMouseLeave: function(info) {
-            infoAlert.style.display = 'none';
-          },
           eventClick: function(info) {
             detailsPanel.innerHTML = `
               <h5>${info.event.title}</h5>
-              <p><strong>Phone:</strong> <a href="tel:${info.event.extendedProps.phone}">${info.event.extendedProps.phone}</a></p>
-              <p><strong>Address:</strong> ${info.event.extendedProps.address}</p>
-              <p><strong>Notes:</strong> ${info.event.extendedProps.notes}</p>
+              <p><a href="tel:${info.event.extendedProps.phone}">${info.event.extendedProps.phone}</a></p>
+              <p>${info.event.extendedProps.address}</p>
+              <p>${info.event.extendedProps.notes}</p>
               <p><strong>Zone:</strong> ${info.event.extendedProps.zone}</p>
             `;
             detailsPanel.style.display = 'block';
