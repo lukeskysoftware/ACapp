@@ -115,13 +115,18 @@ $zones = getZones();
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(xhr.responseText, 'text/html');
                     const newTable = doc.querySelector('table');
-                    const appointmentsMessage = doc.querySelector('p');
+                    const appointmentsMessage = doc.querySelector('#no-appointments-message');
                     
                     if (newTable) {
                         document.querySelector('table').innerHTML = newTable.innerHTML;
+                        if (appointmentsMessage) {
+                            appointmentsMessage.remove();
+                        }
                     } else if (appointmentsMessage) {
                         document.querySelector('table').innerHTML = '';
-                        document.querySelector('table').insertAdjacentHTML('afterend', appointmentsMessage.outerHTML);
+                        if (!document.querySelector('#no-appointments-message')) {
+                            document.querySelector('table').insertAdjacentHTML('afterend', appointmentsMessage.outerHTML);
+                        }
                     }
                 }
             };
@@ -160,7 +165,7 @@ $zones = getZones();
         <button id="clear-filters">Clear Filters</button>
     </form>
     <?php if (empty($appointments)) { ?>
-        <p>Non sono presenti appuntamenti</p>
+        <p id="no-appointments-message">Non sono presenti appuntamenti</p>
     <?php } else { ?>
     <table border="1">
         <tr>
