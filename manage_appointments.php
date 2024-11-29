@@ -118,7 +118,7 @@ $zones = getZones();
                     const appointmentsMessage = doc.querySelector('#no-appointments-message');
                     
                     const tableElement = document.querySelector('table');
-                    if (newTable) {
+                    if (newTable && newTable.querySelector('tbody').children.length > 0) {
                         tableElement.innerHTML = newTable.innerHTML;
                         if (appointmentsMessage) {
                             appointmentsMessage.remove();
