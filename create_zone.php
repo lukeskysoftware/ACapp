@@ -10,13 +10,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $days = $_POST['days'];
     $start_time = $_POST['start_time'];
     $end_time = $_POST['end_time'];
-    $duration = $_POST['duration'];
-$radius = $_POST['radius_km'];
+    $duration = isset($_POST['duration']) ? $_POST['duration'] : 0; // Added check for duration
+    $radius = $_POST['radius_km'];
 
-
- 
-
-$sql = "INSERT INTO cp_zones (name, address, latitude, longitude, radius_km) VALUES ('$name', '$address', '$latitude', '$longitude', '$radius')";
+    $sql = "INSERT INTO cp_zones (name, address, latitude, longitude, radius_km) VALUES ('$name', '$address', '$latitude', '$longitude', '$radius')";
     if (mysqli_query($conn, $sql)) {
         $zone_id = mysqli_insert_id($conn);
 
