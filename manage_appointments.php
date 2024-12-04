@@ -233,7 +233,7 @@ $showTable = !empty($appointments);
             <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
             <td>
                 <button class="modifica-btn pure-button button-small button-green" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
-                <button class="cancella-btn pure-button buttton-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
+                <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
                     <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
