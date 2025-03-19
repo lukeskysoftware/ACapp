@@ -2,8 +2,8 @@
 <html>
 <head>
     <title>Visualizza Appuntamenti</title>
-     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
- <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+    <link rel="stylesheet" href="styles.css">
     <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css' rel='stylesheet'>
     <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js'></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
@@ -45,10 +45,11 @@
     include_once 'db.php';
 
     function getAppointments($conn) {
-        $sql = "SELECT a.id, p.name, p.surname, CONCAT('+39', p.phone) as phone, a.notes, a.appointment_date, a.appointment_time, a.address, z.name as zone
+        $sql = "SELECT a.id, p.name, p.surname, CONCAT('+39', p.phone) as phone, a.notes, a.appointment_date, a.appointment_time, a.address, 
+                CASE WHEN z.name IS NULL THEN 'N/A' ELSE z.name END as zone
                 FROM cp_appointments a
                 JOIN cp_patients p ON a.patient_id = p.id
-                JOIN cp_zones z ON a.zone_id = z.id";
+                LEFT JOIN cp_zones z ON a.zone_id = z.id";
         $result = mysqli_query($conn, $sql);
         if (!$result) {
             die('Error: ' . mysqli_error($conn));
@@ -56,8 +57,19 @@
         return mysqli_fetch_all($result, MYSQLI_ASSOC);
     }
 
-    // Function to get unique dates with appointments
-    function getAppointmentDates($appointments) {
+    function getFutureAppointmentDates($appointments) {
+        $today = date('Y-m-d');
+        $dates = array_unique(array_map(function($appointment) {
+            return $appointment['appointment_date'];
+        }, $appointments));
+        $dates = array_filter($dates, function($date) use ($today) {
+            return $date >= $today;
+        });
+        sort($dates);
+        return $dates;
+    }
+
+    function getAllAppointmentDates($appointments) {
         $dates = array_unique(array_map(function($appointment) {
             return $appointment['appointment_date'];
         }, $appointments));
@@ -72,15 +84,16 @@
     }
 
     $appointments = getAppointments($conn);
-    $appointmentDates = getAppointmentDates($appointments);
+    $futureAppointmentDates = getFutureAppointmentDates($appointments);
+    $allAppointmentDates = getAllAppointmentDates($appointments);
     ?>
 
-<div class="dropdown mt-3 pure-g aria centrato centro">
+    <div class="dropdown mt-3 pure-g aria centrato centro">
         <button class="btn btn-primary dropdown-toggle pure-button centrato centro" type="button" id="itineraryButton" data-bs-toggle="dropdown" aria-expanded="false">
             Vedi l'itinerario per gli appuntamenti del
             <select id="itineraryDropdown" class="form-select">
                 <option selected>Scegli data</option>
-                <?php foreach ($appointmentDates as $date): ?>
+                <?php foreach ($futureAppointmentDates as $date): ?>
                     <option value="<?php echo $date; ?>"><?php echo formatItalianDate($date); ?></option>
                 <?php endforeach; ?>
             </select>
@@ -89,12 +102,15 @@
 
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
-    
+    <button id="openMapButton" class="btn btn-success mt-3" style="display: none;">Apri in Mappe</button>
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         var detailsPanel = document.getElementById('detailsPanel');
+        var openMapButton = document.getElementById('openMapButton');
+        var mapUrl = '';
+
         var calendar = new FullCalendar.Calendar(calendarEl, {
           locale: 'it', // Set the locale to Italian
           initialView: 'timeGridWeek',
@@ -176,21 +192,30 @@
           const todaysAppointments = appointments.filter(appointment => appointment.appointment_date === selectedDate).sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
           if (todaysAppointments.length === 0) {
             alert('Nessun appuntamento per questa data.');
+            openMapButton.style.display = 'none';
             return;
           }
 
           let waypoints = todaysAppointments.map(appointment => appointment.address);
-          let mapUrl;
 
-          if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-            // For mobile devices
-            mapUrl = `https://maps.google.com/maps?saddr=My+Location&daddr=${waypoints.map(waypoint => `to:${encodeURIComponent(waypoint)}`).join('+')}`;
-          } else {
+          if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
             // For iOS devices
-            mapUrl = `http://maps.apple.com/?saddr=My+Location&daddr=${waypoints.map(waypoint => `to:${encodeURIComponent(waypoint)}`).join('+')}`;
+            mapUrl = `maps://maps.apple.com/?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
+          } else if (/Android/i.test(navigator.userAgent)) {
+            // For Android devices
+            mapUrl = `https://maps.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+          } else {
+            // For desktop
+            mapUrl = `https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
           }
 
-          window.open(mapUrl, '_blank');
+          openMapButton.style.display = 'block';
+        });
+
+        openMapButton.addEventListener('click', function() {
+          if (mapUrl) {
+            window.open(mapUrl, '_blank');
+          }
         });
       });
     </script>
