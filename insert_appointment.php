@@ -129,8 +129,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <!-- Use the fetched Google Maps API key -->
-    <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo htmlspecialchars($apiKey); ?>&libraries=places"></script>
     <style>
         body {
             background-color: #f8f9fa;
@@ -140,6 +138,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
         }
     </style>
     <script>
+        async function loadAPIKey() {
+            try {
+                const response = await fetch('get_api_key.php');
+                const data = await response.json();
+                const apiKey = data.api_key;
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=it`;
+                script.async = true;
+                script.onload = initAutocomplete;
+                document.head.appendChild(script);
+            } catch (error) {
+                console.error('Error fetching API key:', error);
+                displayMessage('Error fetching API key: ' + error.message);
+            }
+        }
+
+        window.addEventListener('load', loadAPIKey);
+
         function initAutocomplete() {
             const input = document.getElementById('indirizzo');
             const options = {
@@ -181,7 +197,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            initAutocomplete();
             flatpickr("#data", {
                 dateFormat: "Y-m-d",
                 allowInput: true
@@ -245,7 +260,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
                         </div>
                         <div class="mb-3">
                             <label for="indirizzo" class="form-label">Indirizzo:</label>
-                            <input type="text" id="indirizzo" name="indirizzo" class="form-control" value="<?php echo htmlspecialchars($indirizzo); ?>" required class="pac-target-input" placeholder="Inserisci una posizione" autocomplete="off">
+                            <input type="text" id="indirizzo" name="indirizzo" class="form-control pac-target-input" placeholder="Inserisci una posizione" autocomplete="off" value="<?php echo htmlspecialchars($indirizzo); ?>" required>
                         </div>
                         <div class="mb-3">
                             <label for="notes" class="form-label">Note:</label>
