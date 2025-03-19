@@ -106,10 +106,11 @@
             </select>
         </button>
     </div>
+  
+    <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3" style="display: none; ">Apri in Mappe</button>
 
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
-    <button id="openMapButton" class="btn btn-success mt-3" style="display: none;">Apri in Mappe</button>
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
