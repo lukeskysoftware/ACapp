@@ -160,7 +160,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
             const input = document.getElementById('indirizzo');
             const options = {
                 componentRestrictions: { country: 'it' },
-                types: ['address']
+                types: ['address'],
+                bounds: new google.maps.LatLngBounds(
+                    new google.maps.LatLng(40.496, 14.225), // Southwest corner
+                    new google.maps.LatLng(40.917, 14.610)  // Northeast corner
+                )
             };
             const autocomplete = new google.maps.places.Autocomplete(input, options);
             autocomplete.setFields(['address_component', 'geometry', 'formatted_address']);
