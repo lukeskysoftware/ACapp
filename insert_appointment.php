@@ -12,13 +12,13 @@ if ($result) {
     die('Errore nel recupero della chiave API di Google Maps: ' . mysqli_error($conn));
 }
 
-// Abilita la visualizzazione degli errori
+// Enable error reporting
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
 $nome = $cognome = $telefono = $indirizzo = $data = $ora = $zona = $notes = "";
 $success = $error = "";
 
-// Funzione per cercare pazienti per cognome
+// Function to search patients by surname
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     $surname_search = htmlspecialchars($_POST['surname_search']);
     $stmt = $conn->prepare("SELECT p.id, p.name, p.surname, p.phone, a.address FROM cp_patients p LEFT JOIN cp_appointments a ON p.id = a.patient_id WHERE p.surname LIKE ?");
@@ -44,7 +44,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     exit;
 }
 
-// Funzione per inserire un nuovo appuntamento
+// Function to insert a new appointment
 if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
     $nome = htmlspecialchars($_POST['nome']);
     $cognome = htmlspecialchars($_POST['cognome']);
@@ -228,7 +228,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
                         </div>
                         <div class="text-center">
                             <button class="btn btn-primary" onclick="window.location.href='insert_appointment.php';">Inserisci un altro appuntamento</button>
-                            <button class="btn btn-secondary" onclick="window.location.href='logout.php';">Esci</button>
+                            <button class="btn btn-secondary" onclick="window.location.href='dashboard.php';">Esci</button>
                         </div>
                     <?php elseif ($error): ?>
                         <div class="alert alert-danger" role="alert">
