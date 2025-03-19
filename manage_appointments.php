@@ -1,4 +1,13 @@
 <?php
+// Start output buffering to prevent any output before headers are sent
+ob_start();
+session_start();
+
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit(); // Ensure the script stops executing after the redirect
+}
+
 include 'db.php';
 
 // Function to get all appointments with patient and zone information
@@ -88,6 +97,7 @@ if (isset($_POST['update'])) {
             WHERE a.id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_appointments.php');
+    exit(); // Ensure the script stops executing after the redirect
 }
 
 // Function to delete an appointment
@@ -96,6 +106,7 @@ if (isset($_POST['delete_confirm'])) {
     $sql = "DELETE FROM cp_appointments WHERE id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_appointments.php');
+    exit(); // Ensure the script stops executing after the redirect
 }
 
 $filter = [
@@ -304,3 +315,8 @@ $showTable = !empty($appointments);
     </div>
 </body>
 </html>
+
+<?php
+// End output buffering and flush the output
+ob_end_flush();
+?>
