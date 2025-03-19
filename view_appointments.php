@@ -109,14 +109,12 @@
 
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
-    <div id="mapLinks"></div>
     <button id="openMapButton" class="btn btn-success mt-3" style="display: none;">Apri in Mappe</button>
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         var detailsPanel = document.getElementById('detailsPanel');
-        var mapLinks = document.getElementById('mapLinks');
         var openMapButton = document.getElementById('openMapButton');
         var mapUrl = '';
 
@@ -202,25 +200,23 @@
           if (todaysAppointments.length === 0) {
             alert('Nessun appuntamento per questa data.');
             openMapButton.style.display = 'none';
-            mapLinks.innerHTML = '';
             return;
           }
 
           let waypoints = todaysAppointments.map(appointment => appointment.address);
+          
+          // Ensure at least a start and end point
+          let start = "Current+Location";
+          let end = waypoints.pop(); // Last waypoint as end
+          let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
 
-          // Generate Apple Maps URLs using different formats
-          let appleMapsUrl1 = `maps://?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
-          let appleMapsUrl2 = `maps://?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('&daddr=')}`;
-          let googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+          // Generate Apple Maps URL using +to: format
+          let appleMapsUrl = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+          let googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
 
-          mapLinks.innerHTML = `
-            <a href="${appleMapsUrl1}" target="_blank">Apple Maps URL (Format 1)</a>
-            <a href="${appleMapsUrl2}" target="_blank">Apple Maps URL (Format 2)</a>
-            <a href="${googleMapsUrl}" target="_blank">Google Maps URL</a>
-          `;
-
+          // Determine which URL to use based on the device
           if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-            mapUrl = appleMapsUrl1;
+            mapUrl = appleMapsUrl;
           } else {
             mapUrl = googleMapsUrl;
           }
