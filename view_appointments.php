@@ -37,6 +37,13 @@
             font-size: 1.5rem;
             font-weight: bold;
         }
+        #mapLinks {
+            margin-top: 10px;
+        }
+        #mapLinks a {
+            display: block;
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
@@ -102,12 +109,14 @@
 
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
+    <div id="mapLinks"></div>
     <button id="openMapButton" class="btn btn-success mt-3" style="display: none;">Apri in Mappe</button>
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         var detailsPanel = document.getElementById('detailsPanel');
+        var mapLinks = document.getElementById('mapLinks');
         var openMapButton = document.getElementById('openMapButton');
         var mapUrl = '';
 
@@ -193,23 +202,34 @@
           if (todaysAppointments.length === 0) {
             alert('Nessun appuntamento per questa data.');
             openMapButton.style.display = 'none';
+            mapLinks.innerHTML = '';
             return;
           }
 
           let waypoints = todaysAppointments.map(appointment => appointment.address);
+          let appleMapsUrl, googleMapsUrl;
 
           if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
             // For iOS devices
-            mapUrl = `maps://maps.apple.com/?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
+            appleMapsUrl = `maps://maps.apple.com/?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
+            googleMapsUrl = `https://maps.google.com/maps?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
           } else if (/Android/i.test(navigator.userAgent)) {
             // For Android devices
-            mapUrl = `https://maps.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+            googleMapsUrl = `https://maps.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+            appleMapsUrl = `http://maps.apple.com/?daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
           } else {
             // For desktop
-            mapUrl = `https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+            googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+            appleMapsUrl = `http://maps.apple.com/?daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
           }
 
+          mapLinks.innerHTML = `
+            <a href="${appleMapsUrl}" target="_blank">Apple Maps URL</a>
+            <a href="${googleMapsUrl}" target="_blank">Google Maps URL</a>
+          `;
+
           openMapButton.style.display = 'block';
+          mapUrl = appleMapsUrl;
         });
 
         openMapButton.addEventListener('click', function() {
