@@ -207,29 +207,25 @@
           }
 
           let waypoints = todaysAppointments.map(appointment => appointment.address);
-          let appleMapsUrl, googleMapsUrl;
 
-          if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-            // For iOS devices
-            appleMapsUrl = `maps://maps.apple.com/?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
-            googleMapsUrl = `https://maps.google.com/maps?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
-          } else if (/Android/i.test(navigator.userAgent)) {
-            // For Android devices
-            googleMapsUrl = `https://maps.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
-            appleMapsUrl = `http://maps.apple.com/?daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
-          } else {
-            // For desktop
-            googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
-            appleMapsUrl = `http://maps.apple.com/?daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
-          }
+          // Generate Apple Maps URLs using different formats
+          let appleMapsUrl1 = `maps://?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}`;
+          let appleMapsUrl2 = `maps://?saddr=Current+Location&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('&daddr=')}`;
+          let googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=${encodeURIComponent(waypoints[0])}&waypoints=${waypoints.slice(1).map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
 
           mapLinks.innerHTML = `
-            <a href="${appleMapsUrl}" target="_blank">Apple Maps URL</a>
+            <a href="${appleMapsUrl1}" target="_blank">Apple Maps URL (Format 1)</a>
+            <a href="${appleMapsUrl2}" target="_blank">Apple Maps URL (Format 2)</a>
             <a href="${googleMapsUrl}" target="_blank">Google Maps URL</a>
           `;
 
+          if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            mapUrl = appleMapsUrl1;
+          } else {
+            mapUrl = googleMapsUrl;
+          }
+
           openMapButton.style.display = 'block';
-          mapUrl = appleMapsUrl;
         });
 
         openMapButton.addEventListener('click', function() {
