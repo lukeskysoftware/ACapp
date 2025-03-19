@@ -1,8 +1,11 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 include 'db.php';
 
 // Function to get all appointments with patient and zone information
-function getAppointments($filter = [], $search = '') {
+function getAppointments($filter = [], $search = '', $page = 1, $results_per_page = 15) {
     global $conn;
     $conditions = [];
     if (!empty($filter['date'])) {
@@ -14,13 +17,15 @@ function getAppointments($filter = [], $search = '') {
     if (!empty($search)) {
         $conditions[] = "(p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
     }
-    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, z.name as zone
+    $offset = ($page - 1) * $results_per_page;
+    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, COALESCE(z.name, 'N/A') as zone
             FROM cp_appointments a
             JOIN cp_patients p ON a.patient_id = p.id
-            JOIN cp_zones z ON a.zone_id = z.id";
+            LEFT JOIN cp_zones z ON a.zone_id = z.id";
     if (!empty($conditions)) {
         $sql .= " WHERE " . implode(' AND ', $conditions);
     }
+    $sql .= " ORDER BY a.appointment_date ASC, a.appointment_time ASC LIMIT $offset, $results_per_page";
     $result = mysqli_query($conn, $sql);
     if (!$result) {
         die('Error: ' . mysqli_error($conn));
@@ -29,10 +34,38 @@ function getAppointments($filter = [], $search = '') {
     return $appointments;
 }
 
+// Function to get total number of appointments for pagination
+function getTotalAppointments($filter = [], $search = '') {
+    global $conn;
+    $conditions = [];
+    if (!empty($filter['date'])) {
+        $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
+    }
+    if (!empty($filter['zone'])) {
+        $conditions[] = "z.name = '" . mysqli_real_escape_string($conn, $filter['zone']) . "'";
+    }
+    if (!empty($search)) {
+        $conditions[] = "(p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
+    }
+    $sql = "SELECT COUNT(*) as total
+            FROM cp_appointments a
+            JOIN cp_patients p ON a.patient_id = p.id
+            LEFT JOIN cp_zones z ON a.zone_id = z.id";
+    if (!empty($conditions)) {
+        $sql .= " WHERE " . implode(' AND ', $conditions);
+    }
+    $result = mysqli_query($conn, $sql);
+    if (!$result) {
+        die('Error: ' . mysqli_error($conn));
+    }
+    $row = mysqli_fetch_assoc($result);
+    return $row['total'];
+}
+
 // Function to get distinct zones
 function getZones() {
     global $conn;
-    $sql = "SELECT DISTINCT z.name FROM cp_appointments a JOIN cp_zones z ON a.zone_id = z.id";
+    $sql = "SELECT DISTINCT z.name FROM cp_appointments a LEFT JOIN cp_zones z ON a.zone_id = z.id";
     $result = mysqli_query($conn, $sql);
     if (!$result) {
         die('Error: ' . mysqli_error($conn));
@@ -53,10 +86,12 @@ if (isset($_POST['update'])) {
     $address = $_POST['address'];
     $sql = "UPDATE cp_appointments a
             JOIN cp_patients p ON a.patient_id = p.id
+            LEFT JOIN cp_zones z ON a.zone_id = z.id
             SET p.name='$name', p.surname='$surname', p.phone='$phone', a.notes='$notes', a.appointment_date='$appointment_date', a.appointment_time='$appointment_time', a.address='$address'
             WHERE a.id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_appointments.php');
+    exit();
 }
 
 // Function to delete an appointment
@@ -65,6 +100,7 @@ if (isset($_POST['delete_confirm'])) {
     $sql = "DELETE FROM cp_appointments WHERE id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_appointments.php');
+    exit();
 }
 
 $filter = [
@@ -72,7 +108,11 @@ $filter = [
     'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
 ];
 $search = isset($_GET['search']) ? $_GET['search'] : '';
-$appointments = getAppointments($filter, $search);
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$results_per_page = 15;
+$total_appointments = getTotalAppointments($filter, $search);
+$total_pages = ceil($total_appointments / $results_per_page);
+$appointments = getAppointments($filter, $search, $page, $results_per_page);
 $zones = getZones();
 $showTable = !empty($appointments);
 ?>
@@ -171,6 +211,7 @@ $showTable = !empty($appointments);
             if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes}?`)) {
                 document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
                 document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
+                document.getElementById(`delete-form-${appointment.id}`).submit(); // Submit the form programmatically
             }
         }
 
@@ -185,80 +226,87 @@ $showTable = !empty($appointments);
 <body>
     <?php include 'menu.php'; ?>
     <div class="pure-g aria">
-    <h2 class="centrato">Gestione Appuntamenti</h2>
+        <h2 class="centrato">Gestione Appuntamenti</h2>
     </div>
     <div class="pure-g aria">
-    <form onsubmit="return false;" class="pure-form centrato aria">
-        <label for="date">Filtra per Data:</label>
-        <input type="date" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
-        <label for="zone">Filtra per Zona:</label>
-        <select id="zone" name="zone">
-            <option value="">Seleziona Zona</option>
-            <?php foreach ($zones as $zone) { ?>
-                <option value="<?php echo htmlspecialchars($zone); ?>"><?php echo htmlspecialchars($zone); ?></option>
-            <?php } ?>
-        </select>
-        <label for="search">Cerca per Nome:</label>
-        <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
-        <button id="clear-filters" class="pure-button button-small">Cancella Filtri</button>
-    </form>
-    
-    <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?> centrato aria" >Non ci sono appuntamenti</p>
+        <form onsubmit="return false;" class="pure-form centrato aria">
+            <label for="date">Filtra per Data:</label>
+            <input type="date" id="date" name="date" value="<?php echo htmlspecialchars($filter['date']); ?>">
+            <label for="zone">Filtra per Zona:</label>
+            <select id="zone" name="zone">
+                <option value="">Seleziona Zona</option>
+                <?php foreach ($zones as $zone) { ?>
+                    <option value="<?php echo htmlspecialchars($zone); ?>"><?php echo htmlspecialchars($zone); ?></option>
+                <?php } ?>
+            </select>
+            <label for="search">Cerca per Nome:</label>
+            <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
+            <button id="clear-filters" class="pure-button button-small">Cancella Filtri</button>
+        </form>
+        <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?> centrato aria">Non ci sono appuntamenti</p>
     </div>
     <div class="pure-g aria">
-    <table border="0" class="<?php echo $showTable ? '' : 'hidden'; ?> pure-table pure-table-bordered centrato aria">
-        <thead>
-        <tr>
-            <th>Nome</th>
-            <th>Cognome</th>
-            <th>Telefono</th>
-            <th>Note</th>
-            <th>Data Appuntamento</th>
-            <th>Ora Appuntamento</th>
-            <th>Indirizzo</th>
-            <th>Zona</th>
-            <th>Azioni</th>
-        </tr>
-        </thead>
-        <tbody>
-        <?php foreach ($appointments as $appointment) { ?>
-        <tr>
-            <td><?php echo htmlspecialchars($appointment['name']); ?></td>
-            <td><?php echo htmlspecialchars($appointment['surname']); ?></td>
-            <td><?php echo htmlspecialchars($appointment['phone']); ?></td>
-            <td><?php echo htmlspecialchars($appointment['notes']); ?></td>
-            <td><?php echo date('d/m/Y', strtotime($appointment['appointment_date'])); ?></td>
-            <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
-            <td><?php echo htmlspecialchars($appointment['address']); ?></td>
-            <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
-            <td>
-                <button class="modifica-btn pure-button button-small button-green" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
-                <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
-                <form method="post" action="manage_appointments.php" style="display:inline;">
-                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
-                </form>
-            </td>
-        </tr>
-        <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
-            <td colspan="9">
-                <form method="post" action="manage_appointments.php" id="edit-form-<?php echo $appointment['id']; ?>" class="edit-form pure-form" style="display:inline;">
-                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="text" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>" required>
-                    <input type="text" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>" required>
-                    <input type="text" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
-                    <input type="text" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>" required>
-                    <input type="text" name="notes" value="<?php echo htmlspecialchars($appointment['notes']); ?>">
-                    <!--<input type="date" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
-                    <input type="time" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required> -->
-                    <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn pure-button button-small button-green">
-                    <button type="button" class="chiudi-btn pure-button button-small" onclick="hideActions(<?php echo $appointment['id']; ?>)">Chiudi</button>
-                </form>
-            </td>
-        </tr>
+        <table border="0" class="<?php echo $showTable ? '' : 'hidden'; ?> pure-table pure-table-bordered centrato aria">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Cognome</th>
+                    <th>Telefono</th>
+                    <th>Note</th>
+                    <th>Data Appuntamento</th>
+                    <th>Ora Appuntamento</th>
+                    <th>Indirizzo</th>
+                    <th>Zona</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($appointments as $appointment) { ?>
+                <tr>
+                    <td><?php echo htmlspecialchars($appointment['name']); ?></td>
+                    <td><?php echo htmlspecialchars($appointment['surname']); ?></td>
+                    <td><?php echo htmlspecialchars($appointment['phone']); ?></td>
+                    <td><?php echo htmlspecialchars($appointment['notes']); ?></td>
+                    <td><?php echo date('d/m/Y', strtotime($appointment['appointment_date'])); ?></td>
+                    <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
+                    <td><?php echo htmlspecialchars($appointment['address']); ?></td>
+                    <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
+                    <td>
+                        <button class="modifica-btn pure-button button-small button-green" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
+                        <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
+                        <form id="delete-form-<?php echo $appointment['id']; ?>" method="post" action="manage_appointments.php" style="display:inline;">
+                            <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
+                            <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
+                        </form>
+                    </td>
+                </tr>
+                <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
+                    <td colspan="9">
+                        <form method="post" action="manage_appointments.php" id="edit-form-<?php echo $appointment['id']; ?>" class="edit-form pure-form" style="display:inline;">
+                            <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
+                            <input type="text" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>" required>
+                            <input type="text" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>" required>
+                            <input type="text" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
+                            <input type="text" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>" required>
+                            <input type="text" name="notes" value="<?php echo htmlspecialchars($appointment['notes']); ?>">
+                            <input type="date" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
+                            <input type="time" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
+                            <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn pure-button button-small button-green">
+                            <button type="button" class="chiudi-btn pure-button button-small" onclick="hideActions(<?php echo $appointment['id']; ?>)">Chiudi</button>
+                        </form>
+                    </td>
+                </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
+    <div class="pure-g aria centrato">
+        <?php if ($page > 1) { ?>
+            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>" class="pure-button button-small">Precedente</a>
         <?php } ?>
-        </tbody>
-    </table>
+        <?php if ($page < $total_pages) { ?>
+            <a href="manage_appointments.php?page=<?php echo $page + 1; ?>" class="pure-button button-small">Successivo</a>
+        <?php } ?>
     </div>
 </body>
 </html>
