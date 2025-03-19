@@ -1,7 +1,4 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 include 'db.php';
 
 // Function to get all appointments with patient and zone information
@@ -91,7 +88,6 @@ if (isset($_POST['update'])) {
             WHERE a.id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_appointments.php');
-    exit();
 }
 
 // Function to delete an appointment
@@ -100,7 +96,6 @@ if (isset($_POST['delete_confirm'])) {
     $sql = "DELETE FROM cp_appointments WHERE id = $id";
     mysqli_query($conn, $sql);
     header('Location: manage_appointments.php');
-    exit();
 }
 
 $filter = [
@@ -211,7 +206,6 @@ $showTable = !empty($appointments);
             if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes}?`)) {
                 document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
                 document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
-                document.getElementById(`delete-form-${appointment.id}`).submit(); // Submit the form programmatically
             }
         }
 
@@ -274,7 +268,7 @@ $showTable = !empty($appointments);
                     <td>
                         <button class="modifica-btn pure-button button-small button-green" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
                         <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
-                        <form id="delete-form-<?php echo $appointment['id']; ?>" method="post" action="manage_appointments.php" style="display:inline;">
+                        <form method="post" action="manage_appointments.php" style="display:inline;">
                             <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
                             <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
                         </form>
