@@ -2,7 +2,8 @@
 <html>
 <head>
     <title>Visualizza Appuntamenti</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+ <link rel="stylesheet" href="styles.css">
     <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css' rel='stylesheet'>
     <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js'></script>
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
@@ -74,11 +75,9 @@
     $appointmentDates = getAppointmentDates($appointments);
     ?>
 
-    <div id="calendar"></div>
-    <div id="detailsPanel"></div>
-    <div class="dropdown mt-3">
-        <button class="btn btn-primary dropdown-toggle" type="button" id="itineraryButton" data-bs-toggle="dropdown" aria-expanded="false">
-            Vuoi l'itinerario per gli appuntamenti del
+<div class="dropdown mt-3 pure-g aria centrato centro">
+        <button class="btn btn-primary dropdown-toggle pure-button centrato centro" type="button" id="itineraryButton" data-bs-toggle="dropdown" aria-expanded="false">
+            Vedi l'itinerario per gli appuntamenti del
             <select id="itineraryDropdown" class="form-select">
                 <option selected>Scegli data</option>
                 <?php foreach ($appointmentDates as $date): ?>
@@ -87,6 +86,10 @@
             </select>
         </button>
     </div>
+
+    <div id="calendar"></div>
+    <div id="detailsPanel"></div>
+    
 
     <script>
       document.addEventListener('DOMContentLoaded', function() {
