@@ -1,228 +1,262 @@
+<?php
+include 'db.php';
+
+// Abilita la visualizzazione degli errori
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
+$nome = $cognome = $telefono = $indirizzo = $data = $ora = $zona = $notes = "";
+$success = $error = "";
+
+// Funzione per cercare pazienti per cognome
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
+    $surname_search = htmlspecialchars($_POST['surname_search']);
+    $stmt = $conn->prepare("SELECT p.id, p.name, p.surname, p.phone, a.address FROM cp_patients p LEFT JOIN cp_appointments a ON p.id = a.patient_id WHERE p.surname LIKE ?");
+    if ($stmt === false) {
+        die('Errore nella preparazione della query: ' . $conn->error);
+    }
+    $search_param = "%{$surname_search}%";
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $patients = $result->fetch_all(MYSQLI_ASSOC);
+
+    echo '<ul>';
+    $seen = [];
+    foreach ($patients as $patient) {
+        $key = $patient['name'] . '|' . $patient['surname'] . '|' . $patient['phone'] . '|' . $patient['address'];
+        if (!isset($seen[$key])) {
+            echo '<li style="cursor: pointer;" onclick="selectPatient(' . $patient['id'] . ', \'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\', \'' . $patient['address'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . ' - ' . $patient['phone'] . ' - ' . $patient['address'] . '</li>';
+            $seen[$key] = true;
+        }
+    }
+    echo '</ul>';
+    exit;
+}
+
+// Funzione per inserire un nuovo appuntamento
+if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
+    $nome = htmlspecialchars($_POST['nome']);
+    $cognome = htmlspecialchars($_POST['cognome']);
+    $telefono = htmlspecialchars($_POST['telefono']);
+    $indirizzo = htmlspecialchars($_POST['indirizzo']);
+    $data = htmlspecialchars($_POST['data']); // Campo data
+    $ora = htmlspecialchars($_POST['ora']);   // Campo ora
+    $zona = isset($_POST['zone_id']) ? htmlspecialchars($_POST['zone_id']) : null;
+    $notes = htmlspecialchars($_POST['notes']);
+
+    if ($zona === null) {
+        $zona = 0; // Imposta a 0 se non esiste
+    }
+
+    // Controlla se esiste già un appuntamento nella stessa data e ora
+    $stmt = $conn->prepare("SELECT id FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?");
+    if ($stmt === false) {
+        $error = 'Errore nella preparazione della query: ' . $conn->error;
+    } else {
+        $stmt->bind_param("ss", $data, $ora);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($result->num_rows > 0) {
+            $error = "Esiste già un appuntamento nella stessa data e ora.";
+        } else {
+            // Verifica se il paziente esiste già
+            $stmt = $conn->prepare("SELECT id FROM cp_patients WHERE name = ? AND surname = ? AND phone = ?");
+            if ($stmt === false) {
+                $error = 'Errore nella preparazione della query: ' . $conn->error;
+            } else {
+                $stmt->bind_param("sss", $nome, $cognome, $telefono);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                if ($result->num_rows > 0) {
+                    $row = $result->fetch_assoc();
+                    $patient_id = $row['id'];
+                } else {
+                    // Se il paziente non esiste, crearne uno nuovo
+                    $stmt = $conn->prepare("INSERT INTO cp_patients (name, surname, phone, address) VALUES (?, ?, ?, ?)");
+                    if ($stmt === false) {
+                        $error = 'Errore nella preparazione della query: ' . $conn->error;
+                    } else {
+                        $stmt->bind_param("ssss", $nome, $cognome, $telefono, $indirizzo);
+                        $stmt->execute();
+                        $patient_id = $stmt->insert_id;
+                    }
+                }
+
+                // Inserimento dati nel database
+                if (!$error) {
+                    $stmt = $conn->prepare("INSERT INTO cp_appointments (patient_id, appointment_date, appointment_time, address, zone_id, notes) VALUES (?, ?, ?, ?, ?, ?)");
+                    if ($stmt === false) {
+                        $error = 'Errore nella preparazione della query: ' . $conn->error;
+                    } else {
+                        $stmt->bind_param("isssis", $patient_id, $data, $ora, $indirizzo, $zona, $notes);
+
+                        if ($stmt->execute()) {
+                            $success = "Nuovo appuntamento inserito con successo";
+                        } else {
+                            $error = "Errore: " . $stmt->error;
+                        }
+
+                        // Chiudi la connessione
+                        $stmt->close();
+                    }
+                }
+            }
+        }
+    }
+
+    $conn->close();
+}
+?>
+
 <!DOCTYPE html>
-<html>
+<html lang="it">
 <head>
-    <title>Visualizza Appuntamenti</title>
+    <meta charset="UTF-8">
+    <title>Inserimento Appuntamenti</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
     <link rel="stylesheet" href="styles.css">
-    <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css' rel='stylesheet'>
-    <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js'></script>
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
-    <style>
-        #calendar {
-            max-width: 900px;
-            margin: 0 auto;
+    <?php include 'config.php'; ?>
+    <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo GOOGLE_MAPS_API_KEY; ?>&libraries=places"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script>
+        function initAutocomplete() {
+            const input = document.getElementById('indirizzo');
+            const options = {
+                componentRestrictions: { country: 'it' },
+                types: ['address']
+            };
+            const autocomplete = new google.maps.places.Autocomplete(input, options);
+            autocomplete.setFields(['address_component', 'geometry', 'formatted_address']);
+            autocomplete.addListener('place_changed', function () {
+                const place = autocomplete.getPlace();
+                const address = place.formatted_address;
+                input.value = address;
+            });
         }
-        .fc-event-title {
-            white-space: normal !important;
+
+        function searchSurname() {
+            const surnameInput = document.getElementById('surname_search').value;
+            if (surnameInput.length > 2) {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', 'insert_appointment.php', true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4 && xhr.status === 200) {
+                        document.getElementById('patientsList').innerHTML = xhr.responseText;
+                    }
+                };
+                xhr.send('surname_search=' + encodeURIComponent(surnameInput));
+            } else {
+                document.getElementById('patientsList').innerHTML = '';
+            }
         }
-        .fc-daygrid-event {
-            height: auto !important;
+
+        function selectPatient(id, name, surname, phone, address) {
+            document.getElementById('nome').value = name;
+            document.getElementById('cognome').value = surname;
+            document.getElementById('telefono').value = phone;
+            document.getElementById('indirizzo').value = address;
+            document.getElementById('patientsList').innerHTML = '';
         }
-        .tooltip-inner {
-            max-width: 350px;
-        }
-        #detailsPanel {
-            position: fixed;
-            right: 0;
-            top: 0;
-            width: 300px;
-            height: 100%;
-            overflow-y: auto;
-            background: #f8f9fa;
-            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
-            padding: 20px;
-            display: none;
-        }
-        .timeslot {
-            font-size: 1.5rem;
-            font-weight: bold;
-        }
-    </style>
+
+        document.addEventListener('DOMContentLoaded', function() {
+            initAutocomplete();
+            flatpickr("#data", {
+                dateFormat: "Y-m-d",
+                allowInput: true
+            });
+            flatpickr("#ora", {
+                enableTime: true,
+                noCalendar: true,
+                dateFormat: "H:i:S",
+                time_24hr: true,
+                allowInput: true
+            });
+        });
+    </script>
 </head>
 <body>
-    <?php include_once 'menu.php'; ?>
-    <?php
-    include_once 'db.php';
+    <?php include 'menu.php'; ?>
+    <div class="pure-g aria">
+        <div class="pure-u-1">
+            <h1 class="centrato">Inserisci un nuovo appuntamento</h1>
+        </div>
+        <div class="pure-u-1">
+            <label for="surname_search">Cerca Paziente per Cognome:</label>
+            <input type="text" id="surname_search" name="surname_search" oninput="searchSurname()"><br><br>
+        </div>
+        <div class="pure-u-1">
+            <div id="patientsList"></div>
+        </div>
+        <?php if ($success): ?>
+            <div class="pure-u-1">
+                <p><?php echo $success; ?></p>
+                <button onclick="window.location.href='insert_appointment.php';">Inserisci un altro appuntamento</button>
+                <button onclick="window.location.href='logout.php';">Esci</button>
+            </div>
+        <?php elseif ($error): ?>
+            <div class="pure-u-1">
+                <p style="color: red;"><?php echo $error; ?></p>
+            </div>
+            <div class="pure-u-1">
+                <form method="POST" action="insert_appointment.php">
+                    <input type="hidden" name="zone_id" value="<?php echo $zona; ?>">
+                    
+                    <label for="data">Data:</label>
+                    <input type="text" id="data" name="data" value="<?php echo $data; ?>" required><br><br>
 
-    function getAppointments($conn) {
-        $sql = "SELECT a.id, p.name, p.surname, CONCAT('+39', p.phone) as phone, a.notes, a.appointment_date, a.appointment_time, a.address, 
-                CASE WHEN z.name IS NULL THEN 'N/A' ELSE z.name END as zone
-                FROM cp_appointments a
-                JOIN cp_patients p ON a.patient_id = p.id
-                LEFT JOIN cp_zones z ON a.zone_id = z.id";
-        $result = mysqli_query($conn, $sql);
-        if (!$result) {
-            die('Error: ' . mysqli_error($conn));
-        }
-        return mysqli_fetch_all($result, MYSQLI_ASSOC);
-    }
+                    <label for="ora">Ora:</label>
+                    <input type="text" id="ora" name="ora" value="<?php echo $ora; ?>" required><br><br>
 
-    function getFutureAppointmentDates($appointments) {
-        $today = date('Y-m-d');
-        $dates = array_unique(array_map(function($appointment) {
-            return $appointment['appointment_date'];
-        }, $appointments));
-        $dates = array_filter($dates, function($date) use ($today) {
-            return $date >= $today;
-        });
-        sort($dates);
-        return $dates;
-    }
+                    <label for="nome">Nome:</label>
+                    <input type="text" id="nome" name="nome" value="<?php echo $nome; ?>" required><br><br>
 
-    function getAllAppointmentDates($appointments) {
-        $dates = array_unique(array_map(function($appointment) {
-            return $appointment['appointment_date'];
-        }, $appointments));
-        sort($dates);
-        return $dates;
-    }
+                    <label for="cognome">Cognome:</label>
+                    <input type="text" id="cognome" name="cognome" value="<?php echo $cognome; ?>" required><br><br>
 
-    function formatItalianDate($date) {
-        setlocale(LC_TIME, 'it_IT.UTF-8');
-        $timestamp = strtotime($date);
-        return strftime('%d %B %Y', $timestamp);
-    }
+                    <label for="telefono">Telefono:</label>
+                    <input type="text" id="telefono" name="telefono" value="<?php echo $telefono; ?>" required><br><br>
 
-    $appointments = getAppointments($conn);
-    $futureAppointmentDates = getFutureAppointmentDates($appointments);
-    $allAppointmentDates = getAllAppointmentDates($appointments);
-    ?>
+                    <label for="indirizzo">Indirizzo:</label>
+                    <input type="text" id="indirizzo" name="indirizzo" value="<?php echo $indirizzo; ?>" required class="pac-target-input" placeholder="Inserisci una posizione" autocomplete="off"><br><br>
 
-    <div class="dropdown mt-3 pure-g aria centrato centro">
-        <button class="btn btn-primary dropdown-toggle pure-button centrato centro" type="button" id="itineraryButton" data-bs-toggle="dropdown" aria-expanded="false">
-            Vedi l'itinerario per gli appuntamenti del
-            <select id="itineraryDropdown" class="form-select">
-                <option selected>Scegli data</option>
-                <?php foreach ($futureAppointmentDates as $date): ?>
-                    <option value="<?php echo $date; ?>"><?php echo formatItalianDate($date); ?></option>
-                <?php endforeach; ?>
-            </select>
-        </button>
+                    <label for="notes">Note:</label>
+                    <textarea id="notes" name="notes"><?php echo $notes; ?></textarea><br><br>
+
+                    <button type="submit">Inserisci Appuntamento</button>
+                </form>
+            </div>
+        <?php else: ?>
+            <div class="pure-u-1">
+                <form method="POST" action="insert_appointment.php">
+                    <input type="hidden" name="zone_id" value="">
+                    
+                    <label for="data">Data:</label>
+                    <input type="text" id="data" name="data" required><br><br>
+
+                    <label for="ora">Ora:</label>
+                    <input type="text" id="ora" name="ora" required><br><br>
+
+                    <label for="nome">Nome:</label>
+                    <input type="text" id="nome" name="nome" required><br><br>
+
+                    <label for="cognome">Cognome:</label>
+                    <input type="text" id="cognome" name="cognome" required><br><br>
+
+                    <label for="telefono">Telefono:</label>
+                    <input type="text" id="telefono" name="telefono" required><br><br>
+
+                    <label for="indirizzo">Indirizzo:</label>
+                    <input type="text" id="indirizzo" name="indirizzo" required class="pac-target-input" placeholder="Inserisci una posizione" autocomplete="off"><br><br>
+
+                    <label for="notes">Note:</label>
+                    <textarea id="notes" name="notes"></textarea><br><br>
+
+                    <button type="submit">Inserisci Appuntamento</button>
+                </form>
+            </div>
+        <?php endif; ?>
     </div>
-    <button id="openMapButton"  class="btn btn-success mt-3" style="display: none; margin: 0 auto 2rem auto;" >Apri in Mappe</button>
-
-    <div id="calendar"></div>
-    <div id="detailsPanel"></div>
-
-    <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        var calendarEl = document.getElementById('calendar');
-        var detailsPanel = document.getElementById('detailsPanel');
-        var openMapButton = document.getElementById('openMapButton');
-        var mapUrl = '';
-
-        var calendar = new FullCalendar.Calendar(calendarEl, {
-          locale: 'it', // Set the locale to Italian
-          initialView: 'timeGridWeek',
-          themeSystem: 'bootstrap5',
-          headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay'
-          },
-          views: {
-            dayGridMonth: {
-              eventContent: function(arg) {
-                let italicEl = document.createElement('div');
-                italicEl.innerHTML = `<div><b>${arg.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</b></div><div>${arg.event.title}</div>`;
-                let arrayOfDomNodes = [ italicEl ];
-                return { domNodes: arrayOfDomNodes };
-              }
-            },
-            timeGridWeek: {
-              eventContent: function(arg) {
-                let italicEl = document.createElement('div');
-                italicEl.innerHTML = `<b>${arg.event.title}</b>`;
-                let arrayOfDomNodes = [ italicEl ];
-                return { domNodes: arrayOfDomNodes };
-              }
-            },
-            timeGridDay: {
-              eventContent: function(arg) {
-                let italicEl = document.createElement('div');
-                italicEl.innerHTML = `<b>${arg.event.title}</b>`;
-                let arrayOfDomNodes = [ italicEl ];
-                return { domNodes: arrayOfDomNodes };
-              }
-            }
-          },
-          events: function(fetchInfo, successCallback, failureCallback) {
-            const appointments = <?php echo json_encode($appointments); ?>;
-            const events = appointments.map(appointment => ({
-                id: appointment.id,
-                title: `${appointment.name} ${appointment.surname}`,
-                start: `${appointment.appointment_date}T${appointment.appointment_time}`,
-                extendedProps: {
-                    phone: appointment.phone,
-                    address: appointment.address,
-                    notes: appointment.notes,
-                    zone: appointment.zone
-                }
-            }));
-            successCallback(events);
-          },
-          eventTimeFormat: { // like '14:30'
-            hour: '2-digit',
-            minute: '2-digit',
-            meridiem: false
-          },
-          slotLabelFormat: { // time labels in 24-hour format
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-          },
-          height: 'auto',
-          eventClick: function(info) {
-            detailsPanel.innerHTML = `
-              <h5>${info.event.title}</h5>
-              <p class="timeslot">${info.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</p>
-              <p><a href="tel:${info.event.extendedProps.phone}">${info.event.extendedProps.phone}</a></p>
-              <p>${info.event.extendedProps.address}</p>
-              <p>${info.event.extendedProps.notes}</p>
-              <p><strong>Zona:</strong> ${info.event.extendedProps.zone}</p>
-            `;
-            detailsPanel.style.display = 'block';
-          }
-        });
-        calendar.render();
-
-        document.getElementById('itineraryDropdown').addEventListener('change', function() {
-          const selectedDate = this.value;
-          const appointments = <?php echo json_encode($appointments); ?>;
-          const todaysAppointments = appointments.filter(appointment => appointment.appointment_date === selectedDate).sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
-          if (todaysAppointments.length === 0) {
-            alert('Nessun appuntamento per questa data.');
-            openMapButton.style.display = 'none';
-            return;
-          }
-
-          let waypoints = todaysAppointments.map(appointment => appointment.address);
-          
-          // Ensure at least a start and end point
-          let start = "Current+Location";
-          let end = waypoints.pop(); // Last waypoint as end
-          let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
-
-          // Generate Apple Maps URL using +to: format
-          let appleMapsUrl = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
-          let googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
-
-          // Determine which URL to use based on the device
-          if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-            mapUrl = appleMapsUrl;
-          } else {
-            mapUrl = googleMapsUrl;
-          }
-
-          openMapButton.style.display = 'block';
-        });
-
-        openMapButton.addEventListener('click', function() {
-          if (mapUrl) {
-            window.open(mapUrl, '_blank');
-          }
-        });
-      });
-    </script>
 </body>
 </html>
