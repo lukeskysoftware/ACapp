@@ -1,8 +1,11 @@
 <?php
+// Start output buffering to prevent any output before headers are sent
+ob_start();
 session_start();
+
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
-    exit(); // Aggiungere exit() dopo header() per assicurarsi che lo script si interrompa
+    exit(); // Ensure the script stops executing after the redirect
 }
 ?>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -41,3 +44,8 @@ if (!isset($_SESSION['user_id'])) {
         </div>
     </div>
 </nav>
+
+<?php
+// End output buffering and flush the output
+ob_end_flush();
+?>
