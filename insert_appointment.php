@@ -1,6 +1,17 @@
 <?php
 include 'db.php';
 
+// Fetch Google Maps API key from the config table
+$apiKey = '';
+$sql = "SELECT value FROM config WHERE name = 'GOOGLE_MAPS_API_KEY'";
+$result = mysqli_query($conn, $sql);
+if ($result) {
+    $row = mysqli_fetch_assoc($result);
+    $apiKey = $row['value'];
+} else {
+    die('Errore nel recupero della chiave API di Google Maps: ' . mysqli_error($conn));
+}
+
 // Abilita la visualizzazione degli errori
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
@@ -113,12 +124,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
 <head>
     <meta charset="UTF-8">
     <title>Inserimento Appuntamenti</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
-    <link rel="stylesheet" href="styles.css">
-    <?php include 'config.php'; ?>
-    <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo GOOGLE_MAPS_API_KEY; ?>&libraries=places"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- Use the fetched Google Maps API key -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=<?php echo htmlspecialchars($apiKey); ?>&libraries=places"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .card {
+            margin-top: 20px;
+        }
+    </style>
     <script>
         function initAutocomplete() {
             const input = document.getElementById('indirizzo');
@@ -178,85 +198,66 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
 </head>
 <body>
     <?php include 'menu.php'; ?>
-    <div class="pure-g aria">
-        <div class="pure-u-1">
-            <h1 class="centrato">Inserisci un nuovo appuntamento</h1>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card p-4 shadow-sm">
+                    <h1 class="text-center">Inserisci un nuovo appuntamento</h1>
+                    <?php if ($success): ?>
+                        <div class="alert alert-success" role="alert">
+                            <?php echo $success; ?>
+                        </div>
+                        <div class="text-center">
+                            <button class="btn btn-primary" onclick="window.location.href='insert_appointment.php';">Inserisci un altro appuntamento</button>
+                            <button class="btn btn-secondary" onclick="window.location.href='logout.php';">Esci</button>
+                        </div>
+                    <?php elseif ($error): ?>
+                        <div class="alert alert-danger" role="alert">
+                            <?php echo $error; ?>
+                        </div>
+                    <?php endif; ?>
+                    <form method="POST" action="insert_appointment.php">
+                        <div class="mb-3">
+                            <label for="surname_search" class="form-label">Cerca Paziente per Cognome:</label>
+                            <input type="text" id="surname_search" name="surname_search" class="form-control" oninput="searchSurname()">
+                        </div>
+                        <div id="patientsList"></div>
+                        <input type="hidden" name="zone_id" value="<?php echo htmlspecialchars($zona); ?>">
+                        <div class="mb-3">
+                            <label for="data" class="form-label">Data:</label>
+                            <input type="text" id="data" name="data" class="form-control" value="<?php echo htmlspecialchars($data); ?>" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="ora" class="form-label">Ora:</label>
+                            <input type="text" id="ora" name="ora" class="form-control" value="<?php echo htmlspecialchars($ora); ?>" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="nome" class="form-label">Nome:</label>
+                            <input type="text" id="nome" name="nome" class="form-control" value="<?php echo htmlspecialchars($nome); ?>" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="cognome" class="form-label">Cognome:</label>
+                            <input type="text" id="cognome" name="cognome" class="form-control" value="<?php echo htmlspecialchars($cognome); ?>" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="telefono" class="form-label">Telefono:</label>
+                            <input type="text" id="telefono" name="telefono" class="form-control" value="<?php echo htmlspecialchars($telefono); ?>" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="indirizzo" class="form-label">Indirizzo:</label>
+                            <input type="text" id="indirizzo" name="indirizzo" class="form-control" value="<?php echo htmlspecialchars($indirizzo); ?>" required class="pac-target-input" placeholder="Inserisci una posizione" autocomplete="off">
+                        </div>
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Note:</label>
+                            <textarea id="notes" name="notes" class="form-control"><?php echo htmlspecialchars($notes); ?></textarea>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Inserisci Appuntamento</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
-        <div class="pure-u-1">
-            <label for="surname_search">Cerca Paziente per Cognome:</label>
-            <input type="text" id="surname_search" name="surname_search" oninput="searchSurname()"><br><br>
-        </div>
-        <div class="pure-u-1">
-            <div id="patientsList"></div>
-        </div>
-        <?php if ($success): ?>
-            <div class="pure-u-1">
-                <p><?php echo $success; ?></p>
-                <button onclick="window.location.href='insert_appointment.php';">Inserisci un altro appuntamento</button>
-                <button onclick="window.location.href='logout.php';">Esci</button>
-            </div>
-        <?php elseif ($error): ?>
-            <div class="pure-u-1">
-                <p style="color: red;"><?php echo $error; ?></p>
-            </div>
-            <div class="pure-u-1">
-                <form method="POST" action="insert_appointment.php">
-                    <input type="hidden" name="zone_id" value="<?php echo $zona; ?>">
-                    
-                    <label for="data">Data:</label>
-                    <input type="text" id="data" name="data" value="<?php echo $data; ?>" required><br><br>
-
-                    <label for="ora">Ora:</label>
-                    <input type="text" id="ora" name="ora" value="<?php echo $ora; ?>" required><br><br>
-
-                    <label for="nome">Nome:</label>
-                    <input type="text" id="nome" name="nome" value="<?php echo $nome; ?>" required><br><br>
-
-                    <label for="cognome">Cognome:</label>
-                    <input type="text" id="cognome" name="cognome" value="<?php echo $cognome; ?>" required><br><br>
-
-                    <label for="telefono">Telefono:</label>
-                    <input type="text" id="telefono" name="telefono" value="<?php echo $telefono; ?>" required><br><br>
-
-                    <label for="indirizzo">Indirizzo:</label>
-                    <input type="text" id="indirizzo" name="indirizzo" value="<?php echo $indirizzo; ?>" required class="pac-target-input" placeholder="Inserisci una posizione" autocomplete="off"><br><br>
-
-                    <label for="notes">Note:</label>
-                    <textarea id="notes" name="notes"><?php echo $notes; ?></textarea><br><br>
-
-                    <button type="submit">Inserisci Appuntamento</button>
-                </form>
-            </div>
-        <?php else: ?>
-            <div class="pure-u-1">
-                <form method="POST" action="insert_appointment.php">
-                    <input type="hidden" name="zone_id" value="">
-                    
-                    <label for="data">Data:</label>
-                    <input type="text" id="data" name="data" required><br><br>
-
-                    <label for="ora">Ora:</label>
-                    <input type="text" id="ora" name="ora" required><br><br>
-
-                    <label for="nome">Nome:</label>
-                    <input type="text" id="nome" name="nome" required><br><br>
-
-                    <label for="cognome">Cognome:</label>
-                    <input type="text" id="cognome" name="cognome" required><br><br>
-
-                    <label for="telefono">Telefono:</label>
-                    <input type="text" id="telefono" name="telefono" required><br><br>
-
-                    <label for="indirizzo">Indirizzo:</label>
-                    <input type="text" id="indirizzo" name="indirizzo" required class="pac-target-input" placeholder="Inserisci una posizione" autocomplete="off"><br><br>
-
-                    <label for="notes">Note:</label>
-                    <textarea id="notes" name="notes"></textarea><br><br>
-
-                    <button type="submit">Inserisci Appuntamento</button>
-                </form>
-            </div>
-        <?php endif; ?>
     </div>
 </body>
 </html>
