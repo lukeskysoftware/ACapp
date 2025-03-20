@@ -27,6 +27,12 @@ if (!isset($_SESSION['user_id'])) {
                 <li class="nav-item">
                     <a class="nav-link" href="list_zones.php">Gestisci Zone</a> <!-- Updated to point to list_zones.php -->
                 </li>
+                  <li class="nav-item">
+                    <a class="nav-link" href="waiting_room.php">Richiesta App.to</a>
+                </li>
+                  <li class="nav-item">
+                    <a class="nav-link" href="waiting_list.php">Attesa App.to</a>
+                </li>
                 <li class="nav-item">
                     <a class="nav-link" href="address_calculate.html">Prenota Appuntamento</a>
                 </li>
