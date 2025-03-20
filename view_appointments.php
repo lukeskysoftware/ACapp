@@ -146,7 +146,7 @@
 
             var calendar = new FullCalendar.Calendar(calendarEl, {
                 locale: 'it', // Set the locale to Italian
-                initialView: 'timeGridWeek',
+                initialView: 'timeGridDay', // Set the initial view to the current day
                 themeSystem: 'bootstrap5',
                 headerToolbar: {
                     left: 'prev,next today',
@@ -179,6 +179,8 @@
                         }
                     }
                 },
+                slotMinTime: '07:00:00', // Set the minimum time displayed to 7 AM
+                slotMaxTime: '20:00:00', // Set the maximum time displayed to 8 PM
                 events: function(fetchInfo, successCallback, failureCallback) {
                     const appointments = <?php echo json_encode($appointments); ?>;
                     const events = appointments.map(appointment => ({
