@@ -44,6 +44,9 @@
             display: block;
             margin-bottom: 5px;
         }
+        #emailGroup {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -107,25 +110,26 @@
         </button>
     </div>
   
-    <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3" style="display: none; ">Apri in Mappe</button>
-
-    <!-- New Email Fields and Buttons -->
-    <div class="container mt-3">
+    <div id="emailGroup" class="container mt-3">
         <div class="row">
-            <div class="col-md-6 mb-3">
-                <input type="email" id="emailGoogle" placeholder="Inserisci email per Google Maps" class="form-control">
-                <div class="input-group mt-2">
-                    <button id="sendGoogleEmail" class="btn btn-primary">Invia URL Google Maps</button>
+            <div class="col-md-12 mb-3">
+                <input type="email" id="email" placeholder="Inserisci email" class="form-control">
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="formatGoogle" value="google">
+                    <label class="form-check-label" for="formatGoogle">Google Maps</label>
                 </div>
-            </div>
-            <div class="col-md-6 mb-3">
-                <input type="email" id="emailApple" placeholder="Inserisci email per Apple Maps" class="form-control">
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="formatApple" value="apple">
+                    <label class="form-check-label" for="formatApple">Apple Maps</label>
+                </div>
                 <div class="input-group mt-2">
-                    <button id="sendAppleEmail" class="btn btn-primary">Invia URL Apple Maps</button>
+                    <button id="sendEmail" class="btn btn-primary">Invia URL</button>
                 </div>
             </div>
         </div>
     </div>
+
+    <button id="openMapButton" style="margin:0 auto 2rem auto; display:none;" class="btn btn-success mt-3">Apri in Mappe</button>
 
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
@@ -135,7 +139,9 @@
             var calendarEl = document.getElementById('calendar');
             var detailsPanel = document.getElementById('detailsPanel');
             var openMapButton = document.getElementById('openMapButton');
-            var mapUrl = '';
+            var emailGroup = document.getElementById('emailGroup');
+            var mapUrlGoogle = '';
+            var mapUrlApple = '';
             var selectedDate = '';
 
             var calendar = new FullCalendar.Calendar(calendarEl, {
@@ -220,6 +226,7 @@
                 if (todaysAppointments.length === 0) {
                     alert('Nessun appuntamento per questa data.');
                     openMapButton.style.display = 'none';
+                    emailGroup.style.display = 'none';
                     return;
                 }
 
@@ -231,63 +238,65 @@
                 let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
 
                 // Generate Apple Maps URL using +to: format
-                let appleMapsUrl = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
-                let googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
-
-                // Determine which URL to use based on the device
-                if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-                    mapUrl = appleMapsUrl;
-                } else {
-                    mapUrl = googleMapsUrl;
-                }
+                mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+                mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
 
                 openMapButton.style.display = 'block';
-
-                // Handle sending emails
-                document.getElementById('sendGoogleEmail').addEventListener('click', function() {
-                    const email = document.getElementById('emailGoogle').value;
-                    if (email && googleMapsUrl) {
-                        sendEmail(email, googleMapsUrl, selectedDate);
-                    } else {
-                        alert('Inserisci un indirizzo email valido.');
-                    }
-                });
-
-                document.getElementById('sendAppleEmail').addEventListener('click', function() {
-                    const email = document.getElementById('emailApple').value;
-                    if (email && appleMapsUrl) {
-                        sendEmail(email, appleMapsUrl, selectedDate);
-                    } else {
-                        alert('Inserisci un indirizzo email valido.');
-                    }
-                });
-
-                function sendEmail(email, url, selectedDate) {
-                    fetch('send_email.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ email: email, url: url, selectedDate: selectedDate })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            alert('Email inviata con successo.');
-                        } else {
-                            alert('Errore nell\'invio dell\'email.');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('Errore nell\'invio dell\'email.');
-                    });
-                }
+                emailGroup.style.display = 'block';
             });
 
+            document.getElementById('sendEmail').addEventListener('click', function() {
+                const email = document.getElementById('email').value;
+                const formatGoogle = document.getElementById('formatGoogle').checked;
+                const formatApple = document.getElementById('formatApple').checked;
+
+                if (!email) {
+                    alert('Inserisci un indirizzo email valido.');
+                    return;
+                }
+
+                if (!formatGoogle && !formatApple) {
+                    alert('Seleziona almeno un formato per l\'URL delle mappe.');
+                    return;
+                }
+
+                let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti del giorno " + selectedDate + ":\n\n";
+                if (formatGoogle) {
+                    message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
+                }
+                if (formatApple) {
+                    message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
+                }
+                message += "Cordiali saluti,\nIl Team degli Appuntamenti";
+
+                sendEmail(email, "Itinerario per gli appuntamenti del giorno " + selectedDate, message);
+            });
+
+            function sendEmail(email, subject, message) {
+                fetch('send_email.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: email, subject: subject, message: message })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Email inviata con successo.');
+                    } else {
+                        alert('Errore nell\'invio dell\'email.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Errore nell\'invio dell\'email.');
+                });
+            }
+
             openMapButton.addEventListener('click', function() {
-                if (mapUrl) {
-                    window.open(mapUrl, '_blank');
+                if (mapUrlGoogle) {
+                    window.open(mapUrlGoogle, '_blank');
                 }
             });
         });
