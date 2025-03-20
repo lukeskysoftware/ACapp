@@ -1,7 +1,9 @@
 <?php
 // Start output buffering to prevent any output before headers are sent
 ob_start();
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
