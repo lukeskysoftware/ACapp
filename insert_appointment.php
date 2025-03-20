@@ -36,7 +36,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     foreach ($patients as $patient) {
         $key = $patient['name'] . '|' . $patient['surname'] . '|' . $patient['phone'] . '|' . $patient['address'];
         if (!isset($seen[$key])) {
-            echo '<li style="cursor: pointer;" onclick="selectPatient(' . $patient['id'] . ', \'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\', \'' . $patient['address'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . ' - ' . $patient['phone'] . ' - ' . $patient['address'] . '</li>';
+            echo '<li style="cursor: pointer;" onclick="selectPatient(\'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\', \'' . $patient['address'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . ' - ' . $patient['phone'] . ' - ' . $patient['address'] . '</li>';
             $seen[$key] = true;
         }
     }
@@ -52,25 +52,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
     $indirizzo = htmlspecialchars($_POST['indirizzo']);
     $data = htmlspecialchars($_POST['data']); // Campo data
     $ora = htmlspecialchars($_POST['ora']);   // Campo ora
-    $zona = isset($_POST['zone_id']) ? htmlspecialchars($_POST['zone_id']) : null;
+    $zona = isset($_POST['zone_id']) ? htmlspecialchars($_POST['zone_id']) : 0; // Imposta a 0 se non esiste
     $notes = htmlspecialchars($_POST['notes']);
 
-    if ($zona === null) {
-        $zona = 0; // Imposta a 0 se non esiste
-    }
-
-    // Controlla se esiste già un appuntamento nella stessa data e ora
-    $stmt = $conn->prepare("SELECT id FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?");
+    // Check if an appointment already exists at the same date and time
+    $stmt = $conn->prepare("SELECT COUNT(*) AS count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?");
     if ($stmt === false) {
         $error = 'Errore nella preparazione della query: ' . $conn->error;
     } else {
         $stmt->bind_param("ss", $data, $ora);
         $stmt->execute();
         $result = $stmt->get_result();
-        if ($result->num_rows > 0) {
+        $row = $result->fetch_assoc();
+        if ($row['count'] > 0) {
             $error = "Esiste già un appuntamento nella stessa data e ora.";
         } else {
-            // Verifica se il paziente esiste già
+            // Check if the patient already exists
             $stmt = $conn->prepare("SELECT id FROM cp_patients WHERE name = ? AND surname = ? AND phone = ?");
             if ($stmt === false) {
                 $error = 'Errore nella preparazione della query: ' . $conn->error;
@@ -82,7 +79,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
                     $row = $result->fetch_assoc();
                     $patient_id = $row['id'];
                 } else {
-                    // Se il paziente non esiste, crearne uno nuovo
+                    // If the patient does not exist, create a new one
                     $stmt = $conn->prepare("INSERT INTO cp_patients (name, surname, phone, address) VALUES (?, ?, ?, ?)");
                     if ($stmt === false) {
                         $error = 'Errore nella preparazione della query: ' . $conn->error;
@@ -93,7 +90,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
                     }
                 }
 
-                // Inserimento dati nel database
+                // Insert appointment data into the database
                 if (!$error) {
                     $stmt = $conn->prepare("INSERT INTO cp_appointments (patient_id, appointment_date, appointment_time, address, zone_id, notes) VALUES (?, ?, ?, ?, ?, ?)");
                     if ($stmt === false) {
@@ -107,7 +104,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
                             $error = "Errore: " . $stmt->error;
                         }
 
-                        // Chiudi la connessione
+                        // Close the connection
                         $stmt->close();
                     }
                 }
@@ -160,11 +157,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
             const input = document.getElementById('indirizzo');
             const options = {
                 componentRestrictions: { country: 'it' },
-                types: ['address'],
-                bounds: new google.maps.LatLngBounds(
-                    new google.maps.LatLng(40.496, 14.225), // Southwest corner
-                    new google.maps.LatLng(40.917, 14.610)  // Northeast corner
-                )
+                types: ['address']
             };
             const autocomplete = new google.maps.places.Autocomplete(input, options);
             autocomplete.setFields(['address_component', 'geometry', 'formatted_address']);
@@ -192,7 +185,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
             }
         }
 
-        function selectPatient(id, name, surname, phone, address) {
+        function selectPatient(name, surname, phone, address) {
             document.getElementById('nome').value = name;
             document.getElementById('cognome').value = surname;
             document.getElementById('telefono').value = phone;
