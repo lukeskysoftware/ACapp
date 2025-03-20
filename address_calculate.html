@@ -4,9 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calcolo Indirizzo</title>
-       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
- <link rel="stylesheet" href="styles.css">
-  
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .menu {
+            margin-bottom: 20px;
+        }
+    </style>
     <script>
         async function loadAPIKey() {
             try {
@@ -54,40 +64,23 @@
     </script>
 </head>
 <body>
-     <div class="pure-menu pure-menu-horizontal">
-<nav>
-    <ul class="pure-menu-list">
-        <li class="pure-menu-item"><a class="pure-menu-link" href="create_zone_form.html">Crea Zona</a></li>
-        <li class="pure-menu-item"><a class="pure-menu-link" href="list_zones.php">Gestisci Zone</a></li> <!-- Updated to point to list_zones.php -->
-       <li class="pure-menu-item"><a class="pure-menu-link" href="address_calculate.html">Prenota Appuntamento</a></li>
-        <li class="pure-menu-item"><a class="pure-menu-link" href="manage_appointments.php">Gestisci Appuntamenti</a></li>
-        
-        <li class="pure-menu-item"><a class="pure-menu-link" href="view_appointments.php">Vedi Appuntamenti</a></li>
-        <li class="pure-menu-item"><a class="pure-menu-link" href="logout.php">Logout</a></li>
-    </ul>
-</nav>
-</div>
-
-    <div class="pure-g aria">
-        <h2 class="centrato">A quale indirizzo fare la visita?</h2>
-        </div>
-        <div class="pure-g aria">
-        <form id="addressForm" method="POST" action="address_calculate.php" class="pure-form aria centrato centro" >
+    <div class="menu">
+        <?php include 'menu.php'; ?>
+    </div>
+    <div class="container">
+        <h2>A quale indirizzo fare la visita?</h2>
+        <form id="addressForm" method="POST" action="address_calculate.php" class="pure-form pure-form-stacked">
             <label for="address">Indirizzo:</label>
             <input type="text" id="address" name="address" required><br>
             <label for="latitude">Latitudine:</label>
             <input type="text" id="latitude" name="latitude" readonly><br>
             <label for="longitude">Longitudine:</label>
             <input type="text" id="longitude" name="longitude" readonly><br>
-            <button type="submit" class="pure-button button-small button-green">Avanti</button>
+            <button type="submit" class="pure-button pure-button-primary">Avanti</button>
         </form>
-        </div>
-<div class="pure-g aria centrato">
-        <div id="coordinates" class="centrato"  style="margin-top: 10px;"></div>
+        <div id="coordinates" style="margin-top: 10px;"></div>
         <div id="messageContainer" style="display:none;"></div>
-    </div>
-    <div class="pure-g aria centrato">
-        <a class="centrato" href="dashboard.php">Torna alla dashboard</a>
+        <a href="dashboard.php">Torna alla dashboard</a>
     </div>
 </body>
 </html>
