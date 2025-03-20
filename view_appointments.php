@@ -109,128 +109,188 @@
   
     <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3" style="display: none; ">Apri in Mappe</button>
 
+    <!-- New Email Fields and Buttons -->
+    <div class="container mt-3">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <input type="email" id="emailGoogle" placeholder="Inserisci email per Google Maps" class="form-control">
+                <div class="input-group mt-2">
+                    <button id="sendGoogleEmail" class="btn btn-primary">Invia URL Google Maps</button>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <input type="email" id="emailApple" placeholder="Inserisci email per Apple Maps" class="form-control">
+                <div class="input-group mt-2">
+                    <button id="sendAppleEmail" class="btn btn-primary">Invia URL Apple Maps</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="calendar"></div>
     <div id="detailsPanel"></div>
 
     <script>
-      document.addEventListener('DOMContentLoaded', function() {
-        var calendarEl = document.getElementById('calendar');
-        var detailsPanel = document.getElementById('detailsPanel');
-        var openMapButton = document.getElementById('openMapButton');
-        var mapUrl = '';
+        document.addEventListener('DOMContentLoaded', function() {
+            var calendarEl = document.getElementById('calendar');
+            var detailsPanel = document.getElementById('detailsPanel');
+            var openMapButton = document.getElementById('openMapButton');
+            var mapUrl = '';
+            var selectedDate = '';
 
-        var calendar = new FullCalendar.Calendar(calendarEl, {
-          locale: 'it', // Set the locale to Italian
-          initialView: 'timeGridWeek',
-          themeSystem: 'bootstrap5',
-          headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay'
-          },
-          views: {
-            dayGridMonth: {
-              eventContent: function(arg) {
-                let italicEl = document.createElement('div');
-                italicEl.innerHTML = `<div><b>${arg.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</b></div><div>${arg.event.title}</div>`;
-                let arrayOfDomNodes = [ italicEl ];
-                return { domNodes: arrayOfDomNodes };
-              }
-            },
-            timeGridWeek: {
-              eventContent: function(arg) {
-                let italicEl = document.createElement('div');
-                italicEl.innerHTML = `<b>${arg.event.title}</b>`;
-                let arrayOfDomNodes = [ italicEl ];
-                return { domNodes: arrayOfDomNodes };
-              }
-            },
-            timeGridDay: {
-              eventContent: function(arg) {
-                let italicEl = document.createElement('div');
-                italicEl.innerHTML = `<b>${arg.event.title}</b>`;
-                let arrayOfDomNodes = [ italicEl ];
-                return { domNodes: arrayOfDomNodes };
-              }
-            }
-          },
-          events: function(fetchInfo, successCallback, failureCallback) {
-            const appointments = <?php echo json_encode($appointments); ?>;
-            const events = appointments.map(appointment => ({
-                id: appointment.id,
-                title: `${appointment.name} ${appointment.surname}`,
-                start: `${appointment.appointment_date}T${appointment.appointment_time}`,
-                extendedProps: {
-                    phone: appointment.phone,
-                    address: appointment.address,
-                    notes: appointment.notes,
-                    zone: appointment.zone
+            var calendar = new FullCalendar.Calendar(calendarEl, {
+                locale: 'it', // Set the locale to Italian
+                initialView: 'timeGridWeek',
+                themeSystem: 'bootstrap5',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                },
+                views: {
+                    dayGridMonth: {
+                        eventContent: function(arg) {
+                            let italicEl = document.createElement('div');
+                            italicEl.innerHTML = `<div><b>${arg.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</b></div><div>${arg.event.title}</div>`;
+                            let arrayOfDomNodes = [ italicEl ];
+                            return { domNodes: arrayOfDomNodes };
+                        }
+                    },
+                    timeGridWeek: {
+                        eventContent: function(arg) {
+                            let italicEl = document.createElement('div');
+                            italicEl.innerHTML = `<b>${arg.event.title}</b>`;
+                            let arrayOfDomNodes = [ italicEl ];
+                            return { domNodes: arrayOfDomNodes };
+                        }
+                    },
+                    timeGridDay: {
+                        eventContent: function(arg) {
+                            let italicEl = document.createElement('div');
+                            italicEl.innerHTML = `<b>${arg.event.title}</b>`;
+                            let arrayOfDomNodes = [ italicEl ];
+                            return { domNodes: arrayOfDomNodes };
+                        }
+                    }
+                },
+                events: function(fetchInfo, successCallback, failureCallback) {
+                    const appointments = <?php echo json_encode($appointments); ?>;
+                    const events = appointments.map(appointment => ({
+                        id: appointment.id,
+                        title: `${appointment.name} ${appointment.surname}`,
+                        start: `${appointment.appointment_date}T${appointment.appointment_time}`,
+                        extendedProps: {
+                            phone: appointment.phone,
+                            address: appointment.address,
+                            notes: appointment.notes,
+                            zone: appointment.zone
+                        }
+                    }));
+                    successCallback(events);
+                },
+                eventTimeFormat: { // like '14:30'
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    meridiem: false
+                },
+                slotLabelFormat: { // time labels in 24-hour format
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                },
+                height: 'auto',
+                eventClick: function(info) {
+                    detailsPanel.innerHTML = `
+                        <h5>${info.event.title}</h5>
+                        <p class="timeslot">${info.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</p>
+                        <p><a href="tel:${info.event.extendedProps.phone}">${info.event.extendedProps.phone}</a></p>
+                        <p>${info.event.extendedProps.address}</p>
+                        <p>${info.event.extendedProps.notes}</p>
+                        <p><strong>Zona:</strong> ${info.event.extendedProps.zone}</p>
+                    `;
+                    detailsPanel.style.display = 'block';
                 }
-            }));
-            successCallback(events);
-          },
-          eventTimeFormat: { // like '14:30'
-            hour: '2-digit',
-            minute: '2-digit',
-            meridiem: false
-          },
-          slotLabelFormat: { // time labels in 24-hour format
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-          },
-          height: 'auto',
-          eventClick: function(info) {
-            detailsPanel.innerHTML = `
-              <h5>${info.event.title}</h5>
-              <p class="timeslot">${info.event.start.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</p>
-              <p><a href="tel:${info.event.extendedProps.phone}">${info.event.extendedProps.phone}</a></p>
-              <p>${info.event.extendedProps.address}</p>
-              <p>${info.event.extendedProps.notes}</p>
-              <p><strong>Zona:</strong> ${info.event.extendedProps.zone}</p>
-            `;
-            detailsPanel.style.display = 'block';
-          }
+            });
+            calendar.render();
+
+            document.getElementById('itineraryDropdown').addEventListener('change', function() {
+                selectedDate = this.value;
+                const appointments = <?php echo json_encode($appointments); ?>;
+                const todaysAppointments = appointments.filter(appointment => appointment.appointment_date === selectedDate).sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
+                if (todaysAppointments.length === 0) {
+                    alert('Nessun appuntamento per questa data.');
+                    openMapButton.style.display = 'none';
+                    return;
+                }
+
+                let waypoints = todaysAppointments.map(appointment => appointment.address);
+                
+                // Ensure at least a start and end point
+                let start = "Current+Location";
+                let end = waypoints.pop(); // Last waypoint as end
+                let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
+
+                // Generate Apple Maps URL using +to: format
+                let appleMapsUrl = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+                let googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+
+                // Determine which URL to use based on the device
+                if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                    mapUrl = appleMapsUrl;
+                } else {
+                    mapUrl = googleMapsUrl;
+                }
+
+                openMapButton.style.display = 'block';
+
+                // Handle sending emails
+                document.getElementById('sendGoogleEmail').addEventListener('click', function() {
+                    const email = document.getElementById('emailGoogle').value;
+                    if (email && googleMapsUrl) {
+                        sendEmail(email, googleMapsUrl, selectedDate);
+                    } else {
+                        alert('Inserisci un indirizzo email valido.');
+                    }
+                });
+
+                document.getElementById('sendAppleEmail').addEventListener('click', function() {
+                    const email = document.getElementById('emailApple').value;
+                    if (email && appleMapsUrl) {
+                        sendEmail(email, appleMapsUrl, selectedDate);
+                    } else {
+                        alert('Inserisci un indirizzo email valido.');
+                    }
+                });
+
+                function sendEmail(email, url, selectedDate) {
+                    fetch('send_email.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ email: email, url: url, selectedDate: selectedDate })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert('Email inviata con successo.');
+                        } else {
+                            alert('Errore nell\'invio dell\'email.');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Errore nell\'invio dell\'email.');
+                    });
+                }
+            });
+
+            openMapButton.addEventListener('click', function() {
+                if (mapUrl) {
+                    window.open(mapUrl, '_blank');
+                }
+            });
         });
-        calendar.render();
-
-        document.getElementById('itineraryDropdown').addEventListener('change', function() {
-          const selectedDate = this.value;
-          const appointments = <?php echo json_encode($appointments); ?>;
-          const todaysAppointments = appointments.filter(appointment => appointment.appointment_date === selectedDate).sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
-          if (todaysAppointments.length === 0) {
-            alert('Nessun appuntamento per questa data.');
-            openMapButton.style.display = 'none';
-            return;
-          }
-
-          let waypoints = todaysAppointments.map(appointment => appointment.address);
-          
-          // Ensure at least a start and end point
-          let start = "Current+Location";
-          let end = waypoints.pop(); // Last waypoint as end
-          let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
-
-          // Generate Apple Maps URL using +to: format
-          let appleMapsUrl = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
-          let googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
-
-          // Determine which URL to use based on the device
-          if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-            mapUrl = appleMapsUrl;
-          } else {
-            mapUrl = googleMapsUrl;
-          }
-
-          openMapButton.style.display = 'block';
-        });
-
-        openMapButton.addEventListener('click', function() {
-          if (mapUrl) {
-            window.open(mapUrl, '_blank');
-          }
-        });
-      });
     </script>
 </body>
 </html>
