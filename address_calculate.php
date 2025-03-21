@@ -161,9 +161,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
     $address = $_POST['address'];
     $latitude = $_POST['latitude'];
     $longitude = $_POST['longitude'];
+    $name = isset($_POST['name']) ? $_POST['name'] : '';
+    $surname = isset($_POST['surname']) ? $_POST['surname'] : '';
+    $phone = isset($_POST['phone']) ? $_POST['phone'] : '';
 
     // Debugging: Log the received POST data
-    error_log("Received POST data: address={$address}, latitude={$latitude}, longitude={$longitude}");
+    error_log("Received POST data: address={$address}, latitude={$latitude}, longitude={$longitude}, name={$name}, surname={$surname}, phone={$phone}");
 
     try {
         $zones = getZonesFromCoordinates($latitude, $longitude);
@@ -202,7 +205,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
                             $formattedTime = date('H:i', strtotime($time)); // Remove seconds
-                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}&address=" . urlencode($address) . "'>{$formattedTime}</a> ";
+                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}&address=" . urlencode($address) . "&latitude={$latitude}&longitude={$longitude}&name=" . urlencode($name) . "&surname=" . urlencode($surname) . "&phone=" . urlencode($phone) . "'>{$formattedTime}</a> ";
                         }
                         echo "</p>";
                     }
@@ -257,60 +260,100 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
 }
 ?>
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <title>Calcolo Indirizzo</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
+    <style>
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .menu {
+            margin-bottom: 20px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Calcolo Indirizzo</h1>
-    <form method="POST" action="address_calculate.php">
-        <label for="address">Indirizzo:</label>
-        <input type="text" id="address" name="address" required><br><br>
+    <div class="menu">
+        <?php include 'menu.php'; ?>
+    </div>
+    <div class="container">
+        <h1>Calcolo Indirizzo</h1>
+        <form method="POST" action="address_calculate.php" class="pure-form pure-form-stacked">
+            <label for="address">Indirizzo:</label>
+            <input type="text" id="address" name="address" required><br><br>
 
-        <label for="latitude">Latitudine:</label>
-        <input type="text" id="latitude" name="latitude" required><br><br>
+            <label for="latitude">Latitudine:</label>
+            <input type="text" id="latitude" name="latitude" required><br><br>
 
-        <label for="longitude">Longitudine:</label>
-        <input type="text" id="longitude" name="longitude" required><br><br>
+            <label for="longitude">Longitudine:</label>
+            <input type="text" id="longitude" name="longitude" required><br><br>
 
-        <button type="submit">Calcola</button>
-    </form>
-
-    <div id="result"></div>
-
-    <div id="appointmentForm" style="display:none;">
-        <h2>Prenota Appuntamento</h2>
-        <form method="POST" action="address_calculate.php">
-            <input type="hidden" id="zone_id" name="zone_id">
-            <input type="hidden" id="date" name="date">
-            <input type="hidden" id="time" name="time">
-            
             <label for="name">Nome:</label>
-            <input type="text" id="name" name="name" required><br><br>
+            <input type="text" id="name" name="name" required style="display:none;"><br><br>
 
             <label for="surname">Cognome:</label>
-            <input type="text" id="surname" name="surname" required><br><br>
+            <input type="text" id="surname" name="surname" required style="display:none;"><br><br>
 
             <label for="phone">Telefono:</label>
-            <input type="text" id="phone" name="phone" required><br><br>
+            <input type="text" id="phone" name="phone" required style="display:none;"><br><br>
 
-            <label for="notes">Note:</label>
-            <textarea id="notes" name="notes"></textarea><br><br>
-
-            <button type="submit">Prenota</button>
+            <button type="submit" class="pure-button pure-button-primary">Calcola</button>
         </form>
+
+        <div id="result"></div>
+
+        <div id="appointmentForm" style="display:none;">
+            <h2>Prenota Appuntamento</h2>
+            <form method="POST" action="address_calculate.php" class="pure-form pure-form-stacked">
+                <input type="hidden" id="zone_id" name="zone_id">
+                <input type="hidden" id="date" name="date">
+                <input type="hidden" id="time" name="time">
+                <input type="hidden" id="address" name="address">
+                <input type="hidden" id="latitude" name="latitude">
+                <input type="hidden" id="longitude" name="longitude">
+                <input type="hidden" id="name" name="name">
+                <input type="hidden" id="surname" name="surname">
+                <input type="hidden" id="phone" name="phone">
+                
+                <label for="name">Nome:</label>
+                <input type="text" id="name" name="name" required><br><br>
+
+                <label for="surname">Cognome:</label>
+                <input type="text" id="surname" name="surname" required><br><br>
+
+                <label for="phone">Telefono:</label>
+                <input type="text" id="phone" name="phone" required><br><br>
+
+                <label for="notes">Note:</label>
+                <textarea id="notes" name="notes"></textarea><br><br>
+
+                <button type="submit" class="pure-button pure-button-primary">Prenota</button>
+            </form>
+        </div>
     </div>
 
     <script>
         document.querySelectorAll("a[href^='book_appointment.php']").forEach(function(el) {
             el.addEventListener('click', function(event) {
                 event.preventDefault();
-                document.getElementById('zone_id').value = this.href.split('zone_id=')[1].split('&')[0];
-                document.getElementById('date').value = this.href.split('date=')[1].split('&')[0];
-                document.getElementById('time').value = this.href.split('time=')[1].split('&')[0];
+                const urlParams = new URLSearchParams(this.href.split('?')[1]);
+
+                document.getElementById('zone_id').value = urlParams.get('zone_id');
+                document.getElementById('date').value = urlParams.get('date');
+                document.getElementById('time').value = urlParams.get('time');
+                document.getElementById('address').value = urlParams.get('address');
+                document.getElementById('latitude').value = urlParams.get('latitude');
+                document.getElementById('longitude').value = urlParams.get('longitude');
+                document.getElementById('name').value = urlParams.get('name');
+                document.getElementById('surname').value = urlParams.get('surname');
+                document.getElementById('phone').value = urlParams.get('phone');
+                
                 document.getElementById('appointmentForm').style.display = 'block';
                 window.scrollTo(0, document.getElementById('appointmentForm').offsetTop);
             });
