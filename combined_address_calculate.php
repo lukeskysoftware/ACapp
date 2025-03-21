@@ -2,6 +2,7 @@
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 include 'db.php';
+include 'menu.php';
 
 // Set locale to Italian
 setlocale(LC_TIME, 'it_IT.UTF-8');
@@ -205,7 +206,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
                             $formattedTime = date('H:i', strtotime($time)); // Remove seconds
-                            echo "<a href='#' class='booking-link' data-zone-id='{$zone['id']}' data-date='{$date}' data-time='{$formattedTime}' data-address='" . urlencode($address) . "' data-latitude='{$latitude}' data-longitude='{$longitude}' data-name='{$name}' data-surname='{$surname}' data-phone='{$phone}'>{$formattedTime}</a> ";
+                            echo "<a class='booking-link' href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}&address=" . urlencode($address) . "&latitude={$latitude}&longitude={$longitude}&name={$name}&surname={$surname}&phone={$phone}'>{$formattedTime}</a> ";
+                            //echo "<a href='book_appointment.php' class='booking-link' data-zone-id='{$zone['id']}' data-date='{$date}' data-time='{$formattedTime}' data-address='" . urlencode($address) . "' data-latitude='{$latitude}' data-longitude='{$longitude}' data-name='{$name}' data-surname='{$surname}' data-phone='{$phone}'>{$formattedTime}</a> ";
                         }
                         echo "</p>";
                     }
@@ -288,7 +290,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             margin-bottom: 10px;
         }
     </style>
-
     <script>
         async function loadAPIKey() {
             try {
@@ -374,12 +375,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     </script>
 </head>
 <body>
-    <div class="menu">
-        <?php include 'menu.php'; ?>
-    </div>
+   
     <div class="container">
         <h2>A quale indirizzo fare la visita?</h2>
-        <form id="addressForm" method="POST" action="combined_address_calculate_part3.php" class="pure-form pure-form-stacked">
+        <form id="addressForm" method="POST" action="combined_address_calculate.php" class="pure-form pure-form-stacked">
             <label for="address">Indirizzo:</label>
             <input type="text" id="address" name="address" required><br>
             <label for="latitude">Latitudine:</label>
@@ -396,7 +395,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     <div class="container">
         <div id="appointmentForm" style="display:none; margin-top: 20px;">
             <h2>Prenota Appuntamento</h2>
-            <form method="POST" action="combined_address_calculate_part3.php" class="pure-form pure-form-stacked">
+            <form method="POST" action="combined_address_calculate.php" class="pure-form pure-form-stacked">
                 <input type="hidden" id="zone_id" name="zone_id">
                 <input type="hidden" id="date" name="date">
                 <input type="hidden" id="time" name="time">
