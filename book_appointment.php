@@ -42,9 +42,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     $result = $stmt->get_result();
     $patients = $result->fetch_all(MYSQLI_ASSOC);
 
-    echo '<ul>';
+    echo '<ul style="list-style-type: none; padding: 0;">';
     foreach ($patients as $patient) {
-        echo '<li style="cursor: pointer;" onclick="selectPatient(\'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . '</li>';
+        echo '<li style="cursor: pointer; color: #1f8dd6; margin-bottom: 5px;" onclick="selectPatient(\'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . ' - ' . $patient['phone'] . '</li>';
     }
     echo '</ul>';
     exit;
@@ -66,6 +66,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
         }
         .menu {
             margin-bottom: 20px;
+        }
+        .pure-form-stacked input[type="text"],
+        .pure-form-stacked textarea {
+            width: 100%;
+            max-width: 300px;
+            margin: 0 auto;
         }
     </style>
     <script>
