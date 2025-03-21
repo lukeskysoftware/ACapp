@@ -176,8 +176,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         // Debugging: Log the origin coordinates
         error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
 
-        echo "<h2>Indirizzo: {$address}</h2>";
-        echo "<p>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</p>";
+        echo "<div class='container'><center><h2>Indirizzo: <span style='color:green; font-weight:700;'>{$address}</span></h2>";
+        echo "<p>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</p></center></div><hr>";
 
         $zonesFound = false;
         $zoneNames = [];
@@ -198,11 +198,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                 $zoneNames[] = $zone['name'];
                 $slots = getSlotsForZone($zone['id']);
                 if (!empty($slots)) {
-                    echo "<h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona {$zone['name']}:</h4>";
+                    echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
                     $next3Days = getNext3AppointmentDates($slots, $zone['id']);
                     foreach ($next3Days as $date => $times) {
                         $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
-                        echo "<p>Data: {$formattedDisplayDate}</p>";
+                        echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}</p>";
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
                             $formattedTime = date('H:i', strtotime($time)); // Remove seconds
@@ -211,17 +211,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
                         }
                         echo "</p>";
                     }
+                    echo "</center></div><hr>";
                 } else {
-                    echo "<p>Nessun appuntamento disponibile per i prossimi 3 giorni per la zona {$zone['name']}.</p>";
+                    echo "<div class='container'><p>Nessun appuntamento disponibile per i prossimi 3 giorni per la zona {$zone['name']}.</p></div>";
                 }
             }
         }
 
         if ($zonesFound) {
             $zoneText = implode(', ', $zoneNames);
-            echo "<p>L'indirizzo appartiene alla zona {$zoneText}.</p>";
+            echo "<div class='container'><center><p style='margin-top:2rem; font-size:120%; font-weight:700;'>L'indirizzo appartiene alla zona <span style='color:green;'>{$zoneText}</span>.</p></center></div>";
         } else {
-            echo "<p>L'indirizzo non si trova in nessuna zona.</p>";
+            echo "<div class='container'><center><p>L'indirizzo non si trova in nessuna zona.</p></center></div>";
         }
     } catch (Exception $e) {
         error_log("Exception: " . $e->getMessage());
@@ -278,6 +279,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
         }
         .menu {
             margin-bottom: 20px;
+        }
+        .centrato {
+            text-align: center;
+            
         }
         form {
             display: flex;
