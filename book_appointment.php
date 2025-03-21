@@ -73,6 +73,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
             max-width: 300px;
             margin: 0 auto;
         }
+        .etic{font-size:120%; font-weight:700;}
     </style>
     <script>
         function searchSurname() {
@@ -106,29 +107,30 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     </div>
     <div class="container">
         <h1>Prenota Appuntamento</h1>
+        <br>
         <label for="surname_search">Cerca Paziente per Cognome:</label>
         <input type="text" id="surname_search" name="surname_search" oninput="searchSurname()"><br><br>
         <div id="patientsList"></div>
-
+<hr>
         <form method="POST" action="submit_appointment.php" class="pure-form pure-form-stacked">
             <input type="hidden" name="zone_id" value="<?php echo htmlspecialchars($zone_id); ?>">
             <input type="hidden" name="date" value="<?php echo htmlspecialchars($date); ?>">
             <input type="hidden" name="time" value="<?php echo htmlspecialchars($time); ?>">
             <input type="hidden" name="address" value="<?php echo htmlspecialchars($address); ?>">
 
-            <label for="name">Nome:</label>
-            <input type="text" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>" required><br><br>
+            <label class="etic" for="name">Nome:</label>
+            <input type="text" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>" required><br>
 
-            <label for="surname">Cognome:</label>
-            <input type="text" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>" required><br><br>
+            <label class="etic" for="surname">Cognome:</label>
+            <input type="text" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>" required><br>
 
-            <label for="phone">Telefono:</label>
-            <input type="text" id="phone" name="phone" value="<?php echo htmlspecialchars($phone); ?>" required><br><br>
+            <label class="etic" for="phone">Telefono:</label>
+            <input type="text" id="phone" name="phone" value="<?php echo htmlspecialchars($phone); ?>" required><br>
 
-            <p>Indirizzo: <?php echo htmlspecialchars($address); ?></p>
+            <p><span class="etic">Indirizzo:</span><br><?php echo htmlspecialchars($address); ?></p>
 
-            <label for="notes">Note:</label>
-            <textarea id="notes" name="notes"></textarea><br><br>
+            <label class="etic" for="notes">Note:</label>
+            <textarea id="notes" name="notes"></textarea><br>
 
             <button type="submit" class="pure-button pure-button-primary">Prenota</button>
         </form>
