@@ -16,6 +16,16 @@
         .menu {
             margin-bottom: 20px;
         }
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        input[type="text"] {
+            width: 100%;
+            max-width: 300px;
+            margin-bottom: 10px;
+        }
     </style>
     <script>
         async function loadAPIKey() {
@@ -38,7 +48,11 @@
 
         function initAutocomplete() {
             var input = document.getElementById('address');
-            var autocomplete = new google.maps.places.Autocomplete(input, { types: ['geocode'] });
+            var options = {
+                componentRestrictions: { country: 'it' },
+                types: ['address']
+            };
+            var autocomplete = new google.maps.places.Autocomplete(input, options);
 
             autocomplete.addListener('place_changed', function() {
                 var place = autocomplete.getPlace();
