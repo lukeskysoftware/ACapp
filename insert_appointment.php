@@ -165,22 +165,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
         function initAutocomplete() {
             const input = document.getElementById('indirizzo');
             const options = {
-                types: ['geocode'],
-                strictBounds: true,
-                bounds: {
-                    north: 42.1,
-                    south: 40.8,
-                    west: 11.5,
-                    east: 13.0
-                }
+                componentRestrictions: { country: 'it' },
+                types: ['address']
             };
             const autocomplete = new google.maps.places.Autocomplete(input, options);
+            autocomplete.setFields(['address_component', 'geometry', 'formatted_address']);
             autocomplete.addListener('place_changed', function () {
                 const place = autocomplete.getPlace();
-                if (place.geometry) {
-                    document.getElementById('latitude').value = place.geometry.location.lat();
-                    document.getElementById('longitude').value = place.geometry.location.lng();
-                }
+                const address = place.formatted_address;
+                input.value = address;
             });
         }
 
@@ -284,8 +277,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
                                 <div class="mb-3">
                                     <label for="indirizzo" class="form-label">Indirizzo:</label>
                                     <input type="text" id="indirizzo" name="indirizzo" class="form-control pac-target-input" placeholder="Inserisci una posizione" autocomplete="off" required>
-                                    <input type="hidden" id="latitude" name="latitude">
-                                    <input type="hidden" id="longitude" name="longitude">
                                 </div>
                                 <div class="mb-3">
                                     <label for="notes" class="form-label">Note:</label>
