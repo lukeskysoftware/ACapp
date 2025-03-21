@@ -15,7 +15,10 @@ if ($result) {
 // Enable error reporting
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-$nome = $cognome = $telefono = $indirizzo = $data = $ora = $zona = $notes = "";
+$nome = isset($_GET['name']) ? htmlspecialchars($_GET['name']) : "";
+$cognome = isset($_GET['surname']) ? htmlspecialchars($_GET['surname']) : "";
+$telefono = isset($_GET['phone']) ? htmlspecialchars($_GET['phone']) : "";
+$indirizzo = $data = $ora = $zona = $notes = "";
 $success = $error = "";
 
 // Function to search patients by surname
@@ -40,7 +43,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     foreach ($patients as $patient) {
         $key = $patient['surname'] . '|' . $patient['address'];
         if (!isset($seen[$key])) {
-            echo '<div style="cursor: pointer;" onclick="selectPatient(' . $patient['id'] . ', \'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\', \'' . $patient['address'] . '\')">' . $patient['surname'] . ' - ' . $patient['phone'] . ' - ' . $patient['address'] . '</div>';
+            echo '<div style="cursor: pointer;" onclick="selectPatient(' . $patient['id'] . ', \'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\', \'' . $patient['address'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . '</div>';
             $seen[$key] = true;
         }
     }
@@ -162,15 +165,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
         function initAutocomplete() {
             const input = document.getElementById('indirizzo');
             const options = {
-                componentRestrictions: { country: 'it' },
-                types: ['address']
+                types: ['geocode'],
+                strictBounds: true,
+                bounds: {
+                    north: 42.1,
+                    south: 40.8,
+                    west: 11.5,
+                    east: 13.0
+                }
             };
             const autocomplete = new google.maps.places.Autocomplete(input, options);
-            autocomplete.setFields(['address_component', 'geometry', 'formatted_address']);
             autocomplete.addListener('place_changed', function () {
                 const place = autocomplete.getPlace();
-                const address = place.formatted_address;
-                input.value = address;
+                if (place.geometry) {
+                    document.getElementById('latitude').value = place.geometry.location.lat();
+                    document.getElementById('longitude').value = place.geometry.location.lng();
+                }
             });
         }
 
@@ -261,19 +271,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
                                 </div>
                                 <div class="mb-3">
                                     <label for="nome" class="form-label">Nome:</label>
-                                    <input type="text" id="nome" name="nome" class="form-control" required>
+                                    <input type="text" id="nome" name="nome" class="form-control" value="<?php echo $nome; ?>" required>
                                 </div>
                                 <div class="mb-3">
                                     <label for="cognome" class="form-label">Cognome:</label>
-                                    <input type="text" id="cognome" name="cognome" class="form-control" required>
+                                    <input type="text" id="cognome" name="cognome" class="form-control" value="<?php echo $cognome; ?>" required>
                                 </div>
                                 <div class="mb-3">
                                     <label for="telefono" class="form-label">Telefono:</label>
-                                    <input type="text" id="telefono" name="telefono" class="form-control" required>
+                                    <input type="text" id="telefono" name="telefono" class="form-control" value="<?php echo $telefono; ?>" required>
                                 </div>
                                 <div class="mb-3">
                                     <label for="indirizzo" class="form-label">Indirizzo:</label>
                                     <input type="text" id="indirizzo" name="indirizzo" class="form-control pac-target-input" placeholder="Inserisci una posizione" autocomplete="off" required>
+                                    <input type="hidden" id="latitude" name="latitude">
+                                    <input type="hidden" id="longitude" name="longitude">
                                 </div>
                                 <div class="mb-3">
                                     <label for="notes" class="form-label">Note:</label>
