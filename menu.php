@@ -1,14 +1,31 @@
 <?php
-// Start output buffering to prevent any output before headers are sent
+// Start the session and output buffering to prevent any output before headers are sent
 ob_start();
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// Define the timeout duration (e.g., 1800 seconds = 30 minutes)
+$timeout_duration = 1800;
+
+// Check if the user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit(); // Ensure the script stops executing after the redirect
 }
+
+// Check if the timeout has been set
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) > $timeout_duration) {
+    // Last request was more than the timeout duration ago
+    session_unset();     // Unset $_SESSION variable for the run-time 
+    session_destroy();   // Destroy session data in storage
+    header("Location: login.php");
+    exit(); // Ensure the script stops executing after the redirect
+}
+
+// Update last activity time stamp
+$_SESSION['last_activity'] = time();
 ?>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -27,14 +44,14 @@ if (!isset($_SESSION['user_id'])) {
                 <li class="nav-item">
                     <a class="nav-link" href="list_zones.php">Gestisci Zone</a> <!-- Updated to point to list_zones.php -->
                 </li>
-                  <li class="nav-item">
+                <li class="nav-item">
                     <a class="nav-link" href="waiting_room.php">Richiesta App.to</a>
                 </li>
-                  <li class="nav-item">
+                <li class="nav-item">
                     <a class="nav-link" href="waiting_list.php">Attesa App.to</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="address_calculate.html">Prenota Appuntamento</a>
+                    <a class="nav-link" href="address__calculate.php">Prenota Appuntamento</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="manage_appointments.php">Gestisci Appuntamenti</a>
