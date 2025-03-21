@@ -5,6 +5,9 @@ $zone_id = isset($_GET['zone_id']) ? $_GET['zone_id'] : null;
 $date = isset($_GET['date']) ? $_GET['date'] : null;
 $time = isset($_GET['time']) ? $_GET['time'] : null;
 $address = isset($_GET['address']) ? $_GET['address'] : null;
+$name = isset($_GET['name']) ? $_GET['name'] : null;
+$surname = isset($_GET['surname']) ? $_GET['surname'] : null;
+$phone = isset($_GET['phone']) ? $_GET['phone'] : null;
 
 if ($_SERVER["REQUEST_METHOD"] == "GET") {
     // Debugging: Log the received GET data
@@ -41,7 +44,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
 
     echo '<ul>';
     foreach ($patients as $patient) {
-        echo '<li style="cursor: pointer;" onclick="selectPatient(\'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . ' - ' . $patient['phone'] . '</li>';
+        echo '<li style="cursor: pointer;" onclick="selectPatient(\'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . '</li>';
     }
     echo '</ul>';
     exit;
@@ -54,6 +57,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     <meta charset="UTF-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
     <title>Prenota Appuntamento</title>
+    <style>
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .menu {
+            margin-bottom: 20px;
+        }
+    </style>
     <script>
         function searchSurname() {
             const surnameInput = document.getElementById('surname_search').value;
@@ -81,32 +95,37 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     </script>
 </head>
 <body>
-    <h1>Prenota Appuntamento</h1>
-    <label for="surname_search">Cerca Paziente per Cognome:</label>
-    <input type="text" id="surname_search" name="surname_search" oninput="searchSurname()"><br><br>
-    <div id="patientsList"></div>
+    <div class="menu">
+        <?php include 'menu.php'; ?>
+    </div>
+    <div class="container">
+        <h1>Prenota Appuntamento</h1>
+        <label for="surname_search">Cerca Paziente per Cognome:</label>
+        <input type="text" id="surname_search" name="surname_search" oninput="searchSurname()"><br><br>
+        <div id="patientsList"></div>
 
-    <form method="POST" action="submit_appointment.php">
-        <input type="hidden" name="zone_id" value="<?php echo htmlspecialchars($zone_id); ?>">
-        <input type="hidden" name="date" value="<?php echo htmlspecialchars($date); ?>">
-        <input type="hidden" name="time" value="<?php echo htmlspecialchars($time); ?>">
-        <input type="hidden" name="address" value="<?php echo htmlspecialchars($address); ?>">
+        <form method="POST" action="submit_appointment.php" class="pure-form pure-form-stacked">
+            <input type="hidden" name="zone_id" value="<?php echo htmlspecialchars($zone_id); ?>">
+            <input type="hidden" name="date" value="<?php echo htmlspecialchars($date); ?>">
+            <input type="hidden" name="time" value="<?php echo htmlspecialchars($time); ?>">
+            <input type="hidden" name="address" value="<?php echo htmlspecialchars($address); ?>">
 
-        <label for="name">Nome:</label>
-        <input type="text" id="name" name="name" required><br><br>
+            <label for="name">Nome:</label>
+            <input type="text" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>" required><br><br>
 
-        <label for="surname">Cognome:</label>
-        <input type="text" id="surname" name="surname" required><br><br>
+            <label for="surname">Cognome:</label>
+            <input type="text" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>" required><br><br>
 
-        <label for="phone">Telefono:</label>
-        <input type="text" id="phone" name="phone" required><br><br>
-        
-        <p>Indirizzo: <?php echo htmlspecialchars($address); ?></p>
+            <label for="phone">Telefono:</label>
+            <input type="text" id="phone" name="phone" value="<?php echo htmlspecialchars($phone); ?>" required><br><br>
 
-        <label for="notes">Note:</label>
-        <textarea id="notes" name="notes"></textarea><br><br>
+            <p>Indirizzo: <?php echo htmlspecialchars($address); ?></p>
 
-        <button type="submit">Prenota</button>
-    </form>
+            <label for="notes">Note:</label>
+            <textarea id="notes" name="notes"></textarea><br><br>
+
+            <button type="submit" class="pure-button pure-button-primary">Prenota</button>
+        </form>
+    </div>
 </body>
 </html>
