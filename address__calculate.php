@@ -49,19 +49,23 @@
         function initAutocomplete() {
             var input = document.getElementById('address');
             var options = {
-                componentRestrictions: { country: 'it' },
-                types: ['address']
+                types: ['geocode'],
+                strictBounds: true,
+                bounds: {
+                    north: 42.1,
+                    south: 40.8,
+                    west: 11.5,
+                    east: 13.0
+                }
             };
             var autocomplete = new google.maps.places.Autocomplete(input, options);
 
             autocomplete.addListener('place_changed', function() {
                 var place = autocomplete.getPlace();
                 if (place.geometry) {
-                    var lat = place.geometry.location.lat();
-                    var lng = place.geometry.location.lng();
-                    document.getElementById('latitude').value = lat;
-                    document.getElementById('longitude').value = lng;
-                    displayCoordinates(lat, lng);
+                    document.getElementById('latitude').value = place.geometry.location.lat();
+                    document.getElementById('longitude').value = place.geometry.location.lng();
+                    displayCoordinates(place.geometry.location.lat(), place.geometry.location.lng());
                 }
             });
         }
