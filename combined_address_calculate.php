@@ -4,6 +4,11 @@ ini_set('display_errors', 1);
 include 'db.php';
 include 'menu.php';
 
+// Capture parameters from the URL
+$name = isset($_GET['name']) ? $_GET['name'] : '';
+$surname = isset($_GET['surname']) ? $_GET['surname'] : '';
+$phone = isset($_GET['phone']) ? $_GET['phone'] : '';
+
 // Set locale to Italian
 setlocale(LC_TIME, 'it_IT.UTF-8');
 
@@ -165,6 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
     $name = isset($_POST['name']) ? $_POST['name'] : '';
     $surname = isset($_POST['surname']) ? $_POST['surname'] : '';
     $phone = isset($_POST['phone']) ? $_POST['phone'] : '';
+    
 
     // Debugging: Log the received POST data
     error_log("Received POST data: address={$address}, latitude={$latitude}, longitude={$longitude}, name={$name}, surname={$surname}, phone={$phone}");
@@ -390,6 +396,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             <input type="text" id="latitude" name="latitude" readonly><br>
             <label for="longitude">Longitudine:</label>
             <input type="text" id="longitude" name="longitude" readonly><br>
+            <input type="hidden" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>">
+            <input type="hidden" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>">
+            <input type="hidden" id="phone" name="phone" value="<?php echo htmlspecialchars($phone); ?>">
             <button type="submit" class="pure-button pure-button-primary">Avanti</button>
         </form>
         <div id="coordinates" style="margin-top: 10px;"></div>
