@@ -4,8 +4,8 @@ include 'db.php';
 function testUserRegistration() {
     global $conn;
 
-    $username = 'testuser';
-    $password = 'Test@1234';
+    $username = 'organizza';
+    $password = '@AppuApp';
 
     // Hash della password
     $hashed_password = password_hash($password, PASSWORD_BCRYPT);
