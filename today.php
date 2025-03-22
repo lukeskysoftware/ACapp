@@ -1,0 +1,317 @@
+<?php
+include_once 'db.php';
+
+// Verifica che la connessione al database sia stata stabilita correttamente
+if (!$conn) {
+    die("Connessione al database non riuscita: " . mysqli_connect_error());
+}
+
+session_start();
+
+// Gestisci la disconnessione
+if (isset($_GET['logout'])) {
+    session_destroy();
+    header("Location: today.php");
+    exit;
+}
+
+// Gestisci la sottomissione del modulo di login
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = $_POST['username'];
+    $password = $_POST['password'];
+
+    // Verifica le credenziali
+    $sql = "SELECT * FROM cp_users WHERE username = ?";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "s", $username);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $user = mysqli_fetch_assoc($result);
+
+    if ($user && password_verify($password, $user['password'])) {
+        $_SESSION['user_id'] = $user['id'];
+    } else {
+        $login_error = "Credenziali non valide.";
+    }
+    mysqli_stmt_close($stmt);
+}
+
+// Verifica se l'utente è loggato
+if (!isset($_SESSION['user_id'])) {
+    // Mostra il modulo di login
+    echo '<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container d-flex justify-content-center align-items-center" style="height: 100vh;">
+        <div class="card p-4 shadow-sm" style="width: 100%; max-width: 400px;">
+            <h2 class="text-center">Login</h2>
+            <form method="post" action="today.php">
+                <div class="mb-3">
+                    <label for="username" class="form-label">Username:</label>
+                    <input type="text" id="username" name="username" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password:</label>
+                    <input type="password" id="password" name="password" class="form-control" required>
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </div>
+            </form>';
+    if (isset($login_error)) {
+        echo '<p class="text-danger text-center mt-3">' . $login_error . '</p>';
+    }
+    echo '  </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>';
+    exit;
+}
+
+// Verifica se l'utente loggato ha i permessi corretti
+if (!in_array($_SESSION['user_id'], [6, 9])) {
+    echo "<p>Non hai permessi per accedere alla risorsa.</p>";
+    exit;
+}
+
+function getAppointmentsByDate($conn, $date) {
+    $sql = "SELECT a.id, p.name, p.surname, CONCAT('+39', p.phone) as phone, a.notes, a.appointment_date, a.appointment_time, a.address
+            FROM cp_appointments a
+            JOIN cp_patients p ON a.patient_id = p.id
+            WHERE a.appointment_date = '$date'
+            ORDER BY a.appointment_time ASC";
+    $result = mysqli_query($conn, $sql);
+    if (!$result) {
+        die('Error: ' . mysqli_error($conn));
+    }
+    return mysqli_fetch_all($result, MYSQLI_ASSOC);
+}
+
+$selectedDate = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
+$appointments = getAppointmentsByDate($conn, $selectedDate);
+$today = date('Y-m-d');
+$isToday = $selectedDate === $today;
+$displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
+?>
+
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body {
+            padding: 20px;
+        }
+        .appointment-time {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        .appointment-details {
+            margin-bottom: 20px;
+        }
+        hr {
+            border-top: 2px solid #bbb;
+        }
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .logout-button {
+            margin-left: auto;
+        }
+        .dashboard-button {
+            margin-right: auto;
+        }
+        .map-link {
+            color: #007bff;
+        }
+        .map-button {
+            margin-left: 10px;
+            background-color: #17a2b8;
+            color: #fff;
+            border: none;
+        }
+        .map-button .bi {
+            margin-right: 5px;
+        }
+        .name, .surname {
+            font-weight: bold;
+            font-size: 120%;
+        }
+        .call-button {
+            background-color: #fd7e14;
+            color: #fff;
+            border: none;
+            transition: background-color 0.3s ease;
+        }
+        .call-button .bi {
+            margin-right: 5px;
+        }
+        .call-button:hover {
+            background-color: #e8590c;
+        }
+        .email-button .bi {
+            margin-right: 5px;
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.8.1/font/bootstrap-icons.min.css">
+</head>
+<body>
+    <div class="container">
+        <div class="row mb-3">
+            <div class="col text-start">
+                <a href="dashboard.php" class="btn btn-light dashboard-button">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </a>
+            </div>
+            <div class="col text-end">
+                <a href="today.php?logout=true" class="btn btn-light logout-button">
+                    <i class="bi bi-x-circle"></i> Esci
+                </a>
+            </div>
+        </div>
+        <div class="navigation">
+            <a href="today.php?date=<?php echo date('Y-m-d', strtotime($selectedDate . ' -1 day')); ?>" class="btn btn-secondary">&lt;</a>
+            <h1><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></h1>
+            <a href="today.php?date=<?php echo date('Y-m-d', strtotime($selectedDate . ' +1 day')); ?>" class="btn btn-secondary">&gt;</a>
+        </div>
+        <?php if (empty($appointments)): ?>
+            <p class="text-center">Nessun appuntamento registrato</p>
+        <?php else: ?>
+            <?php foreach ($appointments as $appointment): ?>
+                <div class="appointment-details">
+                    <p class="appointment-time"><?php echo date('H:i', strtotime($appointment['appointment_time'])); ?></p>
+                    <p><span class="name"><?php echo $appointment['name']; ?></span> <span class="surname"><?php echo $appointment['surname']; ?></span></p>
+                    <p><span><?php echo $appointment['phone']; ?></span>
+                        <a href="tel:<?php echo $appointment['phone']; ?>" class="btn call-button"><i class="bi bi-telephone-fill"></i>Chiama</a>
+                    </p>
+                    <p><?php echo $appointment['address']; ?>
+                        <a href="https://maps.google.com/?q=<?php echo urlencode($appointment['address']); ?>" target="_blank" class="btn map-button"><i class="bi bi-geo-alt-fill"></i>Apri in Mappe</a>
+                    </p>
+                    <?php if (!empty($appointment['notes'])): ?>
+                        <p><strong>Note:</strong> <?php echo $appointment['notes']; ?></p>
+                    <?php endif; ?>
+                </div>
+                <hr>
+            <?php endforeach; ?>
+            <div class="container mt-5">
+                <h2>Genera l'itinerario per oggi</h2>
+                <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3"><i class="bi bi-geo-alt-fill"></i>Apri l'itinerario in Mappe</button>
+                <hr>
+                <h2>Invia l'itinerario per email</h2>
+                <div id="emailGroup" class="container mt-3">
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <input type="email" id="email" placeholder="Inserisci email" class="form-control">
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="formatGoogle" value="google">
+                                <label class="form-check-label" for="formatGoogle">Google Maps</label>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="formatApple" value="apple">
+                                <label class="form-check-label" for="formatApple">Apple Maps</label>
+                            </div>
+                            <div class="input-group mt-2">
+                                <button id="sendEmail" class="btn btn-primary email-button"><i class="bi bi-envelope-fill"></i>Invia URL</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var appointments = <?php echo json_encode($appointments); ?>;
+            var mapUrlGoogle = '';
+            var mapUrlApple = '';
+
+            if (appointments.length > 0) {
+                let waypoints = appointments.map(appointment => appointment.address);
+                
+                // Ensure at least a start and end point
+                let start = "Current+Location";
+                let end = waypoints.pop(); // Last waypoint as end
+                let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
+
+                // Generate Apple Maps URL using +to: format
+                mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+                mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+
+                document.getElementById('openMapButton').style.display = 'block';
+                document.getElementById('emailGroup').style.display = 'block';
+            } else {
+                document.getElementById('openMapButton').style.display = 'none';
+                document.getElementById('emailGroup').style.display = 'none';
+            }
+
+            document.getElementById('sendEmail').addEventListener('click', function() {
+                const email = document.getElementById('email').value;
+                const formatGoogle = document.getElementById('formatGoogle').checked;
+                const formatApple = document.getElementById('formatApple').checked;
+
+                if (!email) {
+                    alert('Inserisci un indirizzo email valido.');
+                    return;
+                }
+
+                if (!formatGoogle && !formatApple) {
+                    alert('Seleziona almeno un formato per l\'URL delle mappe.');
+                    return;
+                }
+
+                let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti del giorno " + "<?php echo $displayDate; ?>" + ":\n\n";
+                if (formatGoogle) {
+                    message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
+                }
+                if (formatApple) {
+                    message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
+                }
+                message += "Cordiali saluti,\nIl Team degli Appuntamenti";
+
+                sendEmail(email, "Itinerario per gli appuntamenti del giorno " + "<?php echo $displayDate; ?>", message);
+            });
+
+            function sendEmail(email, subject, message) {
+                fetch('send_email.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: email, subject: subject, message: message })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Email inviata con successo.');
+                    } else {
+                        alert('Errore nell\'invio dell\'email.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Errore nell\'invio dell\'email.');
+                });
+            }
+
+            document.getElementById('openMapButton').addEventListener('click', function() {
+                if (mapUrlGoogle) {
+                    window.open(mapUrlGoogle, '_blank');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
