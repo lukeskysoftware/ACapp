@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
     <title>Gestione delle Zone</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous"> <link rel="stylesheet" href="styles.css">
     <script>
         async function loadAPIKey() {
             try {
@@ -26,18 +26,22 @@
     </script>
 </head>
 <body>
-    <div class="container">
-        <h2>Gestione delle Zone</h2>
-        <form action="create_zone.php" method="post">
+     <div class="pure-menu pure-menu-horizontal"> <nav> <ul class="pure-menu-list"> <li class="pure-menu-item"><a class="pure-menu-link" href="create_zone_form.html">Crea Zona</a></li> <li class="pure-menu-item"><a class="pure-menu-link" href="list_zones.php">Gestisci Zone</a></li> <li class="pure-menu-item"><a class="pure-menu-link" href="address_calculate.html">Prenota Appuntamento</a></li> <li class="pure-menu-item"><a class="pure-menu-link" href="manage_appointments.php">Gestisci Appuntamenti</a></li> <li class="pure-menu-item"><a class="pure-menu-link" href="view_appointments.php">Vedi Appuntamenti</a></li> <li class="pure-menu-item"><a class="pure-menu-link" href="logout.php">Logout</a></li> </ul> </nav> </div>
+    <div class="pure-g aria">
+        <h2 class="centrato centro">Gestione delle Zone</h2>
+        </div>
+         <div class="pure-g aria">
+        <form action="create_zone.php" method="post"  class="pure-form pure-form-aligned centrato centro">
             <label for="zone_name">Nome della Zona:</label>
             <input type="text" id="zone_name" name="name" required><br>
 
             <label for="zone_address">Indirizzo della Zona:</label>
             <input type="text" id="zone_address" name="address" required><br>
-
-            <label for="radius">Raggio (km):</label>
-<input type="number" id="radius" name="radius_km" required><br>
             
+            <label for="radius">Raggio (metri):</label>
+<input type="number" id="radius" name="radius_km" required><br>
+
+
             <label for="days">Giorni della Settimana:</label>
             <select id="days" name="days[]" multiple required>
                 <option value="Monday">Lunedì</option>
@@ -64,7 +68,7 @@
             <label for="longitude">Longitudine:</label>
             <input type="text" id="longitude" name="longitude" readonly><br>
 
-            <button type="submit">Crea Zona</button>
+            <button type="submit" class="pure-button button-green button-small">Crea Zona</button>
         </form>
 
         <script>
@@ -92,8 +96,8 @@
             }
         </script>
     </div>
-    <div class="container">
-        <a href="dashboard.php">Torna alla dashboard</a>
+    <div class="pure-g aria centrato centro">
+        <a class="centrato centro" href="dashboard.php">Torna alla dashboard</a>
     </div>
 </body>
 </html>
