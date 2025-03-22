@@ -49,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         .menu {
             width: 100%;
         }
+         .etic{font-size:100%; font-weight:700;}
     </style>
 </head>
 <body>
@@ -63,12 +64,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <button onclick="window.location.href='dashboard.php'" class="pure-button pure-button-secondary">Esci</button>
         <?php else: ?>
             <form method="POST" action="waiting_room.php" class="pure-form pure-form-stacked form-container">
-                <label for="name">Nome:</label>
+                <label class="etic" for="name">Nome:</label>
                 <input type="text" id="name" name="name" required>
-                <label for="surname">Cognome:</label>
+                <label class="etic" for="surname">Cognome:</label>
                 <input type="text" id="surname" name="surname" required>
-                <label for="phone">Telefono:</label>
+                <label class="etic" for="phone">Telefono:</label>
                 <input type="text" id="phone" name="phone" required>
+                <p></p>
                 <button type="submit" class="pure-button pure-button-primary">Registra Paziente</button>
             </form>
         <?php endif; ?>
