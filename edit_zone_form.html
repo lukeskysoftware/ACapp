@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
     <title>Modifica Zona</title>
     <link rel="stylesheet" href="styles.css">
+     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
     <script>
         async function loadAPIKey() {
             try {
@@ -105,19 +105,35 @@ document.getElementById('radius').value = data.radius_km;
     </script>
 </head>
 <body onload="loadZoneData(getParameterByName('zone_id'));">
-    <div class="container">
-        <h2>Modifica Zona</h2>
-        <form action="edit_zone.php" method="post" onsubmit="return validateForm();">
+       <div class="pure-menu pure-menu-horizontal">
+        <nav>
+            <ul class="pure-menu-list">
+                <li class="pure-menu-item"><a class="pure-menu-link" href="create_zone_form.html">Crea Zona</a></li>
+                <li class="pure-menu-item"><a class="pure-menu-link" href="list_zones.php">Gestisci Zone</a></li>
+                <li class="pure-menu-item"><a class="pure-menu-link" href="address_calculate.html">Prenota Appuntamento</a></li>
+                <li class="pure-menu-item"><a class="pure-menu-link" href="manage_appointments.php">Gestisci Appuntamenti</a></li>
+                <li class="pure-menu-item"><a class="pure-menu-link" href="view_appointments.php">Vedi Appuntamenti</a></li>
+                <li class="pure-menu-item"><a class="pure-menu-link" href="logout.php">Logout</a></li>
+            </ul>
+        </nav>
+    </div>
+    <div class="pure-g aria">
+        <h2 class="centrato centro">Modifica Zona</h2>
+</div>  
+ <div class="pure-g aria">
+        
+        <form action="edit_zone.php" method="post" onsubmit="return validateForm();" class="pure-form aria centrato centro">
             <input type="hidden" id="zone_id" name="zone_id">
             <label for="zone_name">Nome della Zona:</label>
             <input type="text" id="zone_name" name="name" required><br>
 
             <label for="zone_address">Indirizzo della Zona:</label>
             <input type="text" id="zone_address" name="address" required><br>
-
-            <label for="radius">Raggio (metri):</label>
+           
+            <label for="radius">Raggio (km):</label>
 <input type="number" id="radius" name="radius_km" required><br>
-            
+
+
             <label for="days">Giorni della Settimana:</label>
             <select id="days" name="days[]" multiple required>
                 <option value="Monday">Lunedì</option>
@@ -139,11 +155,11 @@ document.getElementById('radius').value = data.radius_km;
             <label for="longitude">Longitudine:</label>
             <input type="text" id="longitude" name="longitude" readonly><br>
 
-            <button type="submit">Aggiorna Zona</button>
+            <button type="submit" class="pure-button button-small button-green">Aggiorna Zona</button>
         </form>
     </div>
-    <div class="container">
-        <a href="dashboard.php">Torna alla dashboard</a>
+    <div class="pure-g aria">
+        <a href="dashboard.php" class="centrato centro">Torna alla dashboard</a>
     </div>
 </body>
 </html>
