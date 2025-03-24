@@ -45,6 +45,7 @@ if (!isset($_SESSION['user_id'])) {
     <title>Login</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <meta name="format-detection" content="telephone=no">
 </head>
 <body>
     <div class="container d-flex justify-content-center align-items-center" style="height: 100vh;">
@@ -105,7 +106,9 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
 <head>
     <meta charset="UTF-8">
     <title><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <meta name="format-detection" content="telephone=no">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <style>
         body {
@@ -126,6 +129,10 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
+        }
+        .btn {
+            flex-grow: 1;
+            margin: 0 5px;
         }
         .logout-button {
             margin-left: auto;
@@ -164,6 +171,19 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
         .email-button .bi {
             margin-right: 5px;
         }
+
+        @media (max-width: 576px) {
+            .appointment-time {
+                font-size: 1.2rem;
+            }
+            .name, .surname {
+                font-size: 100%;
+            }
+            .btn {
+                flex-grow: 1;
+                margin: 5px 0;
+            }
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.8.1/font/bootstrap-icons.min.css">
 </head>
@@ -197,7 +217,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                         <a href="tel:<?php echo $appointment['phone']; ?>" class="btn call-button"><i class="bi bi-telephone-fill"></i>Chiama</a>
                     </p>
                     <p><?php echo $appointment['address']; ?>
-                        <a href="https://maps.google.com/?q=<?php echo urlencode($appointment['address']); ?>" target="_blank" class="btn map-button"><i class="bi bi-geo-alt-fill"></i>Apri in Mappe</a>
+                        <a href="#" class="btn map-button" data-address="<?php echo urlencode($appointment['address']); ?>"><i class="bi bi-geo-alt-fill"></i>Apri in Mappe</a>
                     </p>
                     <?php if (!empty($appointment['notes'])): ?>
                         <p><strong>Note:</strong> <?php echo $appointment['notes']; ?></p>
@@ -307,10 +327,26 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
             }
 
             document.getElementById('openMapButton').addEventListener('click', function() {
-                if (mapUrlGoogle) {
-                    window.open(mapUrlGoogle, '_blank');
-                }
+                openMap(mapUrlGoogle, mapUrlApple);
             });
+
+            document.querySelectorAll('.map-button').forEach(button => {
+                button.addEventListener('click', function() {
+                    const address = this.getAttribute('data-address');
+                    const googleUrl = `https://www.google.com/maps/search/?api=1&query=${address}`;
+                    const appleUrl = `maps://?q=${address}`;
+                    openMap(googleUrl, appleUrl);
+                });
+            });
+
+            function openMap(googleUrl, appleUrl) {
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                if (isIOS) {
+                    window.open(appleUrl, '_blank');
+                } else {
+                    window.open(googleUrl, '_blank');
+                }
+            }
         });
     </script>
 </body>
