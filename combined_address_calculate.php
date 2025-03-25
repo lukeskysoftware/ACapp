@@ -95,6 +95,12 @@ function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime) {
     return $count === 0;
 }
 
+//////////
+
+
+/////////
+
+
 // Function to get the next 3 available appointment dates and times
 function getNext3AppointmentDates($slots, $zoneId) {
     global $conn;
@@ -120,6 +126,7 @@ function getNext3AppointmentDates($slots, $zoneId) {
 
     return array_slice($next3Days, 0, 3, true);
 }
+
 
 // Function to add patient information to the cp_patients table
 function addPatient($name, $surname, $phone, $notes) {
@@ -290,6 +297,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             text-align: center;
             
         }
+        .etic{font-size:100%; font-weight:700;}
         form {
             display: flex;
             flex-direction: column;
@@ -390,11 +398,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     <div class="container">
         <h2>A quale indirizzo fare la visita?</h2>
         <form id="addressForm" method="POST" action="combined_address_calculate.php" class="pure-form pure-form-stacked">
-            <label for="address">Indirizzo:</label>
+            <label class="etic" for="address">Indirizzo:</label>
             <input type="text" id="address" name="address" required><br>
-            <label for="latitude">Latitudine:</label>
+            <label class="etic" for="latitude">Latitudine:</label>
             <input type="text" id="latitude" name="latitude" readonly><br>
-            <label for="longitude">Longitudine:</label>
+            <label class="etic" for="longitude">Longitudine:</label>
             <input type="text" id="longitude" name="longitude" readonly><br>
             <input type="hidden" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>">
             <input type="hidden" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>">
