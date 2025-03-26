@@ -16,6 +16,11 @@ setlocale(LC_TIME, 'it_IT.UTF-8');
 function calculateDistance($origin, $destination) {
     $earthRadiusKm = 6371;
 
+    // Ensure the values are numeric
+    if (!is_numeric($origin[0]) || !is_numeric($origin[1]) || !is_numeric($destination[0]) || !is_numeric($destination[1])) {
+        throw new Exception("Non-numeric value encountered in coordinates.");
+    }
+
     $dLat = deg2rad($destination[0] - $origin[0]);
     $dLng = deg2rad($destination[1] - $origin[1]);
 
@@ -70,6 +75,7 @@ function getSlotsForZone($zoneId) {
 
     return $slots;
 }
+
 // Check if appointment is available
 function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime) {
     global $conn;
@@ -117,7 +123,6 @@ function getExistingAppointmentsForZone($zoneId) {
     $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     return $appointments;
 }
-
 // Function to get latitude and longitude from an address using Google Maps Geocoding API
 function getCoordinatesFromAddress($address) {
     $apiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
@@ -135,6 +140,7 @@ function getCoordinatesFromAddress($address) {
         throw new Exception("Geocoding API error: " . $response['status']);
     }
 }
+
 // Function to get the next 3 available appointment dates and times considering existing appointments
 function getNext3AppointmentDates($slots, $zoneId, $currentLatitude, $currentLongitude) {
     global $conn;
@@ -181,7 +187,7 @@ function getNext3AppointmentDates($slots, $zoneId, $currentLatitude, $currentLon
         $currentDate->modify('+1 week');
     }
 
-    return array_slice($next3Days, 0, 3, true);
+    return $next3Days;
 }
 
 // Function to add patient information to the cp_patients table
@@ -224,6 +230,7 @@ function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime)
         throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
     }
 }
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone'])) {
     header('Content-Type: text/html; charset=UTF-8');
     $zoneId = $_POST['zone_id'];
@@ -232,7 +239,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     $name = $_POST['name'];
     $surname = $_POST['surname'];
     $phone = $_POST['phone'];
-    $notes = $_POST['notes'];
+    $notes = isset($_POST['notes']) ? $_POST['notes'] : '';
 
     try {
         if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime)) {
@@ -404,19 +411,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
                 <input type="hidden" id="name" name="name">
                 <input type="hidden" id="surname" name="surname">
                 <input type="hidden" id="phone" name="phone">
-
                 <label for="name">Nome:</label>
                 <input type="text" id="name" name="name" required><br><br>
-
                 <label for="surname">Cognome:</label>
                 <input type="text" id="surname" name="surname" required><br><br>
-
                 <label for="phone">Telefono:</label>
                 <input type="text" id="phone" name="phone" required><br><br>
-
                 <label for="notes">Note:</label>
                 <textarea id="notes" name="notes"></textarea><br><br>
-
                 <button type="submit" class="pure-button pure-button-primary">Prenota</button>
             </form>
         </div>
