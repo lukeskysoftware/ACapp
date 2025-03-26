@@ -1,20 +1,8 @@
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
-session_start();
 include 'db.php';
 include 'menu.php';
-
-// Fetch Google Maps API key from the config table
-$apiKey = '';
-$sql = "SELECT value FROM config WHERE name = 'GOOGLE_MAPS_API_KEY'";
-$result = mysqli_query($conn, $sql);
-if ($result && mysqli_num_rows($result) > 0) {
-    $row = mysqli_fetch_assoc($result);
-    $apiKey = $row['value'];
-} else {
-    die('Errore nel recupero della chiave API di Google Maps: ' . mysqli_error($conn));
-}
 
 // Capture parameters from the URL
 $name = isset($_GET['name']) ? $_GET['name'] : '';
@@ -27,11 +15,6 @@ setlocale(LC_TIME, 'it_IT.UTF-8');
 // Function to calculate distance between two coordinates
 function calculateDistance($origin, $destination) {
     $earthRadiusKm = 6371;
-
-    // Ensure the values are numeric
-    if (!is_numeric($origin[0]) || !is_numeric($origin[1]) || !is_numeric($destination[0]) || !is_numeric($destination[1])) {
-        throw new Exception("Non-numeric value encountered in coordinates.");
-    }
 
     $dLat = deg2rad($destination[0] - $origin[0]);
     $dLng = deg2rad($destination[1] - $origin[1]);
@@ -112,55 +95,18 @@ function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime) {
     return $count === 0;
 }
 
-// Function to get existing appointments for a specific zone
-function getExistingAppointmentsForZone($zoneId) {
-    global $conn;
-    $sql = "SELECT appointment_date, appointment_time, address FROM cp_appointments
-            INNER JOIN cp_patients ON cp_appointments.patient_id = cp_patients.id 
-            WHERE zone_id = ?";
-    $stmt = $conn->prepare($sql);
+//////////
 
-    if (!$stmt) {
-        error_log("Database prepare failed for existing appointments: " . mysqli_error($conn));
-        throw new Exception("Database prepare failed for existing appointments: " . mysqli_error($conn));
-    }
 
-    $stmt->bind_param("i", $zoneId);
+/////////
 
-    if (!$stmt->execute()) {
-        error_log("Database query failed for existing appointments: " . mysqli_error($conn));
-        throw new Exception("Database query failed for existing appointments: " . mysqli_error($conn));
-    }
 
-    $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    return $appointments;
-}
-// Function to get latitude and longitude from an address using Google Maps Geocoding API
-function getCoordinatesFromAddress($address) {
-    $apiKey = 'YOUR_GOOGLE_MAPS_API_KEY';
-    $address = urlencode($address);
-    $url = "https://maps.googleapis.com/maps/api/geocode/json?address={$address}&key={$apiKey}";
-
-    $response = file_get_contents($url);
-    $response = json_decode($response, true);
-
-    if ($response['status'] == 'OK') {
-        $latitude = $response['results'][0]['geometry']['location']['lat'];
-        $longitude = $response['results'][0]['geometry']['location']['lng'];
-        return [$latitude, $longitude];
-    } else {
-        throw new Exception("Geocoding API error: " . $response['status']);
-    }
-}
-
-// Function to get the next 3 available appointment dates and times considering existing appointments
-function getNext3AppointmentDates($slots, $zoneId, $currentLatitude, $currentLongitude) {
+// Function to get the next 3 available appointment dates and times
+function getNext3AppointmentDates($slots, $zoneId) {
     global $conn;
     $next3Days = [];
     $currentDate = new DateTime();
     $currentDayOfWeek = $currentDate->format('N'); // Day of the week (1 = Monday, 7 = Sunday)
-
-    $existingAppointments = getExistingAppointmentsForZone($zoneId);
 
     while (count($next3Days) < 3) {
         foreach ($slots as $slot) {
@@ -170,37 +116,17 @@ function getNext3AppointmentDates($slots, $zoneId, $currentLatitude, $currentLon
             $appointmentDate->modify("+$daysUntilSlot days");
             $formattedDate = $appointmentDate->format('Y-m-d');
 
-            $isAvailable = isAppointmentAvailable($zoneId, $formattedDate, $slot['time']);
-            $isPreferred = false;
-
-            if ($isAvailable) {
-                foreach ($existingAppointments as $appointment) {
-                    if ($appointment['appointment_date'] == $formattedDate) {
-                        try {
-                            list($latitude, $longitude) = getCoordinatesFromAddress($appointment['address']);
-                            $distance = calculateDistance([$currentLatitude, $currentLongitude], [$latitude, $longitude]);
-                            if ($distance <= 7) {
-                                $isPreferred = true;
-                                break;
-                            }
-                        } catch (Exception $e) {
-                            error_log("Geocoding error: " . $e->getMessage());
-                        }
-                    }
-                }
-
-                if ($isPreferred) {
-                    $next3Days['preferred'][$formattedDate][] = $slot['time'];
-                } else {
-                    $next3Days['regular'][$formattedDate][] = $slot['time'];
-                }
+            // Check if slot is available
+            if (isAppointmentAvailable($zoneId, $formattedDate, $slot['time'])) {
+                $next3Days[$formattedDate][] = $slot['time'];
             }
         }
         $currentDate->modify('+1 week');
     }
 
-    return $next3Days;
+    return array_slice($next3Days, 0, 3, true);
 }
+
 
 // Function to add patient information to the cp_patients table
 function addPatient($name, $surname, $phone, $notes) {
@@ -243,6 +169,81 @@ function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime)
     }
 }
 
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
+    header('Content-Type: text/html; charset=UTF-8');
+    $address = $_POST['address'];
+    $latitude = $_POST['latitude'];
+    $longitude = $_POST['longitude'];
+    $name = isset($_POST['name']) ? $_POST['name'] : '';
+    $surname = isset($_POST['surname']) ? $_POST['surname'] : '';
+    $phone = isset($_POST['phone']) ? $_POST['phone'] : '';
+    
+
+    // Debugging: Log the received POST data
+    error_log("Received POST data: address={$address}, latitude={$latitude}, longitude={$longitude}, name={$name}, surname={$surname}, phone={$phone}");
+
+    try {
+        $zones = getZonesFromCoordinates($latitude, $longitude);
+        $origin = [$latitude, $longitude];
+
+        // Debugging: Log the origin coordinates
+        error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
+
+        echo "<div class='container'><center><h2>Indirizzo: <span style='color:green; font-weight:700;'>{$address}</span></h2>";
+        echo "<p>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</p></center></div><hr>";
+
+        $zonesFound = false;
+        $zoneNames = [];
+        foreach ($zones as $zone) {
+            $destination = [$zone['latitude'], $zone['longitude']];
+            $distance = calculateDistance($origin, $destination);
+            $difference = $distance - $zone['radius_km'];
+
+            // Hidden div for calculations
+            echo "<div style='display:none;'>Zona: {$zone['name']}<br>";
+            echo "Coordinate della zona: Latitudine={$zone['latitude']}, Longitudine={$zone['longitude']}<br>";
+            echo "Distanza: {$distance} km<br>";
+            echo "Raggio: {$zone['radius_km']} km<br>";
+            echo "Differenza: {$difference} km<br></div>";
+
+            if ($distance <= $zone['radius_km']) {
+                $zonesFound = true;
+                $zoneNames[] = $zone['name'];
+                $slots = getSlotsForZone($zone['id']);
+                if (!empty($slots)) {
+                    echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
+                    $next3Days = getNext3AppointmentDates($slots, $zone['id']);
+                    foreach ($next3Days as $date => $times) {
+                        $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
+                        echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}</p>";
+                        echo "<p>Fasce orarie disponibili: ";
+                        foreach ($times as $time) {
+                            $formattedTime = date('H:i', strtotime($time)); // Remove seconds
+                            echo "<a class='booking-link' href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}&address=" . urlencode($address) . "&latitude={$latitude}&longitude={$longitude}&name={$name}&surname={$surname}&phone={$phone}'>{$formattedTime}</a> ";
+                            //echo "<a href='book_appointment.php' class='booking-link' data-zone-id='{$zone['id']}' data-date='{$date}' data-time='{$formattedTime}' data-address='" . urlencode($address) . "' data-latitude='{$latitude}' data-longitude='{$longitude}' data-name='{$name}' data-surname='{$surname}' data-phone='{$phone}'>{$formattedTime}</a> ";
+                        }
+                        echo "</p>";
+                    }
+                    echo "</center></div><hr>";
+                } else {
+                    echo "<div class='container'><p>Nessun appuntamento disponibile per i prossimi 3 giorni per la zona {$zone['name']}.</p></div>";
+                }
+            }
+        }
+
+        if ($zonesFound) {
+            $zoneText = implode(', ', $zoneNames);
+            echo "<div class='container'><center><p style='margin-top:2rem; font-size:120%; font-weight:700;'>L'indirizzo appartiene alla zona <span style='color:green;'>{$zoneText}</span>.</p></center></div>";
+        } else {
+            echo "<div class='container'><center><p>L'indirizzo non si trova in nessuna zona.</p></center></div>";
+        }
+    } catch (Exception $e) {
+        error_log("Exception: " . $e->getMessage());
+        echo 'Si è verificato un errore: ' . $e->getMessage();
+    }
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone'])) {
     header('Content-Type: text/html; charset=UTF-8');
     $zoneId = $_POST['zone_id'];
@@ -251,7 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     $name = $_POST['name'];
     $surname = $_POST['surname'];
     $phone = $_POST['phone'];
-    $notes = isset($_POST['notes']) ? $_POST['notes'] : '';
+    $notes = $_POST['notes'];
 
     try {
         if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime)) {
@@ -294,7 +295,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
         }
         .centrato {
             text-align: center;
+            
         }
+        .etic{font-size:100%; font-weight:700;}
         form {
             display: flex;
             flex-direction: column;
@@ -391,9 +394,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     </script>
 </head>
 <body>
+   
     <div class="container">
         <h2>A quale indirizzo fare la visita?</h2>
-        <form id="addressForm" method="POST" action="combined_address_calculate_v2.php" class="pure-form pure-form-stacked">
+        <form id="addressForm" method="POST" action="combined_address_calculate.php" class="pure-form pure-form-stacked">
             <label class="etic" for="address">Indirizzo:</label>
             <input type="text" id="address" name="address" required><br>
             <label class="etic" for="latitude">Latitudine:</label>
@@ -413,7 +417,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     <div class="container">
         <div id="appointmentForm" style="display:none; margin-top: 20px;">
             <h2>Prenota Appuntamento</h2>
-            <form method="POST" action="combined_address_calculate_v2.php" class="pure-form pure-form-stacked">
+            <form method="POST" action="combined_address_calculate.php" class="pure-form pure-form-stacked">
                 <input type="hidden" id="zone_id" name="zone_id">
                 <input type="hidden" id="date" name="date">
                 <input type="hidden" id="time" name="time">
@@ -423,14 +427,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
                 <input type="hidden" id="name" name="name">
                 <input type="hidden" id="surname" name="surname">
                 <input type="hidden" id="phone" name="phone">
+
                 <label for="name">Nome:</label>
                 <input type="text" id="name" name="name" required><br><br>
+
                 <label for="surname">Cognome:</label>
                 <input type="text" id="surname" name="surname" required><br><br>
+
                 <label for="phone">Telefono:</label>
                 <input type="text" id="phone" name="phone" required><br><br>
+
                 <label for="notes">Note:</label>
                 <textarea id="notes" name="notes"></textarea><br><br>
+
                 <button type="submit" class="pure-button pure-button-primary">Prenota</button>
             </form>
         </div>
