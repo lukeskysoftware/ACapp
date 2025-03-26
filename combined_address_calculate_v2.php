@@ -1,8 +1,20 @@
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
+session_start();
 include 'db.php';
 include 'menu.php';
+
+// Fetch Google Maps API key from the config table
+$apiKey = '';
+$sql = "SELECT value FROM config WHERE name = 'GOOGLE_MAPS_API_KEY'";
+$result = mysqli_query($conn, $sql);
+if ($result && mysqli_num_rows($result) > 0) {
+    $row = mysqli_fetch_assoc($result);
+    $apiKey = $row['value'];
+} else {
+    die('Errore nel recupero della chiave API di Google Maps: ' . mysqli_error($conn));
+}
 
 // Capture parameters from the URL
 $name = isset($_GET['name']) ? $_GET['name'] : '';
