@@ -56,6 +56,8 @@ $patients = getWaitingPatients();
     <?php include 'menu.php'; ?>
     <div class="container">
         <h2>Lista Pazienti in Attesa</h2>
+        <p>In questa lista sono elencati i pazienti che negli ultimi 20 giorni hanno richiesta visita</p>
+        <p></p>
         <div class="table-container">
             <table class="pure-table pure-table-bordered">
                 <thead>
