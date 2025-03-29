@@ -563,7 +563,9 @@ echo "</div><hr>";
                  //    "&latitude={$latitude}&longitude={$longitude}&name={$name}&surname={$surname}&phone={$phone}' class='pure-button pure-button-primary'>Seleziona</a>";
                  
                  
-echo '<a href="#" onclick="selectAppointment(\'' . $slot['related_appointment']['zone_id'] . '\', \'' . $slot['date'] . '\', \'' . $slot['time'] . '\', \'' . urlencode($address) . '\', \'' . $latitude . '\', \'' . $longitude . '\', \'' . urlencode($name) . '\', \'' . urlencode($surname) . '\', \'' . urlencode($phone) . '\'); return false;" class="pure-button pure-button-primary">Seleziona</a>';
+echo "<a href='javascript:void(0)' onclick='return selectAppointment(\"{$slot['related_appointment']['zone_id']}\", \"{$slot['date']}\", \"{$slot['time']}\", \"" . urlencode($address) . "\", \"{$latitude}\", \"{$longitude}\", \"" . urlencode($name) . "\", \"" . urlencode($surname) . "\", \"" . urlencode($phone) . "\");' class='pure-button pure-button-primary'>Seleziona</a>";
+
+
 // Aggiungi questo debug temporaneo per vedere i parametri:
 echo "<!-- DEBUG: zone_id={$slot['related_appointment']['zone_id']}, date={$slot['date']}, time={$slot['time']}, address={$address}, lat={$latitude}, lng={$longitude}, name={$name}, surname={$surname}, phone={$phone} -->";
                  
@@ -609,8 +611,7 @@ echo "<!-- DEBUG: zone_id={$slot['related_appointment']['zone_id']}, date={$slot
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
                             $formattedTime = date('H:i', strtotime($time)); // Remove seconds
-echo '<a href="#" onclick="selectAppointment(\'' . $zone['id'] . '\', \'' . $date . '\', \'' . $formattedTime . '\', \'' . urlencode($address) . '\', \'' . $latitude . '\', \'' . $longitude . '\', \'' . urlencode($name) . '\', \'' . urlencode($surname) . '\', \'' . urlencode($phone) . '\'); return false;">' . $formattedTime . '</a> ';
-                            
+echo "<a href='javascript:void(0)' onclick='return selectAppointment(\"{$zone['id']}\", \"{$date}\", \"{$formattedTime}\", \"" . urlencode($address) . "\", \"{$latitude}\", \"{$longitude}\", \"" . urlencode($name) . "\", \"" . urlencode($surname) . "\", \"" . urlencode($phone) . "\");'>{$formattedTime}</a> ";
                         }
                         echo "</p>";
                     }
@@ -667,56 +668,40 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
 ?>
 <!DOCTYPE html>
 <html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calcolo Indirizzo</title>
-    <!-- Prima definiamo le funzioni JavaScript essenziali -->
     <script>
-        // Funzione per gestire la selezione dell'appuntamento
-        function selectAppointment(zoneId, date, time, address, latitude, longitude, name, surname, phone) {
-            console.log("selectAppointment chiamata con:", zoneId, date, time, address);
-            
-            try {
-                // Popola i campi
-                document.getElementById("zone_id").value = zoneId;
-                document.getElementById("date").value = date;
-                document.getElementById("time").value = time;
-                document.getElementById("form_address").value = decodeURIComponent(address);
-                document.getElementById("form_latitude").value = latitude;
-                document.getElementById("form_longitude").value = longitude;
-                document.getElementById("form_name").value = name ? decodeURIComponent(name) : '';
-                document.getElementById("form_surname").value = surname ? decodeURIComponent(surname) : '';
-                document.getElementById("form_phone").value = phone ? decodeURIComponent(phone) : '';
-                
-                // Mostra il form
-                var appointmentForm = document.getElementById("appointmentForm");
-                if (appointmentForm) {
-                    appointmentForm.style.display = "block";
-                    
-                    // Scroll al form
-                    appointmentForm.scrollIntoView({behavior: "smooth"});
-                    
-                    // Evidenzia brevemente il form
-                    appointmentForm.style.backgroundColor = "#ffffcc";
-                    setTimeout(function() {
-                        appointmentForm.style.backgroundColor = "";
-                    }, 1500);
-                } else {
-                    console.error("Element appointmentForm not found");
-                    alert("Errore: Elemento appointmentForm non trovato nella pagina");
-                }
-            } catch (e) {
-                console.error("Errore in selectAppointment:", e);
-                alert("Si è verificato un errore: " + e.message);
-            }
-            
-            return false;
-        }
-    </script>
+function selectAppointment(zoneId, date, time, address, latitude, longitude, name, surname, phone) {
+    console.log("selectAppointment chiamata con:", zoneId, date, time); // Debug
     
-    <!-- Poi altri script e stili -->
-
+    // Popola i campi
+    document.getElementById("zone_id").value = zoneId;
+    document.getElementById("date").value = date;
+    document.getElementById("time").value = time;
+    document.getElementById("form_address").value = decodeURIComponent(address);
+    document.getElementById("form_latitude").value = latitude;
+    document.getElementById("form_longitude").value = longitude;
+    document.getElementById("form_name").value = decodeURIComponent(name || '');
+    document.getElementById("form_surname").value = decodeURIComponent(surname || '');
+    document.getElementById("form_phone").value = decodeURIComponent(phone || '');
+    
+    // Mostra il form
+    var appointmentForm = document.getElementById("appointmentForm");
+    appointmentForm.style.display = "block";
+    
+    // Scroll al form
+    appointmentForm.scrollIntoView({behavior: "smooth"});
+    
+    // Evidenzia brevemente il form
+    appointmentForm.style.backgroundColor = "#ffffcc";
+    setTimeout(function() {
+        appointmentForm.style.backgroundColor = "";
+    }, 1500);
+    
+    // Importante: previeni il comportamento predefinito del link
+    return false;
+}
+</script>
+    
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calcolo Indirizzo</title>
@@ -748,8 +733,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             margin-bottom: 10px;
         }
     </style>
-    
-    
     <script>
         async function loadAPIKey() {
             try {
@@ -832,6 +815,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
                 });
             });
         });
+    function selectAppointment(zoneId, date, time, address, latitude, longitude, name, surname, phone) {
+    // Popola il form con i dati dell'appuntamento selezionato
+    document.getElementById("zone_id").value = zoneId;
+    document.getElementById("date").value = date;
+    document.getElementById("time").value = time;
+    document.getElementById("form_address").value = address;
+    document.getElementById("form_latitude").value = latitude;
+    document.getElementById("form_longitude").value = longitude;
+    document.getElementById("form_name").value = name;
+    document.getElementById("form_surname").value = surname;
+    document.getElementById("form_phone").value = phone;
+
+    // Mostra il form di prenotazione
+    document.getElementById("appointmentForm").style.display = "block";
+    document.getElementById("appointmentForm").scrollIntoView({behavior: "smooth"});
+    
+    // Evidenzia il form con un'animazione
+    document.getElementById("appointmentForm").classList.add("highlight");
+    setTimeout(function() {
+        document.getElementById("appointmentForm").classList.remove("highlight");
+    }, 2000);
+}
+</script>
 
 <style>
     /* Stile esistente... */
@@ -870,63 +876,59 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
 
 <div class="container">
     <div id="appointmentForm" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
-    <h2>Prenota Appuntamento</h2>
-    <form method="POST" action="combined_address_calculate_v2.php" class="pure-form pure-form-stacked">
-        <input type="hidden" id="zone_id" name="zone_id">
-        <input type="hidden" id="date" name="date">
-        <input type="hidden" id="time" name="time">
-        
-        <div style="display: flex; flex-wrap: wrap; gap: 15px;">
-            <div style="flex: 1; min-width: 250px;">
-                <label for="form_name">Nome:</label>
-                <input type="text" id="form_name" name="name" style="width: 100%;" required>
+        <h2>Prenota Appuntamento</h2>
+        <form method="POST" action="combined_address_calculate_v2.php" class="pure-form pure-form-stacked">
+            <input type="hidden" id="zone_id" name="zone_id">
+            <input type="hidden" id="date" name="date">
+            <input type="hidden" id="time" name="time">
+            
+            <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="form_name">Nome:</label>
+                    <input type="text" id="form_name" name="name" style="width: 100%;" required>
+                </div>
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="form_surname">Cognome:</label>
+                    <input type="text" id="form_surname" name="surname" style="width: 100%;" required>
+                </div>
             </div>
-            <div style="flex: 1; min-width: 250px;">
-                <label for="form_surname">Cognome:</label>
-                <input type="text" id="form_surname" name="surname" style="width: 100%;" required>
+            
+            <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="form_phone">Telefono:</label>
+                    <input type="text" id="form_phone" name="phone" style="width: 100%;" required>
+                </div>
+                <div style="flex: 1; min-width: 250px;">
+                    <label for="form_address">Indirizzo:</label>
+                    <input type="text" id="form_address" name="address" readonly style="width: 100%;">
+                </div>
             </div>
-        </div>
-        
-        <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
-            <div style="flex: 1; min-width: 250px;">
-                <label for="form_phone">Telefono:</label>
-                <input type="text" id="form_phone" name="phone" style="width: 100%;" required>
+            
+            <input type="hidden" id="form_latitude" name="latitude">
+            <input type="hidden" id="form_longitude" name="longitude">
+            
+            <div style="margin-top: 15px;">
+                <label for="notes">Note:</label>
+                <textarea id="notes" name="notes" rows="4" style="width: 100%;"></textarea>
             </div>
-            <div style="flex: 1; min-width: 250px;">
-                <label for="form_address">Indirizzo:</label>
-                <input type="text" id="form_address" name="address" readonly style="width: 100%;">
+            
+            <div style="margin-top: 20px; text-align: center;">
+                <button type="submit" class="pure-button pure-button-primary" style="font-size: 120%; padding: 10px 30px;">Conferma Prenotazione</button>
             </div>
-        </div>
-        
-        <input type="hidden" id="form_latitude" name="latitude">
-        <input type="hidden" id="form_longitude" name="longitude">
-        
-        <div style="margin-top: 15px;">
-            <label for="notes">Note:</label>
-            <textarea id="notes" name="notes" rows="4" style="width: 100%;"></textarea>
-        </div>
-        
-        <div style="margin-top: 20px; text-align: center;">
-            <button type="submit" class="pure-button pure-button-primary" style="font-size: 120%; padding: 10px 30px;">Conferma Prenotazione</button>
-        </div>
-    </form>
-</div>
+        </form>
+    </div>
 </div>
 </body>
 </html>
 <?php
-// Recupera tutto l'output
 $output = ob_get_clean();
-
-// Rimuovi radicalmente tutto prima del DOCTYPE HTML
-$doctype_pos = strpos($output, '<!DOCTYPE html>');
-if ($doctype_pos !== false) {
-    $output = substr($output, $doctype_pos);
-    echo $output;
-} else {
-    // Se non troviamo il DOCTYPE, elimina almeno le righe note
-    $output = preg_replace('/Current Date.*\n?/i', '', $output);
-    $output = preg_replace('/Current User.*\n?/i', '', $output);
-    echo $output;
+// Rimuovi il testo spurio "Current Date..." e "Current User's Login"
+$lines = explode("\n", $output);
+if (count($lines) > 0 && strpos($lines[0], "Current Date") !== false) {
+    array_shift($lines);
 }
+if (count($lines) > 0 && strpos($lines[0], "Current User") !== false) {
+    array_shift($lines);
+}
+echo implode("\n", $lines);
 ?>
