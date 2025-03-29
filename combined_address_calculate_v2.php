@@ -541,7 +541,7 @@ if (!empty($available_slots_near_appointments)) {
     echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
     foreach ($available_slots_near_appointments as $slot) {
         $slot_date = date('d/m/Y', strtotime($slot['date']));
-        $slot_time = date('H:i', strtotime($slot['time']));
+        $slot_time = date('H:i', strtotime($slot['time'])); // Assicurarsi che l'orario sia nel formato HH:MM
         $distance = number_format($slot['related_appointment']['distance'], 1);
         $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
 
@@ -557,7 +557,7 @@ if (!empty($available_slots_near_appointments)) {
         $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
         $addressEncoded = urlencode($address);
 
-        echo "<a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot['time']}";
+        echo "<a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot_time}";
         echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
         echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
         echo "' class='pure-button pure-button-primary'>Seleziona</a>";
@@ -568,6 +568,9 @@ if (!empty($available_slots_near_appointments)) {
 } else {
     echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
 }
+
+// Assicurati che anche gli altri link "Seleziona" nel codice siano aggiornati nello stesso modo.
+
         
         // Continua con la logica esistente per le zone
         $zones = getZonesFromCoordinates($latitude, $longitude);
@@ -604,7 +607,6 @@ if (!empty($available_slots_near_appointments)) {
                         foreach ($times as $time) {
                             $formattedTime = date('H:i', strtotime($time)); // Remove seconds
                             
-                            // MODIFICA QUI: Usando il link diretto come nel file originale
 $nameEncoded = !empty($name) ? urlencode($name) : '';
 $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
 $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
@@ -613,7 +615,10 @@ $addressEncoded = urlencode($address);
 echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
 echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
 echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-echo "' class='pure-button pure-button-primary' style='margin:0.2rem;'>{$formattedTime}</a> ";                        }
+echo "' class='pure-button pure-button-primary' style='margin:0.2rem;'>{$formattedTime}</a>";
+                    
+                            
+                        }
                         echo "</p>";
                     }
                     echo "</center></div><hr>";
