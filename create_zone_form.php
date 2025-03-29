@@ -46,7 +46,7 @@
             <label for="zone_address">Indirizzo della Zona:</label>
             <input type="text" id="zone_address" name="address" required><br>
 
-            <label for="radius">Raggio (metri):</label>
+            <label for="radius">Raggio (km):</label>
             <input type="number" id="radius" name="radius_km" required><br>
 
             <label for="days">Giorni della Settimana:</label>
