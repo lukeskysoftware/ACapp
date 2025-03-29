@@ -55,8 +55,7 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
             FROM cp_appointments 
             WHERE appointment_date >= ? 
             ORDER BY appointment_date, appointment_time";
-            
-    $stmt = $conn->prepare($sql);
+                $stmt = $conn->prepare($sql);
     if (!$stmt) {
         error_log("Database prepare failed: " . mysqli_error($conn));
         return $nearby_appointments;
@@ -135,8 +134,7 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
             $debug_info[] = $debug_item;
             continue;
         }
-        
-        // 3. Calcola la distanza
+                // 3. Calcola la distanza
         $origin = [$user_latitude, $user_longitude];
         $destination = [$coordinates['lat'], $coordinates['lng']];
         
@@ -216,8 +214,7 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
         error_log("API key non trovata per la geocodifica");
         return null;
     }
-    
-       $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
+        $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
     
     // Usa cURL invece di file_get_contents
     $ch = curl_init();
@@ -246,15 +243,15 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
            $sql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
        VALUES (?, ?, ?, ?) 
        ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
-$stmt = $conn->prepare($sql);
-if ($stmt) {
-    $stmt->bind_param("isdd", $appointment_id, $address, $lat, $lng);
-    if (!$stmt->execute()) {
-        error_log("Errore nell'inserimento nella cache: " . $stmt->error);
-    } else {
-        error_log("Cache aggiornata con successo per appointment_id=$appointment_id");
-    }
-}
+            $stmt = $conn->prepare($sql);
+            if ($stmt) {
+                $stmt->bind_param("isdd", $appointment_id, $address, $lat, $lng);
+                if (!$stmt->execute()) {
+                    error_log("Errore nell'inserimento nella cache: " . $stmt->error);
+                } else {
+                    error_log("Cache aggiornata con successo per appointment_id=$appointment_id");
+                }
+            }
         } else {
             // Cache senza appointment_id (per indirizzi temporanei)
             $sql = "INSERT INTO address_cache (address, latitude, longitude) 
@@ -294,7 +291,6 @@ function getZonesFromCoordinates($latitude, $longitude) {
     $zones = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     return $zones;
 }
-
 // Funzione per verificare slot disponibili prima/dopo un appuntamento esistente
 function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 60) {
     global $conn;
@@ -371,7 +367,7 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
               DATE_ADD(CONCAT(appointment_date, ' ', appointment_time), INTERVAL 60 MINUTE) > ?) OR 
              (appointment_date = ? AND appointment_time >= ? AND 
               appointment_time < ?))";
-                  $stmt = $conn->prepare($sql);
+    $stmt = $conn->prepare($sql);
     if (!$stmt) {
         return false;
     }
@@ -384,7 +380,6 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
     
     return ($count == 0);
 }
-
 // Check if appointment is available
 function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime) {
     global $conn;
@@ -475,7 +470,6 @@ function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime,
         throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
     }
 }
-
 // Gestione del POST per la ricerca di appuntamenti
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
     header('Content-Type: text/html; charset=UTF-8');
@@ -485,7 +479,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
     $name = isset($_POST['name']) ? $_POST['name'] : '';
     $surname = isset($_POST['surname']) ? $_POST['surname'] : '';
     $phone = isset($_POST['phone']) ? $_POST['phone'] : '';
-        // Debugging: Log the received POST data
+    // Debugging: Log the received POST data
     error_log("Received POST data: address={$address}, latitude={$latitude}, longitude={$longitude}, name={$name}, surname={$surname}, phone={$phone}");
 
     try {
@@ -494,35 +488,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         
         //////STAMPA A SCHERMO BLOCCO INDIRIZZI CONFRONTATI////////
 
-// Visualizza informazioni di debug
-global $address_comparison_debug;
-echo "<div class='container'>";
-echo "<h3>Confronto indirizzi (Debug):</h3>";
-echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
-echo "<thead><tr><th>ID</th><th>Indirizzo appuntamento</th><th>Coordinate</th><th>Distanza</th><th>Stato</th></tr></thead>";
-echo "<tbody>";
+        // Visualizza informazioni di debug
+        global $address_comparison_debug;
+        echo "<div class='container'>";
+        echo "<h3>Confronto indirizzi (Debug):</h3>";
+        echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
+        echo "<thead><tr><th>ID</th><th>Indirizzo appuntamento</th><th>Coordinate</th><th>Distanza</th><th>Stato</th></tr></thead>";
+        echo "<tbody>";
 
-if (empty($address_comparison_debug)) {
-    echo "<tr><td colspan='5'>Nessun indirizzo di appuntamento elaborato.</td></tr>";
-} else {
-    foreach ($address_comparison_debug as $item) {
-        $rowClass = (strpos($item['status'], 'Entro raggio') !== false) ? "style='background-color:#d4edda'" : "";
-        
-        echo "<tr {$rowClass}>";
-        echo "<td>{$item['id']}</td>";
-        echo "<td>{$item['address']}</td>";
-        echo "<td>{$item['coords']}</td>";
-        echo "<td>{$item['distance']}</td>";
-        echo "<td>" . ($item['error'] ? "<span style='color:red'>{$item['error']}</span>" : $item['status']) . "</td>";
-        echo "</tr>";
-    }
-}
+        if (empty($address_comparison_debug)) {
+            echo "<tr><td colspan='5'>Nessun indirizzo di appuntamento elaborato.</td></tr>";
+        } else {
+            foreach ($address_comparison_debug as $item) {
+                $rowClass = (strpos($item['status'], 'Entro raggio') !== false) ? "style='background-color:#d4edda'" : "";
+                
+                echo "<tr {$rowClass}>";
+                echo "<td>{$item['id']}</td>";
+                echo "<td>{$item['address']}</td>";
+                echo "<td>{$item['coords']}</td>";
+                echo "<td>{$item['distance']}</td>";
+                echo "<td>" . ($item['error'] ? "<span style='color:red'>{$item['error']}</span>" : $item['status']) . "</td>";
+                echo "</tr>";
+            }
+        }
 
-echo "</tbody></table>";
-echo "</div><hr>";
-         //////FINE STAMPA A SCHERMO BLOCCO INDIRIZZI CONFRONTATI////////
+        echo "</tbody></table>";
+        echo "</div><hr>";
+        //////FINE STAMPA A SCHERMO BLOCCO INDIRIZZI CONFRONTATI////////
 
-        
         $available_slots_near_appointments = [];
         
         // Per ogni appuntamento trovato vicino, verifica slot disponibili
@@ -546,8 +539,7 @@ echo "</div><hr>";
         if (!empty($available_slots_near_appointments)) {
             echo "<div class='container'><center>";
             echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
-            
-            foreach ($available_slots_near_appointments as $slot) {
+                        foreach ($available_slots_near_appointments as $slot) {
                 $slot_date = date('d/m/Y', strtotime($slot['date']));
                 $slot_time = date('H:i', strtotime($slot['time']));
                 $distance = number_format($slot['related_appointment']['distance'], 1);
@@ -559,17 +551,31 @@ echo "</div><hr>";
                 echo "{$slot['related_appointment']['address']}<br>";
                 echo "<small>Distanza: {$distance} km</small></p>";
                 
-                //echo "<a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot['time']}&address=" . urlencode($address) . 
-                 //    "&latitude={$latitude}&longitude={$longitude}&name={$name}&surname={$surname}&phone={$phone}' class='pure-button pure-button-primary'>Seleziona</a>";
-                 
-                 
-echo "<a href='javascript:void(0)' onclick='return selectAppointment(\"{$slot['related_appointment']['zone_id']}\", \"{$slot['date']}\", \"{$slot['time']}\", \"" . urlencode($address) . "\", \"{$latitude}\", \"{$longitude}\", \"" . urlencode($name) . "\", \"" . urlencode($surname) . "\", \"" . urlencode($phone) . "\");' class='pure-button pure-button-primary'>Seleziona</a>";
+                // MODIFICA QUI: Usando il link diretto come nel file originale
+// PRIMA della modifica (da sostituire):
+echo "<a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot['time']}&address=" . urlencode($address) . 
+     "&latitude={$latitude}&longitude={$longitude}&name=" . urlencode($name) . "&surname=" . urlencode($surname) . "&phone=" . urlencode($phone) . "' class='pure-button pure-button-primary'>Seleziona</a>";
 
+// DOPO la modifica (nuovo codice):
+$nameEncoded = !empty($name) ? urlencode($name) : '';
+$surnameEncoded = !empty($surname) ? urlencode($surname) : '';
+$phoneEncoded = !empty($phone) ? urlencode($phone) : '';
+$addressEncoded = urlencode($address);
 
-// Aggiungi questo debug temporaneo per vedere i parametri:
-echo "<!-- DEBUG: zone_id={$slot['related_appointment']['zone_id']}, date={$slot['date']}, time={$slot['time']}, address={$address}, lat={$latitude}, lng={$longitude}, name={$name}, surname={$surname}, phone={$phone} -->";
-                 
-                echo "</div>";
+echo "<a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot['time']}";
+echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
+echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
+echo "' class='pure-button pure-button-primary'>Seleziona</a>";
+
+// Opzionale: Aggiungi questo dopo il link per il debug
+echo "<div style='font-size:10px; margin-top:5px; color:#666;'>";
+echo "Debug: zone_id={$slot['related_appointment']['zone_id']}, date={$slot['date']}, time={$slot['time']}, ";
+echo "address=" . urlencode($address) . ", lat={$latitude}, lng={$longitude}, ";
+echo "name=" . (!empty($name) ? urlencode($name) : '[vuoto]') . ", ";
+echo "surname=" . (!empty($surname) ? urlencode($surname) : '[vuoto]') . ", ";
+echo "phone=" . (!empty($phone) ? urlencode($phone) : '[vuoto]');
+echo "</div>";                
+               
             }
             
             echo "</center></div><hr>";
@@ -606,13 +612,22 @@ echo "<!-- DEBUG: zone_id={$slot['related_appointment']['zone_id']}, date={$slot
                     echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
                     $next3Days = getNext3AppointmentDates($slots, $zone['id']);
                     foreach ($next3Days as $date => $times) {
-                                                $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
+                        $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
                         echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}</p>";
                         echo "<p>Fasce orarie disponibili: ";
                         foreach ($times as $time) {
                             $formattedTime = date('H:i', strtotime($time)); // Remove seconds
-echo "<a href='javascript:void(0)' onclick='return selectAppointment(\"{$zone['id']}\", \"{$date}\", \"{$formattedTime}\", \"" . urlencode($address) . "\", \"{$latitude}\", \"{$longitude}\", \"" . urlencode($name) . "\", \"" . urlencode($surname) . "\", \"" . urlencode($phone) . "\");'>{$formattedTime}</a> ";
-                        }
+                            
+                            // MODIFICA QUI: Usando il link diretto come nel file originale
+$nameEncoded = !empty($name) ? urlencode($name) : '';
+$surnameEncoded = !empty($surname) ? urlencode($surname) : '';
+$phoneEncoded = !empty($phone) ? urlencode($phone) : '';
+$addressEncoded = urlencode($address);
+
+echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
+echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
+echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
+echo "' class='pure-button pure-button-primary' style='margin:0.2rem;'>{$formattedTime}</a> ";                        }
                         echo "</p>";
                     }
                     echo "</center></div><hr>";
@@ -621,8 +636,7 @@ echo "<a href='javascript:void(0)' onclick='return selectAppointment(\"{$zone['i
                 }
             }
         }
-
-        if ($zonesFound) {
+                if ($zonesFound) {
             $zoneText = implode(', ', $zoneNames);
             echo "<div class='container'><center><p style='margin-top:2rem; font-size:120%; font-weight:700;'>L'indirizzo appartiene alla zona <span style='color:green;'>{$zoneText}</span>.</p></center></div>";
         } else {
@@ -634,6 +648,9 @@ echo "<a href='javascript:void(0)' onclick='return selectAppointment(\"{$zone['i
     }
     exit;
 }
+
+
+
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone'])) {
     header('Content-Type: text/html; charset=UTF-8');
@@ -668,39 +685,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
 ?>
 <!DOCTYPE html>
 <html lang="it">
-    <script>
-function selectAppointment(zoneId, date, time, address, latitude, longitude, name, surname, phone) {
-    console.log("selectAppointment chiamata con:", zoneId, date, time); // Debug
-    
-    // Popola i campi
-    document.getElementById("zone_id").value = zoneId;
-    document.getElementById("date").value = date;
-    document.getElementById("time").value = time;
-    document.getElementById("form_address").value = decodeURIComponent(address);
-    document.getElementById("form_latitude").value = latitude;
-    document.getElementById("form_longitude").value = longitude;
-    document.getElementById("form_name").value = decodeURIComponent(name || '');
-    document.getElementById("form_surname").value = decodeURIComponent(surname || '');
-    document.getElementById("form_phone").value = decodeURIComponent(phone || '');
-    
-    // Mostra il form
-    var appointmentForm = document.getElementById("appointmentForm");
-    appointmentForm.style.display = "block";
-    
-    // Scroll al form
-    appointmentForm.scrollIntoView({behavior: "smooth"});
-    
-    // Evidenzia brevemente il form
-    appointmentForm.style.backgroundColor = "#ffffcc";
-    setTimeout(function() {
-        appointmentForm.style.backgroundColor = "";
-    }, 1500);
-    
-    // Importante: previeni il comportamento predefinito del link
-    return false;
-}
-</script>
-    
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -733,7 +717,7 @@ function selectAppointment(zoneId, date, time, address, latitude, longitude, nam
             margin-bottom: 10px;
         }
     </style>
-    <script>
+        <script>
         async function loadAPIKey() {
             try {
                 const response = await fetch('get_api_key.php');
@@ -785,73 +769,7 @@ function selectAppointment(zoneId, date, time, address, latitude, longitude, nam
             messageContainer.innerHTML = `<p>${message}</p>`;
             messageContainer.style.display = 'block';
         }
-
-        document.addEventListener("DOMContentLoaded", function() {
-            document.querySelectorAll(".booking-link").forEach(function(el) {
-                el.addEventListener("click", function(event) {
-                    event.preventDefault();
-                    const zoneId = this.dataset.zoneId;
-                    const date = this.dataset.date;
-                    const time = this.dataset.time;
-                    const address = decodeURIComponent(this.dataset.address);
-                    const latitude = this.dataset.latitude;
-                    const longitude = this.dataset.longitude;
-                    const name = this.dataset.name;
-                    const surname = this.dataset.surname;
-                    const phone = this.dataset.phone;
-
-                    document.getElementById("zone_id").value = zoneId;
-                    document.getElementById("date").value = date;
-                    document.getElementById("time").value = time;
-                    document.getElementById("address").value = address;
-                    document.getElementById("latitude").value = latitude;
-                    document.getElementById("longitude").value = longitude;
-                    document.getElementById("name").value = name;
-                    document.getElementById("surname").value = surname;
-                    document.getElementById("phone").value = phone;
-
-                    document.getElementById("appointmentForm").style.display = "block";
-                    window.scrollTo(0, document.getElementById("appointmentForm").offsetTop);
-                });
-            });
-        });
-    function selectAppointment(zoneId, date, time, address, latitude, longitude, name, surname, phone) {
-    // Popola il form con i dati dell'appuntamento selezionato
-    document.getElementById("zone_id").value = zoneId;
-    document.getElementById("date").value = date;
-    document.getElementById("time").value = time;
-    document.getElementById("form_address").value = address;
-    document.getElementById("form_latitude").value = latitude;
-    document.getElementById("form_longitude").value = longitude;
-    document.getElementById("form_name").value = name;
-    document.getElementById("form_surname").value = surname;
-    document.getElementById("form_phone").value = phone;
-
-    // Mostra il form di prenotazione
-    document.getElementById("appointmentForm").style.display = "block";
-    document.getElementById("appointmentForm").scrollIntoView({behavior: "smooth"});
-    
-    // Evidenzia il form con un'animazione
-    document.getElementById("appointmentForm").classList.add("highlight");
-    setTimeout(function() {
-        document.getElementById("appointmentForm").classList.remove("highlight");
-    }, 2000);
-}
-</script>
-
-<style>
-    /* Stile esistente... */
-    
-    /* Aggiungi questo stile per l'highlight */
-    .highlight {
-        animation: highlightAnimation 2s;
-    }
-    
-    @keyframes highlightAnimation {
-        0% { background-color: #ffff99; }
-        100% { background-color: transparent; }
-    }
-</style>
+    </script>
 </head>
 <body>
    
@@ -874,50 +792,49 @@ function selectAppointment(zoneId, date, time, address, latitude, longitude, nam
         <a href="dashboard.php">Torna alla dashboard</a>
     </div>
 
-<div class="container">
-    <div id="appointmentForm" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
-        <h2>Prenota Appuntamento</h2>
-        <form method="POST" action="combined_address_calculate_v2.php" class="pure-form pure-form-stacked">
-            <input type="hidden" id="zone_id" name="zone_id">
-            <input type="hidden" id="date" name="date">
-            <input type="hidden" id="time" name="time">
-            
-            <div style="display: flex; flex-wrap: wrap; gap: 15px;">
-                <div style="flex: 1; min-width: 250px;">
-                    <label for="form_name">Nome:</label>
-                    <input type="text" id="form_name" name="name" style="width: 100%;" required>
+    <div class="container">
+        <div id="appointmentForm" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
+            <h2>Prenota Appuntamento</h2>
+            <form method="POST" action="combined_address_calculate_v2.php" class="pure-form pure-form-stacked">
+                <input type="hidden" id="zone_id" name="zone_id">
+                <input type="hidden" id="date" name="date">
+                <input type="hidden" id="time" name="time">
+                                <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <label for="form_name">Nome:</label>
+                        <input type="text" id="form_name" name="name" style="width: 100%;" required>
+                    </div>
+                    <div style="flex: 1; min-width: 250px;">
+                        <label for="form_surname">Cognome:</label>
+                        <input type="text" id="form_surname" name="surname" style="width: 100%;" required>
+                    </div>
                 </div>
-                <div style="flex: 1; min-width: 250px;">
-                    <label for="form_surname">Cognome:</label>
-                    <input type="text" id="form_surname" name="surname" style="width: 100%;" required>
+                
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <label for="form_phone">Telefono:</label>
+                        <input type="text" id="form_phone" name="phone" style="width: 100%;" required>
+                    </div>
+                    <div style="flex: 1; min-width: 250px;">
+                        <label for="form_address">Indirizzo:</label>
+                        <input type="text" id="form_address" name="address" readonly style="width: 100%;">
+                    </div>
                 </div>
-            </div>
-            
-            <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
-                <div style="flex: 1; min-width: 250px;">
-                    <label for="form_phone">Telefono:</label>
-                    <input type="text" id="form_phone" name="phone" style="width: 100%;" required>
+                
+                <input type="hidden" id="form_latitude" name="latitude">
+                <input type="hidden" id="form_longitude" name="longitude">
+                
+                <div style="margin-top: 15px;">
+                    <label for="notes">Note:</label>
+                    <textarea id="notes" name="notes" rows="4" style="width: 100%;"></textarea>
                 </div>
-                <div style="flex: 1; min-width: 250px;">
-                    <label for="form_address">Indirizzo:</label>
-                    <input type="text" id="form_address" name="address" readonly style="width: 100%;">
+                
+                <div style="margin-top: 20px; text-align: center;">
+                    <button type="submit" class="pure-button pure-button-primary" style="font-size: 120%; padding: 10px 30px;">Conferma Prenotazione</button>
                 </div>
-            </div>
-            
-            <input type="hidden" id="form_latitude" name="latitude">
-            <input type="hidden" id="form_longitude" name="longitude">
-            
-            <div style="margin-top: 15px;">
-                <label for="notes">Note:</label>
-                <textarea id="notes" name="notes" rows="4" style="width: 100%;"></textarea>
-            </div>
-            
-            <div style="margin-top: 20px; text-align: center;">
-                <button type="submit" class="pure-button pure-button-primary" style="font-size: 120%; padding: 10px 30px;">Conferma Prenotazione</button>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 </body>
 </html>
 <?php
