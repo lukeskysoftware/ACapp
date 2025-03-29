@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestione delle Zone</title>
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <script>
         async function loadAPIKey() {
             try {
@@ -27,55 +27,70 @@
 </head>
 <body>
     <?php include 'menu.php'; ?>
-    <div class="pure-menu pure-menu-horizontal">
-        <!-- <nav>
-            <ul class="pure-menu-list">
-                <li class="pure-menu-item"><a class="pure-menu-link" href="create_zone_form.php">Crea Zona</a></li>
-                <li class="pure-menu-item"><a class="pure-menu-link" href="view_zones.php">Visualizza Zone</a></li>
-            </ul>
-        </nav> -->
-    </div>
-    <div class="pure-g aria">
-        <h2 class="centrato centro">Crea Zona</h2>
-    </div>
-    <div class="pure-g aria">
-        <form action="create_zone.php" method="post" class="pure-form pure-form-aligned centrato centro">
-            <label for="zone_name">Nome della Zona:</label>
-            <input type="text" id="zone_name" name="name" required><br>
+    <div class="container">
+        <h2 class="text-center my-4">Crea Zona</h2>
+        <form action="create_zone.php" method="post" class="needs-validation" novalidate>
+            <div class="mb-3">
+                <label for="zone_name" class="form-label">Nome della Zona:</label>
+                <input type="text" id="zone_name" name="name" class="form-control" required>
+                <div class="invalid-feedback">Inserisci il nome della zona.</div>
+            </div>
 
-            <label for="zone_address">Indirizzo della Zona:</label>
-            <input type="text" id="zone_address" name="address" required><br>
+            <div class="mb-3">
+                <label for="zone_address" class="form-label">Indirizzo della Zona:</label>
+                <input type="text" id="zone_address" name="address" class="form-control" required>
+                <div class="invalid-feedback">Inserisci l'indirizzo della zona.</div>
+            </div>
 
-            <label for="radius">Raggio (km):</label>
-            <input type="number" id="radius" name="radius_km" required><br>
+            <div class="mb-3">
+                <label for="radius" class="form-label">Raggio (km):</label>
+                <input type="number" id="radius" name="radius_km" class="form-control" required>
+                <div class="invalid-feedback">Inserisci il raggio in metri.</div>
+            </div>
 
-            <label for="days">Giorni della Settimana:</label>
-            <select id="days" name="days[]" multiple required>
-                <option value="Monday">Lunedì</option>
-                <option value="Tuesday">Martedì</option>
-                <option value="Wednesday">Mercoledì</option>
-                <option value="Thursday">Giovedì</option>
-                <option value="Friday">Venerdì</option>
-                <option value="Saturday">Sabato</option>
-                <option value="Sunday">Domenica</option>
-            </select><br>
+            <div class="mb-3">
+                <label for="days" class="form-label">Giorni della Settimana:</label>
+                <select id="days" name="days[]" class="form-select" multiple required>
+                    <option value="Monday">Lunedì</option>
+                    <option value="Tuesday">Martedì</option>
+                    <option value="Wednesday">Mercoledì</option>
+                    <option value="Thursday">Giovedì</option>
+                    <option value="Friday">Venerdì</option>
+                    <option value="Saturday">Sabato</option>
+                    <option value="Sunday">Domenica</option>
+                </select>
+                <div class="invalid-feedback">Seleziona almeno un giorno.</div>
+            </div>
 
-            <label for="start_time">Ora di Inizio:</label>
-            <input type="time" id="start_time" name="start_time" required><br>
+            <div class="mb-3">
+                <label for="start_time" class="form-label">Ora di Inizio:</label>
+                <input type="time" id="start_time" name="start_time" class="form-control" required>
+                <div class="invalid-feedback">Inserisci l'ora di inizio.</div>
+            </div>
 
-            <label for="end_time">Ora di Fine:</label>
-            <input type="time" id="end_time" name="end_time" required><br>
+            <div class="mb-3">
+                <label for="end_time" class="form-label">Ora di Fine:</label>
+                <input type="time" id="end_time" name="end_time" class="form-control" required>
+                <div class="invalid-feedback">Inserisci l'ora di fine.</div>
+            </div>
 
-            <label for="duration">Durata dell'Appuntamento (minuti):</label>
-            <input type="number" id="duration" name="duration" min="1" required><br>
+            <div class="mb-3">
+                <label for="duration" class="form-label">Durata dell'Appuntamento (minuti):</label>
+                <input type="number" id="duration" name="duration" class="form-control" min="1" required>
+                <div class="invalid-feedback">Inserisci la durata dell'appuntamento.</div>
+            </div>
 
-            <label for="latitude">Latitudine:</label>
-            <input type="text" id="latitude" name="latitude" readonly><br>
+            <div class="mb-3">
+                <label for="latitude" class="form-label">Latitudine:</label>
+                <input type="text" id="latitude" name="latitude" class="form-control" readonly>
+            </div>
 
-            <label for="longitude">Longitudine:</label>
-            <input type="text" id="longitude" name="longitude" readonly><br>
+            <div class="mb-3">
+                <label for="longitude" class="form-label">Longitudine:</label>
+                <input type="text" id="longitude" name="longitude" class="form-control" readonly>
+            </div>
 
-            <button type="submit" class="pure-button button-green button-small">Crea Zona</button>
+            <button type="submit" class="btn btn-primary text-center mt-4">Crea Zona</button>
         </form>
 
         <script>
@@ -103,8 +118,28 @@
             }
         </script>
     </div>
-    <div class="pure-g aria centrato centro">
-        <a class="centrato centro" href="dashboard.php">Torna alla dashboard</a>
+    <div class="text-center mt-4">
+        <a href="dashboard.php" class="btn btn-secondary">Torna alla dashboard</a>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        (function () {
+            'use strict'
+
+            var forms = document.querySelectorAll('.needs-validation')
+
+            Array.prototype.slice.call(forms)
+                .forEach(function (form) {
+                    form.addEventListener('submit', function (event) {
+                        if (!form.checkValidity()) {
+                            event.preventDefault()
+                            event.stopPropagation()
+                        }
+
+                        form.classList.add('was-validated')
+                    }, false)
+                })
+        })()
+    </script>
 </body>
 </html>
