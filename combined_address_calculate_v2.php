@@ -568,7 +568,6 @@ if (!empty($available_slots_near_appointments)) {
 } else {
     echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
 }
-
 // Assicurati che anche gli altri link "Seleziona" nel codice siano aggiornati nello stesso modo.
 
         
