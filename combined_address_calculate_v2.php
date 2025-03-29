@@ -535,53 +535,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
             echo "</center></div>";
         }
         
-        // Mostra gli slot disponibili vicini ad appuntamenti esistenti
-        if (!empty($available_slots_near_appointments)) {
-            echo "<div class='container'><center>";
-            echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
-                        foreach ($available_slots_near_appointments as $slot) {
-                $slot_date = date('d/m/Y', strtotime($slot['date']));
-                $slot_time = date('H:i', strtotime($slot['time']));
-                $distance = number_format($slot['related_appointment']['distance'], 1);
-                $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
-                
-                echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
-                echo "<h4>{$slot_date} {$slot_time}</h4>";
-                echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
-                echo "{$slot['related_appointment']['address']}<br>";
-                echo "<small>Distanza: {$distance} km</small></p>";
-                
-                // MODIFICA QUI: Usando il link diretto come nel file originale
-// PRIMA della modifica (da sostituire):
-echo "<a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot['time']}&address=" . urlencode($address) . 
-     "&latitude={$latitude}&longitude={$longitude}&name=" . urlencode($name) . "&surname=" . urlencode($surname) . "&phone=" . urlencode($phone) . "' class='pure-button pure-button-primary'>Seleziona</a>";
+// Codice esistente per la visualizzazione degli slot disponibili
+if (!empty($available_slots_near_appointments)) {
+    echo "<div class='container'><center>";
+    echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
+    foreach ($available_slots_near_appointments as $slot) {
+        $slot_date = date('d/m/Y', strtotime($slot['date']));
+        $slot_time = date('H:i', strtotime($slot['time']));
+        $distance = number_format($slot['related_appointment']['distance'], 1);
+        $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
 
-// DOPO la modifica (nuovo codice):
-$nameEncoded = !empty($name) ? urlencode($name) : '';
-$surnameEncoded = !empty($surname) ? urlencode($surname) : '';
-$phoneEncoded = !empty($phone) ? urlencode($phone) : '';
-$addressEncoded = urlencode($address);
+        echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
+        echo "<h4>{$slot_date} {$slot_time}</h4>";
+        echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
+        echo "{$slot['related_appointment']['address']}<br>";
+        echo "<small>Distanza: {$distance} km</small></p>";
 
-echo "<a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot['time']}";
-echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
-echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-echo "' class='pure-button pure-button-primary'>Seleziona</a>";
+        // Correzione dei parametri nel link "seleziona"
+        $nameEncoded = !empty($name) ? urlencode($name) : '';
+        $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
+        $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
+        $addressEncoded = urlencode($address);
 
-// Opzionale: Aggiungi questo dopo il link per il debug
-echo "<div style='font-size:10px; margin-top:5px; color:#666;'>";
-echo "Debug: zone_id={$slot['related_appointment']['zone_id']}, date={$slot['date']}, time={$slot['time']}, ";
-echo "address=" . urlencode($address) . ", lat={$latitude}, lng={$longitude}, ";
-echo "name=" . (!empty($name) ? urlencode($name) : '[vuoto]') . ", ";
-echo "surname=" . (!empty($surname) ? urlencode($surname) : '[vuoto]') . ", ";
-echo "phone=" . (!empty($phone) ? urlencode($phone) : '[vuoto]');
-echo "</div>";                
-               
-            }
-            
-            echo "</center></div><hr>";
-        } else {
-            echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
-        }
+        echo "<a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot['time']}";
+        echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
+        echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
+        echo "' class='pure-button pure-button-primary'>Seleziona</a>";
+
+        echo "</div>";
+    }
+    echo "</center></div><hr>";
+} else {
+    echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
+}
         
         // Continua con la logica esistente per le zone
         $zones = getZonesFromCoordinates($latitude, $longitude);
