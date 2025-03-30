@@ -8,6 +8,11 @@ include_once 'db.php';
 // Pulisci il buffer per rimuovere eventuali messaggi indesiderati
 ob_clean();
 
+// Log per debug
+$date_param = isset($_GET['date']) ? $_GET['date'] : 'non impostato';
+$zone_id_param = isset($_GET['zone_id']) ? $_GET['zone_id'] : 'non impostato';
+error_log("GET_APPOINTMENTS_MODAL - Ricevuto richiesta: date={$date_param}, zone_id={$zone_id_param}");
+
 // Previeni l'accesso diretto senza parametro data
 if (!isset($_GET['date'])) {
     echo '<div class="alert alert-danger">Parametro data mancante.</div>';
@@ -16,7 +21,6 @@ if (!isset($_GET['date'])) {
 
 $date = $_GET['date'];
 $zoneId = isset($_GET['zone_id']) ? (int)$_GET['zone_id'] : 0;
-
 
 // Validate date format (YYYY-MM-DD)
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
@@ -34,7 +38,7 @@ function getAppointmentsByDate($conn, $date, $zoneId = 0) {
             LEFT JOIN cp_zones z ON a.zone_id = z.id
             WHERE a.appointment_date = ?";
     
-    $params = [$date];
+    $params = array($date);
     $types = "s";
     
     // If zone_id is provided and not 0, filter by zone
@@ -49,14 +53,27 @@ function getAppointmentsByDate($conn, $date, $zoneId = 0) {
     $stmt = $conn->prepare($sql);
     
     if (!$stmt) {
-        return ['error' => 'Database error: ' . $conn->error];
+        error_log("GET_APPOINTMENTS_MODAL - Errore preparazione query: " . $conn->error);
+        return array();
     }
     
-    $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    // Usa call_user_func_array per la compatibilità con versioni meno recenti di PHP
+    call_user_func_array(array($stmt, 'bind_param'), array_merge(array($types), $params));
     
-    return $result->fetch_all(MYSQLI_ASSOC);
+    $stmt->execute();
+    if ($stmt->error) {
+        error_log("GET_APPOINTMENTS_MODAL - Errore SQL: " . $stmt->error);
+        return array();
+    }
+    
+    $result = $stmt->get_result();
+    $appointments = array();
+    
+    while ($row = $result->fetch_assoc()) {
+        $appointments[] = $row;
+    }
+    
+    return $appointments;
 }
 
 // Get zone name if zoneId is provided
