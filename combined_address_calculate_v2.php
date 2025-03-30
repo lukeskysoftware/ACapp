@@ -485,7 +485,7 @@ function getNext3AppointmentDates($slots, $zoneId) {
     // Aggiungi log per debug
     error_log("INIZIO getNext3AppointmentDates per zona ID: " . $zoneId);
     
-    while (count($next3Days) < 3 && $iterationCount < 14) { // Esteso a 14 per considerare più giorni
+    while (count($next3Days) < 3 && $iterationCount < 14) {
         // Esamina i giorni successivi (fino a 28 giorni = 4 settimane)
         for ($dayOffset = $iterationCount * 7; $dayOffset < ($iterationCount + 1) * 7; $dayOffset++) {
             $checkDate = clone $currentDate;
@@ -495,7 +495,7 @@ function getNext3AppointmentDates($slots, $zoneId) {
             
             error_log("Controllo data: " . $formattedDate . " (giorno della settimana: " . $checkDayOfWeek . ")");
             
-            // Filtra gli slot configurati per questo giorno della settimana
+            // Filtra gli slot configurati per questo giorno della settimana per la zona specifica
             $daySlots = array_filter($slots, function($slot) use ($checkDayOfWeek) {
                 $slotDayOfWeek = date('N', strtotime($slot['day']));
                 return $slotDayOfWeek == $checkDayOfWeek;
@@ -513,24 +513,27 @@ function getNext3AppointmentDates($slots, $zoneId) {
             }
             error_log("Slot configurati per il giorno " . $checkDayOfWeek . ": " . implode(", ", $configuredTimes));
             
-            // OTTENGO TUTTI GLI APPUNTAMENTI ESISTENTI PER QUESTA DATA E ZONA
-            $sql = "SELECT appointment_time FROM cp_appointments 
-                   WHERE zone_id = ? AND appointment_date = ?
+            // MODIFICA IMPORTANTE: Ottieni TUTTI gli appuntamenti per questa data, indipendentemente dalla zona
+            // In questo modo evitiamo sovrapposizioni tra zone
+            $sql = "SELECT appointment_time, zone_id FROM cp_appointments 
+                   WHERE appointment_date = ?
                    ORDER BY appointment_time";
             $stmt = $conn->prepare($sql);
-            $stmt->bind_param("is", $zoneId, $formattedDate);
+            $stmt->bind_param("s", $formattedDate);
             $stmt->execute();
             $result = $stmt->get_result();
             
             $bookedTimes = [];
+            $bookedTimesDetails = []; // Per debug dettagliato
             while ($row = $result->fetch_assoc()) {
                 $bookedTimes[] = $row['appointment_time'];
+                $bookedTimesDetails[] = "{$row['appointment_time']} (zona {$row['zone_id']})";
             }
             
             if (!empty($bookedTimes)) {
-                error_log("Appuntamenti già prenotati per " . $formattedDate . ": " . implode(", ", $bookedTimes));
+                error_log("Appuntamenti già prenotati per " . $formattedDate . " in TUTTE LE ZONE: " . implode(", ", $bookedTimesDetails));
             } else {
-                error_log("Nessun appuntamento prenotato per " . $formattedDate);
+                error_log("Nessun appuntamento prenotato per " . $formattedDate . " in nessuna zona");
             }
             
             // CONTROLLO PER OGNI SLOT CONFIGURATO, SE È DISPONIBILE O TROPPO VICINO A SLOT OCCUPATI
@@ -543,9 +546,9 @@ function getNext3AppointmentDates($slots, $zoneId) {
                     continue;
                 }
                 
-                // Controlla se questo slot è già prenotato
+                // Controlla se questo slot è già prenotato in qualsiasi zona
                 if (in_array($slotTime, $bookedTimes)) {
-                    error_log("Slot " . $slotTime . " saltato perché già prenotato");
+                    error_log("Slot " . $slotTime . " saltato perché già prenotato in qualche zona");
                     continue;
                 }
                 
@@ -894,7 +897,7 @@ $next3Days = getNext3AppointmentDates($slots, $zone['id']);
 
 // Aggiungi debug visibile per verificare gli slot
 echo "<div class='container' style='border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; background-color: #f9f9f9;'>";
-echo "<h5>Debug - Dettagli slot per zona {$zone['name']}:</h5>";
+echo "<h5>Debug - Dettagli slot per zona {$zone['name']} (ID: {$zone['id']}):</h5>";
 
 // Mostra gli slot configurati
 echo "<p><strong>Slot configurati:</strong> ";
@@ -903,25 +906,27 @@ foreach ($slots as $slot) {
 }
 echo "</p>";
 
-// Mostra gli appuntamenti esistenti per le date proposte
-echo "<p><strong>Appuntamenti esistenti nelle date proposte:</strong></p>";
+// Mostra gli appuntamenti esistenti per le date proposte IN TUTTE LE ZONE
+echo "<p><strong>Appuntamenti esistenti nelle date proposte (TUTTE LE ZONE):</strong></p>";
 echo "<ul>";
 foreach (array_keys($next3Days) as $date) {
-    $sql = "SELECT appointment_time FROM cp_appointments 
-           WHERE zone_id = ? AND appointment_date = ?
+    $sql = "SELECT a.appointment_time, a.zone_id, z.name as zone_name 
+           FROM cp_appointments a
+           LEFT JOIN cp_zones z ON a.zone_id = z.id
+           WHERE appointment_date = ?
            ORDER BY appointment_time";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("is", $zone['id'], $date);
+    $stmt->bind_param("s", $date);
     $stmt->execute();
     $result = $stmt->get_result();
     
     echo "<li><strong>{$date}:</strong> ";
     if ($result->num_rows > 0) {
-        $times = [];
+        $appointments = [];
         while ($row = $result->fetch_assoc()) {
-            $times[] = $row['appointment_time'];
+            $appointments[] = $row['appointment_time'] . " (zona: " . ($row['zone_name'] ?: "ID ".$row['zone_id']) . ")";
         }
-        echo implode(", ", $times);
+        echo implode(", ", $appointments);
     } else {
         echo "Nessun appuntamento";
     }
