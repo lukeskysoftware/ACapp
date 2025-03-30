@@ -39,31 +39,31 @@ $_SESSION['last_activity'] = time();
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav">
                 <li class="nav-item">
-                    <a class="nav-link" href="create_zone_form.html">Crea Zona</a>
+                    <a class="nav-link" href="create_zone_form.php">Crea Zona</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="list_zones.php">Gestisci Zone</a> <!-- Updated to point to list_zones.php -->
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="waiting_room.php">Richiesta App.to</a>
+                    <a class="nav-link text-dark" href="waiting_room.php">Richiesta App.to</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="waiting_list.php">Attesa App.to</a>
+                    <a class="nav-link text-dark" href="waiting_list.php">Attesa App.to</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="address__calculate_v2.php">Prenota Appuntamento</a>
+                    <a class="nav-link text-dark" href="combined_address_calculate_v2.php">Prenota per Zona</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="manage_appointments.php">Gestisci Appuntamenti</a>
+                    <a class="nav-link text-dark" href="insert_appointment.php">Inserisci Appuntamento</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="insert_appointment.php">Inserisci Appuntamento</a>
+                    <a class="nav-link text-dark" href="manage_appointments.php">Gestisci Appuntamenti</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="view_appointments.php">Vedi Appuntamenti</a>
+                    <a class="nav-link text-dark" href="view_appointments.php">Vedi Appuntamenti</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="logout.php">Logout</a>
+                    <a class="nav-link text-dark" href="logout.php">Logout</a>
                 </li>
             </ul>
         </div>
