@@ -139,141 +139,89 @@ if (isset($_GET['pdf'])) {
             $this->Cell(0, 10, 'Pagina '.$this->PageNo().'/{nb}', 0, 0, 'C');
         }
     }
-        // Create PDF instance
-        $pdf = new PDF('P', 'mm', 'A4', $isToday, $displayDate);
-        $pdf->AliasNbPages();
-        $pdf->AddPage();
-        $pdf->SetFont('Times', '', 12);
-        
-        // Check if there are appointments
-        if (empty($appointments)) {
-            $pdf->Cell(0, 10, utf8_decode('Nessun appuntamento registrato'), 0, 1, 'C');
-        } else {
-            // Add each appointment to the PDF
-            foreach ($appointments as $appointment) {
-                // Time
-                $pdf->SetFont('Times', 'B', 14);
-                $pdf->Cell(0, 10, date('H:i', strtotime($appointment['appointment_time'])), 0, 1);
-                
-                // Name and surname
-                $pdf->SetFont('Times', 'B', 12);
-                $fullName = utf8_decode($appointment['name'] . ' ' . $appointment['surname']);
-                $pdf->Cell(0, 8, $fullName, 0, 1);
-                
-                // Phone
-                $pdf->SetFont('Times', '', 11);
-                $pdf->Cell(0, 6, $appointment['phone'], 0, 1);
-                
-                // Address
-                $pdf->Cell(0, 6, utf8_decode($appointment['address']), 0, 1);
-                
-                // Notes if any
-                if (!empty($appointment['notes'])) {
-                    $pdf->SetFont('Times', 'B', 10);
-                    $pdf->Cell(20, 6, 'Note:', 0, 0);
-                    $pdf->SetFont('Times', '', 10);
-                    $pdf->MultiCell(0, 6, utf8_decode($appointment['notes']));
-                }
-                
-                // Add separator
-                $pdf->Ln(5);
-                $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 190, $pdf->GetY());
-                $pdf->Ln(5);
-            }
-        }
-        
-        // Output the PDF
-        if (isset($_GET['email']) && !empty($_GET['email'])) {
-            // Save the PDF to send via email
-            $pdfFileName = 'appuntamenti-' . $displayDate . '.pdf';
-            $pdfFilePath = sys_get_temp_dir() . '/' . $pdfFileName;
-            $pdf->Output('F', $pdfFilePath);
+
+    // Create PDF instance
+    $pdf = new PDF('P', 'mm', 'A4', $isToday, $displayDate);
+    $pdf->AliasNbPages();
+    $pdf->AddPage();
+    $pdf->SetFont('Times', '', 12);
+    
+    // Check if there are appointments
+    if (empty($appointments)) {
+        $pdf->Cell(0, 10, utf8_decode('Nessun appuntamento registrato'), 0, 1, 'C');
+    } else {
+        // Add each appointment to the PDF
+        foreach ($appointments as $appointment) {
+            // Time
+            $pdf->SetFont('Times', 'B', 14);
+            $pdf->Cell(0, 10, date('H:i', strtotime($appointment['appointment_time'])), 0, 1);
             
-            // Get email parameters from GET parameters
-            $emailTo = $_GET['email'];
-            $subject = isset($_GET['subject']) ? $_GET['subject'] : 'Appuntamenti del ' . $displayDate;
-            $message = isset($_GET['message']) ? $_GET['message'] : 'In allegato trovi il PDF degli appuntamenti del giorno ' . $displayDate . '.';
+            // Name and surname
+            $pdf->SetFont('Times', 'B', 12);
+            $fullName = utf8_decode($appointment['name'] . ' ' . $appointment['surname']);
+            $pdf->Cell(0, 8, $fullName, 0, 1);
             
-            // Create a boundary for multipart message
-            $boundary = md5(time());
+            // Phone
+            $pdf->SetFont('Times', '', 11);
+            $pdf->Cell(0, 6, $appointment['phone'], 0, 1);
             
-            // Set email headers
-            $headers = "From: ACapp <noreply@acapp.it>\r\n";
-            $headers .= "Reply-To: noreply@acapp.it\r\n";
-            $headers .= "MIME-Version: 1.0\r\n";
-            $headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n";
+            // Address
+            $pdf->Cell(0, 6, utf8_decode($appointment['address']), 0, 1);
             
-            // Create email body
-            $email_body = "--$boundary\r\n";
-            $email_body .= "Content-Type: text/plain; charset=utf-8\r\n";
-            $email_body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-            $email_body .= $message . "\r\n\r\n";
-            
-            // Attach PDF
-            $email_body .= "--$boundary\r\n";
-            $email_body .= "Content-Type: application/pdf; name=\"$pdfFileName\"\r\n";
-            $email_body .= "Content-Disposition: attachment; filename=\"$pdfFileName\"\r\n";
-            $email_body .= "Content-Transfer-Encoding: base64\r\n\r\n";
-            $email_body .= chunk_split(base64_encode(file_get_contents($pdfFilePath))) . "\r\n";
-            $email_body .= "--$boundary--";
-            
-            // Send email
-            $mail_sent = mail($emailTo, $subject, $email_body, $headers);
-            
-            // Return result as JSON
-            header('Content-Type: application/json');
-            if ($mail_sent) {
-                echo json_encode(['success' => true]);
-            } else {
-                echo json_encode(['success' => false, 'error' => 'Errore nell\'invio dell\'email']);
+            // Notes if any
+            if (!empty($appointment['notes'])) {
+                $pdf->SetFont('Times', 'B', 10);
+                $pdf->Cell(20, 6, 'Note:', 0, 0);
+                $pdf->SetFont('Times', '', 10);
+                $pdf->MultiCell(0, 6, utf8_decode($appointment['notes']));
             }
             
-            // Remove temporary file
-            if (file_exists($pdfFilePath)) {
-                unlink($pdfFilePath);
-            }
-            
-            exit;
-        } else {
-            // Output PDF directly to browser
-            $pdf->Output('I', 'appuntamenti-' . $displayDate . '.pdf');
-            exit;
+            // Add separator
+            $pdf->Ln(5);
+            $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 190, $pdf->GetY());
+            $pdf->Ln(5);
         }
     }
     
-    // Continue with the normal page display
-    ?>
+    // Output the PDF based on requested type
+    $pdfFileName = 'appuntamenti-' . $displayDate . '.pdf';
+    $pdf->Output('I', $pdfFileName); // 'I' sends to browser
+    exit;
+}
+
+// Continue with the normal page display
+?>
     
-    <!DOCTYPE html>
-    <html lang="it">
-    <head>
-        <meta charset="UTF-8">
-        <title><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
-        <meta name="format-detection" content="telephone=no">
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-        <style>
-            body {
-                padding: 20px;
-            }
-            .appointment-time {
-                font-weight: bold;
-                font-size: 1.5rem;
-            }
-            .appointment-details {
-                margin-bottom: 20px;
-            }
-            hr {
-                border-top: 2px solid #bbb;
-            }
-            .navigation {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-            }
-            .btn {
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <meta name="format-detection" content="telephone=no">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body {
+            padding: 20px;
+        }
+        .appointment-time {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        .appointment-details {
+            margin-bottom: 20px;
+        }
+        hr {
+            border-top: 2px solid #bbb;
+        }
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .btn {
             flex-grow: 1;
             margin: 0 5px;
         }
@@ -417,7 +365,17 @@ if (isset($_GET['pdf'])) {
                             <span><?php echo $appointment['phone']; ?></span>
                             <a href="tel:<?php echo $appointment['phone']; ?>" class="btn call-button no-print"><i class="bi bi-telephone-fill"></i>Chiama</a>
                         </p>
-                        <div class="container mt-5 no-print">
+                        <p>
+                            <?php echo $appointment['address']; ?>
+                            <a href="#" class="btn map-button no-print" data-address="<?php echo urlencode($appointment['address']); ?>"><i class="bi bi-geo-alt-fill"></i>Apri in Mappe</a>
+                        </p>
+                        <?php if (!empty($appointment['notes'])): ?>
+                            <p><strong>Note:</strong> <?php echo $appointment['notes']; ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <hr>
+                <?php endforeach; ?>
+                <div class="container mt-5 no-print">
                     <h2>Genera l'itinerario per oggi</h2>
                     <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3"><i class="bi bi-geo-alt-fill"></i>Apri l'itinerario in Mappe</button>
                     <hr>
@@ -474,14 +432,6 @@ if (isset($_GET['pdf'])) {
             </div>
         </div>
     </div>
-    
-    <!-- Hidden form for PDF email submission -->
-    <form id="pdfEmailForm" style="display:none;" method="post" action="send_pdf_email.php" enctype="multipart/form-data">
-        <input type="email" name="email" id="hiddenEmailField">
-        <input type="text" name="subject" id="hiddenSubjectField">
-        <textarea name="message" id="hiddenMessageField"></textarea>
-        <input type="file" name="pdf" id="hiddenPdfField">
-    </form>
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -510,31 +460,51 @@ if (isset($_GET['pdf'])) {
             document.getElementById('emailGroup').style.display = 'none';
         }
 
-        document.getElementById('sendEmail').addEventListener('click', function() {
-            const email = document.getElementById('email').value;
-            const formatGoogle = document.getElementById('formatGoogle').checked;
-            const formatApple = document.getElementById('formatApple').checked;
+   document.getElementById('sendEmail').addEventListener('click', function() {
+    const email = document.getElementById('email').value;
+    const formatGoogle = document.getElementById('formatGoogle').checked;
+    const formatApple = document.getElementById('formatApple').checked;
 
-            if (!email) {
-                alert('Inserisci un indirizzo email valido.');
-                return;
-            }
+    if (!email) {
+        alert('Inserisci un indirizzo email valido.');
+        return;
+    }
 
-            if (!formatGoogle && !formatApple) {
-                alert('Seleziona almeno un formato per l\'URL delle mappe.');
-                return;
-            }
-            let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti del giorno " + "<?php echo $displayDate; ?>" + ":\n\n";
-            if (formatGoogle) {
-                message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
-            }
-            if (formatApple) {
-                message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
-            }
-            message += "Cordiali saluti,\nIl Team degli Appuntamenti";
+    if (!formatGoogle && !formatApple) {
+        alert('Seleziona almeno un formato per l\'URL delle mappe.');
+        return;
+    }
+    
+    let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti del giorno " + "<?php echo $displayDate; ?>" + ":\n\n";
+    if (formatGoogle) {
+        message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
+    }
+    if (formatApple) {
+        message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
+    }
+    message += "Cordiali saluti,\nIl Team degli Appuntamenti";
 
-            sendEmail(email, "Itinerario per gli appuntamenti del giorno " + "<?php echo $displayDate; ?>", message);
-        });
+    // Send email using fetch API
+    fetch('send_email.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email: email, subject: "Itinerario per gli appuntamenti del giorno " + "<?php echo $displayDate; ?>", message: message })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Email inviata con successo.');
+        } else {
+            alert('Errore nell\'invio dell\'email.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Errore nell\'invio dell\'email.');
+    });
+});
         
         function sendEmail(email, subject, message) {
             fetch('send_email.php', {
@@ -609,9 +579,25 @@ if (isset($_GET['pdf'])) {
             loadingDiv.style.zIndex = '9999';
             loadingDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-light" role="status"></div><div class="mt-2">Generazione e invio del PDF in corso...</div></div>';
             document.body.appendChild(loadingDiv);
-            
-            // Generate PDF and send via email
-            generateAndSendPDF(email, subject, message)
+
+            // First generate the PDF and then send it via email
+            fetch('today.php?date=<?php echo $selectedDate; ?>&pdf=1')
+                .then(response => response.blob())
+                .then(blob => {
+                    // Create form data to send the PDF
+                    const formData = new FormData();
+                    formData.append('pdf', new File([blob], 'appuntamenti-<?php echo $displayDate; ?>.pdf', { type: 'application/pdf' }));
+                    formData.append('email', email);
+                    formData.append('subject', subject);
+                    formData.append('message', message);
+                    
+                    // Send the PDF via email
+                    return fetch('send_pdf_email.php', {
+                        method: 'POST',
+                        body: formData
+                    });
+                })
+                .then(response => response.json())
                 .then(data => {
                     // Remove loading message
                     document.getElementById('loadingMessage').remove();
@@ -619,7 +605,7 @@ if (isset($_GET['pdf'])) {
                     if (data.success) {
                         alert('PDF inviato con successo via email.');
                     } else {
-                        alert('Errore nell\'invio del PDF: ' + data.error);
+                        alert('Errore nell\'invio del PDF: ' + (data.error || 'errore sconosciuto'));
                     }
                 })
                 .catch(error => {
@@ -629,38 +615,6 @@ if (isset($_GET['pdf'])) {
                     alert('Errore nella generazione o nell\'invio del PDF.');
                 });
         });
-        
-        // Function to generate PDF using FPDF and send via email
-        function generateAndSendPDF(email, subject, message) {
-            return new Promise((resolve, reject) => {
-                // First, generate the PDF
-                fetch('today.php?date=<?php echo $selectedDate; ?>&pdf=1', {
-                    method: 'GET'
-                })
-                .then(response => response.blob())
-                .then(pdfBlob => {
-                    // Create a FormData with the PDF
-                    const formData = new FormData();
-                    formData.append('pdf', pdfBlob, 'appuntamenti-<?php echo $displayDate; ?>.pdf');
-                    formData.append('email', email);
-                    formData.append('subject', subject);
-                    formData.append('message', message);
-                    
-                    // Send the PDF via email using send_pdf_email.php
-                    return fetch('send_pdf_email.php', {
-                        method: 'POST',
-                        body: formData
-                    });
-                })
-                .then(response => response.json())
-                .then(data => {
-                    resolve(data);
-                })
-                .catch(error => {
-                    reject(error);
-                });
-            });
-        }
     });
     </script>
 </body>
