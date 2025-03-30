@@ -1166,127 +1166,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     }
 </style>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Make the function available globally
-    window.getAppointmentsForDate = function(date, zoneId) {
-        // Create the modal HTML
-        let modalId = `appointmentModal_${date.replace(/-/g, "")}`;
-        
-        // Check if modal already exists
-        if (document.getElementById(modalId)) {
-            // Just show the existing modal
-            var existingModal = new bootstrap.Modal(document.getElementById(modalId));
-            existingModal.show();
-            return;
-        }
-        
-        // Create modal skeleton
-        let modalHTML = `
-            <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="appointmentModalLabel" aria-hidden="true">
-                <div class="modal-dialog modal-xl">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title" id="appointmentModalLabel">Appuntamenti per il ${formatDate(date)}</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                            <div id="appointmentsList_${date.replace(/-/g, "")}">
-                                <div class="text-center">
-                                    <div class="spinner-border" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </div>
-                                    <p>Caricamento appuntamenti...</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
-                            <a href="get_appointments_for_date.php?date=${date}&zone_id=${zoneId}" target="_blank" class="btn btn-primary">
-                                <i class="bi bi-fullscreen"></i> Vista completa
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Add modal to the document
-        document.body.insertAdjacentHTML("beforeend", modalHTML);
-        
-        // Show the modal
-        var appointmentModal = new bootstrap.Modal(document.getElementById(modalId));
-        appointmentModal.show();
-        
-        // Fetch the appointments
-        fetch(`get_appointments_for_date.php?date=${date}&zone_id=${zoneId}&format=json`)
-            .then(response => response.json())
-            .then(data => {
-                let appointmentsList = document.getElementById(`appointmentsList_${date.replace(/-/g, "")}`);
-                
-                if (data.length === 0) {
-                    appointmentsList.innerHTML = '<div class="no-appointments"><i class="bi bi-calendar-x" style="font-size: 2rem;"></i><p>Nessun appuntamento registrato per questa data.</p></div>';
-                } else {
-                    let html = '';
-                    data.sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
-                    
-                    data.forEach(appointment => {
-                        const time = appointment.appointment_time.substring(0, 5); // Format H:i
-                        html += `
-                            <div class="appointment-details">
-                                <p class="appointment-time">${time}</p>
-                                <p><span class="name">${appointment.name}</span> <span class="surname">${appointment.surname}</span></p>
-                                <p>${appointment.phone}
-                                    <a href="tel:${appointment.phone}" class="btn btn-sm" style="background-color: #fd7e14; color: white;">
-                                        <i class="bi bi-telephone-fill"></i> Chiama
-                                    </a>
-                                </p>
-                                <p>${appointment.address}
-                                    <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(appointment.address)}" 
-                                       target="_blank" class="btn btn-sm btn-info text-white">
-                                        <i class="bi bi-geo-alt-fill"></i> Apri in Mappe
-                                    </a>
-                                </p>
-                                ${appointment.notes ? `<p><strong>Note:</strong> ${appointment.notes}</p>` : ''}
-                            </div>
-                        `;
-                    });
-                    
-                    appointmentsList.innerHTML = html;
-                }
-            })
-            .catch(error => {
-                console.error("Error fetching appointments:", error);
-                document.getElementById(`appointmentsList_${date.replace(/-/g, "")}`).innerHTML = 
-                    `<div class="alert alert-danger">Errore nel caricamento degli appuntamenti: ${error.message}</div>`;
-            });
-    }
-});
 
-function formatDate(dateString) {
-    const date = new Date(dateString + "T00:00:00");
-    const options = { day: "numeric", month: "long", year: "numeric" };
-    return date.toLocaleDateString("it-IT", options);
-}
-</script>
 <?php // End of added head content ?>
 </head>
 <body>
    
     <div class="container">
         <h2>A quale indirizzo fare la visita?</h2>
-        <form id="addressForm" method="POST" action="combined_address_calculate_v2.php" class="pure-form pure-form-stacked">
-            <label class="etic" for="address">Indirizzo:</label>
-            <input type="text" id="address" name="address" required><br>
-            <label class="etic" for="latitude">Latitudine:</label>
-            <input type="text" id="latitude" name="latitude" readonly><br>
-            <label class="etic" for="longitude">Longitudine:</label>
-            <input type="text" id="longitude" name="longitude" readonly><br>
-            <input type="hidden" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>">
-            <input type="hidden" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>">
-            <input type="hidden" id="phone" name="phone" value="<?php echo htmlspecialchars($phone); ?>">
-            <button type="submit" class="pure-button pure-button-primary">Avanti</button>
-        </form>
+      <form id="addressForm" method="POST" action="combined_address_calculate_v2.php" class="mb-4">
+    <div class="mb-3">
+        <label for="address" class="form-label fw-bold">Indirizzo:</label>
+        <input type="text" id="address" name="address" class="form-control" required>
+    </div>
+    <div class="mb-3">
+        <label for="latitude" class="form-label fw-bold">Latitudine:</label>
+        <input type="text" id="latitude" name="latitude" class="form-control" readonly>
+    </div>
+    <div class="mb-3">
+        <label for="longitude" class="form-label fw-bold">Longitudine:</label>
+        <input type="text" id="longitude" name="longitude" class="form-control" readonly>
+    </div>
+    <input type="hidden" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>">
+    <input type="hidden" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>">
+    <input type="hidden" id="phone" name="phone" value="<?php echo htmlspecialchars($phone); ?>">
+    <button type="submit" class="btn btn-primary">Avanti</button>
+</form>
         <div id="coordinates" style="margin-top: 10px;"></div>
         <div id="messageContainer" style="display:none;"></div>
         <a href="dashboard.php">Torna alla dashboard</a>
@@ -1370,13 +1274,13 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log(`Trovati ${agendaButtons.length} pulsanti agenda`);
     
     agendaButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const date = this.getAttribute('data-date');
-            const zoneId = this.getAttribute('data-zone-id');
-            console.log(`Pulsante cliccato con data: ${date}, zoneId: ${zoneId}`);
-            loadAppointmentsIntoModal(date, zoneId);
-        });
+    button.addEventListener('click', function() {
+        const date = this.getAttribute('data-date');
+        const zoneId = this.getAttribute('data-zone-id'); // Questo è corretto
+        console.log(`Pulsante cliccato con data: ${date}, zoneId: ${zoneId}`);
+        loadAppointmentsIntoModal(date, zoneId);
     });
+});
 });
 
 // Funzione per caricare gli appuntamenti nel modal
