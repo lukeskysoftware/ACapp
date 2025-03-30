@@ -37,5 +37,10 @@ foreach ($appointments as $appointment) {
     $pdf->Ln(5);
 }
 
+if (empty($appointments)) {
+    echo "No appointments found for the selected date.";
+    exit;
+}
+
 $pdf->Output('D', 'appuntamenti.pdf');
 ?>
