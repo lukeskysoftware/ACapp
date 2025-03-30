@@ -942,7 +942,13 @@ echo "<script>
         
         if (collapseEl) {
             collapseEl.addEventListener('shown.bs.collapse', function() {
-                fetch('get_appointments_modal.php?date=' + date + '&zone_id=' + zoneId)
+                fetch('get_appointments_modal.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'appointment_date=' + date
+                })
                     .then(function(response) {
                         if (!response.ok) throw new Error('Errore di rete');
                         return response.text();
@@ -1164,7 +1170,13 @@ function reloadAgenda(contentId, date, zoneId) {
     var contentEl = document.getElementById(contentId);
     contentEl.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Caricamento appuntamenti...</span></div><p>Caricamento appuntamenti...</p></div>';
     
-    fetch('get_appointments_modal.php?date=' + date + '&zone_id=' + zoneId)
+    fetch('get_appointments_modal.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'appointment_date=' + date
+    })
         .then(function(response) {
             if (!response.ok) throw new Error('Errore di rete');
             return response.text();
@@ -1181,7 +1193,6 @@ function reloadAgenda(contentId, date, zoneId) {
             '</div>';
         });
 }
-        
     </script>
     
     
@@ -1298,8 +1309,9 @@ $(document).ready(function() {
     <a href="dashboard.php">Torna alla dashboard</a>
 </div>
 
-<button class='btn btn-secondary vedi-agenda-btn' data-date='<?php echo date("Y-m-d"); ?>'>Vedi agenda</button>
-<div id="toggle-appointments-container" style="display:none;" class="mt-3"></div>
+
+
+
 
     <div class="container">
         <div id="appointmentForm" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
