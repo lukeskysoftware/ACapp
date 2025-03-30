@@ -189,20 +189,50 @@ if (isset($_GET['pdf'])) {
             $pdfFilePath = sys_get_temp_dir() . '/' . $pdfFileName;
             $pdf->Output('F', $pdfFilePath);
             
-            // Get email parameters
-            $email = $_GET['email'];
+            // Get email parameters from GET parameters
+            $emailTo = $_GET['email'];
             $subject = isset($_GET['subject']) ? $_GET['subject'] : 'Appuntamenti del ' . $displayDate;
             $message = isset($_GET['message']) ? $_GET['message'] : 'In allegato trovi il PDF degli appuntamenti del giorno ' . $displayDate . '.';
             
-            // Use the existing send_pdf_email.php logic (assuming it exists)
-            $data = [
-                'success' => false,
-                'error' => 'PDF email function not implemented yet'
-            ];
+            // Create a boundary for multipart message
+            $boundary = md5(time());
             
-            // Return JSON response
+            // Set email headers
+            $headers = "From: ACapp <noreply@acapp.it>\r\n";
+            $headers .= "Reply-To: noreply@acapp.it\r\n";
+            $headers .= "MIME-Version: 1.0\r\n";
+            $headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n";
+            
+            // Create email body
+            $email_body = "--$boundary\r\n";
+            $email_body .= "Content-Type: text/plain; charset=utf-8\r\n";
+            $email_body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $email_body .= $message . "\r\n\r\n";
+            
+            // Attach PDF
+            $email_body .= "--$boundary\r\n";
+            $email_body .= "Content-Type: application/pdf; name=\"$pdfFileName\"\r\n";
+            $email_body .= "Content-Disposition: attachment; filename=\"$pdfFileName\"\r\n";
+            $email_body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+            $email_body .= chunk_split(base64_encode(file_get_contents($pdfFilePath))) . "\r\n";
+            $email_body .= "--$boundary--";
+            
+            // Send email
+            $mail_sent = mail($emailTo, $subject, $email_body, $headers);
+            
+            // Return result as JSON
             header('Content-Type: application/json');
-            echo json_encode($data);
+            if ($mail_sent) {
+                echo json_encode(['success' => true]);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Errore nell\'invio dell\'email']);
+            }
+            
+            // Remove temporary file
+            if (file_exists($pdfFilePath)) {
+                unlink($pdfFilePath);
+            }
+            
             exit;
         } else {
             // Output PDF directly to browser
@@ -244,38 +274,38 @@ if (isset($_GET['pdf'])) {
                 margin-bottom: 20px;
             }
             .btn {
-                flex-grow: 1;
-                margin: 0 5px;
-            }
-            .logout-button {
-                margin-left: auto;
-            }
-            .dashboard-button {
-                margin-right: auto;
-            }
-            .map-link {
-                color: #007bff;
-            }
-            .map-button {
-                margin-left: 10px;
-                background-color: #17a2b8;
-                color: #fff;
-                border: none;
-            }
-            .map-button .bi {
-                margin-right: 5px;
-            }
-            .name, .surname {
-                font-weight: bold;
-                font-size: 120%;
-            }
-            .call-button {
-                background-color: #fd7e14;
-                color: #fff;
-                border: none;
-                transition: background-color 0.3s ease;
-            }
-            .call-button .bi {
+            flex-grow: 1;
+            margin: 0 5px;
+        }
+        .logout-button {
+            margin-left: auto;
+        }
+        .dashboard-button {
+            margin-right: auto;
+        }
+        .map-link {
+            color: #007bff;
+        }
+        .map-button {
+            margin-left: 10px;
+            background-color: #17a2b8;
+            color: #fff;
+            border: none;
+        }
+        .map-button .bi {
+            margin-right: 5px;
+        }
+        .name, .surname {
+            font-weight: bold;
+            font-size: 120%;
+        }
+        .call-button {
+            background-color: #fd7e14;
+            color: #fff;
+            border: none;
+            transition: background-color 0.3s ease;
+        }
+        .call-button .bi {
             margin-right: 5px;
         }
         .call-button:hover {
@@ -387,17 +417,7 @@ if (isset($_GET['pdf'])) {
                             <span><?php echo $appointment['phone']; ?></span>
                             <a href="tel:<?php echo $appointment['phone']; ?>" class="btn call-button no-print"><i class="bi bi-telephone-fill"></i>Chiama</a>
                         </p>
-                        <p>
-                            <?php echo $appointment['address']; ?>
-                            <a href="#" class="btn map-button no-print" data-address="<?php echo urlencode($appointment['address']); ?>"><i class="bi bi-geo-alt-fill"></i>Apri in Mappe</a>
-                        </p>
-                        <?php if (!empty($appointment['notes'])): ?>
-                            <p><strong>Note:</strong> <?php echo $appointment['notes']; ?></p>
-                        <?php endif; ?>
-                    </div>
-                    <hr>
-                <?php endforeach; ?>
-                <div class="container mt-5 no-print">
+                        <div class="container mt-5 no-print">
                     <h2>Genera l'itinerario per oggi</h2>
                     <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3"><i class="bi bi-geo-alt-fill"></i>Apri l'itinerario in Mappe</button>
                     <hr>
@@ -454,6 +474,14 @@ if (isset($_GET['pdf'])) {
             </div>
         </div>
     </div>
+    
+    <!-- Hidden form for PDF email submission -->
+    <form id="pdfEmailForm" style="display:none;" method="post" action="send_pdf_email.php" enctype="multipart/form-data">
+        <input type="email" name="email" id="hiddenEmailField">
+        <input type="text" name="subject" id="hiddenSubjectField">
+        <textarea name="message" id="hiddenMessageField"></textarea>
+        <input type="file" name="pdf" id="hiddenPdfField">
+    </form>
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -579,14 +607,11 @@ if (isset($_GET['pdf'])) {
             loadingDiv.style.color = 'white';
             loadingDiv.style.borderRadius = '5px';
             loadingDiv.style.zIndex = '9999';
-            loadingDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-light" role="status"></div><div class="mt-2">Invio del PDF in corso...</div></div>';
+            loadingDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-light" role="status"></div><div class="mt-2">Generazione e invio del PDF in corso...</div></div>';
             document.body.appendChild(loadingDiv);
             
-            // Use the server-side PDF generation with FPDF and email it
-            const url = `today.php?date=<?php echo $selectedDate; ?>&pdf=1&email=${encodeURIComponent(email)}&subject=${encodeURIComponent(subject)}&message=${encodeURIComponent(message)}`;
-            
-            fetch(url)
-                .then(response => response.json())
+            // Generate PDF and send via email
+            generateAndSendPDF(email, subject, message)
                 .then(data => {
                     // Remove loading message
                     document.getElementById('loadingMessage').remove();
@@ -601,9 +626,41 @@ if (isset($_GET['pdf'])) {
                     // Remove loading message
                     document.getElementById('loadingMessage').remove();
                     console.error('Error:', error);
-                    alert('Errore nell\'invio del PDF via email.');
+                    alert('Errore nella generazione o nell\'invio del PDF.');
                 });
         });
+        
+        // Function to generate PDF using FPDF and send via email
+        function generateAndSendPDF(email, subject, message) {
+            return new Promise((resolve, reject) => {
+                // First, generate the PDF
+                fetch('today.php?date=<?php echo $selectedDate; ?>&pdf=1', {
+                    method: 'GET'
+                })
+                .then(response => response.blob())
+                .then(pdfBlob => {
+                    // Create a FormData with the PDF
+                    const formData = new FormData();
+                    formData.append('pdf', pdfBlob, 'appuntamenti-<?php echo $displayDate; ?>.pdf');
+                    formData.append('email', email);
+                    formData.append('subject', subject);
+                    formData.append('message', message);
+                    
+                    // Send the PDF via email using send_pdf_email.php
+                    return fetch('send_pdf_email.php', {
+                        method: 'POST',
+                        body: formData
+                    });
+                })
+                .then(response => response.json())
+                .then(data => {
+                    resolve(data);
+                })
+                .catch(error => {
+                    reject(error);
+                });
+            });
+        }
     });
     </script>
 </body>
