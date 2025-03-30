@@ -142,7 +142,7 @@ function sendEmailWithPDF($appointments, $displayDate, $recipientEmail) {
     $boundary = md5(uniqid(time()));
 
     $headers = "From: gestioneappuntamenti@ac.it\r\n";
-    $headers .= "Reply-To:\r\n";
+    $headers .= "Reply-To: gestioneappuntamenti@ac.it\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n\r\n";
 
@@ -161,9 +161,20 @@ function sendEmailWithPDF($appointments, $displayDate, $recipientEmail) {
 }
 
 if (isset($_POST['action']) && $_POST['action'] === 'send_pdf') {
+    // Ensure no output before JSON response
+    ob_start();
+    header('Content-Type: application/json');
+
     $recipientEmail = $_POST['email'];
     $success = sendEmailWithPDF($appointments, $displayDate, $recipientEmail);
-    echo json_encode(['success' => $success]);
+
+    // Capture any unexpected output
+    $output = ob_get_clean();
+    if (!empty($output)) {
+        echo json_encode(['success' => false, 'error' => 'Unexpected output: ' . $output]);
+    } else {
+        echo json_encode(['success' => $success]);
+    }
     exit;
 }
 
@@ -343,14 +354,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'generate_pdf') {
             event.preventDefault();
             var recipientEmail = document.getElementById('recipientEmail').value;
 
-            fetch('today.php', {
+            fetch('send_email.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    action: 'send_pdf',
-                    email: recipientEmail
+                    email: recipientEmail,
+                    url: window.location.href,
+                    selectedDate: "<?php echo $selectedDate; ?>"
                 })
             })
             .then(response => response.json())
