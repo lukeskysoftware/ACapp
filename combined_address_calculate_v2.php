@@ -295,37 +295,87 @@ function getZonesFromCoordinates($latitude, $longitude) {
 function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 60) {
     global $conn;
     $available_slots = [];
-    $default_duration = 60; // Durata predefinita in minuti
+    $zone_id = $appointmentData['zone_id'];
+    $duration = 60; // Default duration for zone_id=0
+    
+    // Se la zona non è 0, calcola il tempo tra appuntamenti dalla tabella cp_slots
+    if ($zone_id != 0) {
+        // Ottieni gli slot per questa zona
+        $sql = "SELECT day, time FROM cp_slots WHERE zone_id = ? ORDER BY day, time";
+        $stmt = $conn->prepare($sql);
+        if ($stmt) {
+            $stmt->bind_param("i", $zone_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($result->num_rows > 1) {
+                // Estrai tutti gli orari in un array
+                $times = [];
+                while ($row = $result->fetch_assoc()) {
+                    $times[] = $row['time'];
+                }
+                
+                // Calcola la differenza di tempo tra il primo e il secondo slot
+                if (count($times) >= 2) {
+                    $first_time = strtotime($times[0]);
+                    $second_time = strtotime($times[1]);
+                    $duration_seconds = $second_time - $first_time;
+                    $duration = $duration_seconds / 60; // Converti in minuti
+                }
+            }
+        }
+    }
     
     // Converti data e ora dell'appuntamento in oggetto DateTime
     $appointment_datetime = new DateTime($appointmentData['appointment_date'] . ' ' . $appointmentData['appointment_time']);
     
-    // Slot prima (-60 minuti)
+    // Slot prima (-durata minuti)
     $before_slot = clone $appointment_datetime;
-    $before_slot->modify('-' . $buffer_minutes . ' minutes');
+    $before_slot->modify('-' . $duration . ' minutes');
     
-    // Slot dopo (+60 minuti)
+    // Slot dopo (+durata minuti)
     $after_slot = clone $appointment_datetime;
-    $after_slot->modify('+' . $default_duration . ' minutes'); // Assumiamo 60 min per appuntamento
+    $after_slot->modify('+' . $duration . ' minutes');
     
-    // Verifica disponibilità prima
-    if (isTimeSlotAvailable($appointmentData['zone_id'], $before_slot->format('Y-m-d'), $before_slot->format('H:i:s'))) {
-        $available_slots[] = [
-            'date' => $before_slot->format('Y-m-d'),
-            'time' => $before_slot->format('H:i:s'),
-            'type' => 'before',
-            'related_appointment' => $appointmentData
-        ];
-    }
+    // Ottieni il primo e l'ultimo appuntamento del giorno per questa zona
+    $sql = "SELECT MIN(appointment_time) as first_time, MAX(appointment_time) as last_time 
+            FROM cp_appointments 
+            WHERE zone_id = ? AND appointment_date = ?";
+    $stmt = $conn->prepare($sql);
+    $appointmentDate = $appointmentData['appointment_date'];
     
-    // Verifica disponibilità dopo
-    if (isTimeSlotAvailable($appointmentData['zone_id'], $after_slot->format('Y-m-d'), $after_slot->format('H:i:s'))) {
-        $available_slots[] = [
-            'date' => $after_slot->format('Y-m-d'),
-            'time' => $after_slot->format('H:i:s'),
-            'type' => 'after',
-            'related_appointment' => $appointmentData
-        ];
+    if ($stmt) {
+        $stmt->bind_param("is", $zone_id, $appointmentDate);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        
+        $first_time = $row['first_time'] ? new DateTime($appointmentDate . ' ' . $row['first_time']) : null;
+        $last_time = $row['last_time'] ? new DateTime($appointmentDate . ' ' . $row['last_time']) : null;
+        
+        // Controlla se lo slot prima è valido (non prima del primo appuntamento)
+        if ($first_time && $before_slot < $first_time) {
+            // Lo slot è prima del primo appuntamento, non è valido
+        } else if (isTimeSlotAvailable($zone_id, $before_slot->format('Y-m-d'), $before_slot->format('H:i:s'))) {
+            $available_slots[] = [
+                'date' => $before_slot->format('Y-m-d'),
+                'time' => $before_slot->format('H:i:s'),
+                'type' => 'before',
+                'related_appointment' => $appointmentData
+            ];
+        }
+        
+        // Controlla se lo slot dopo è valido (non dopo l'ultimo appuntamento)
+        if ($last_time && $after_slot > $last_time) {
+            // Lo slot è dopo l'ultimo appuntamento, non è valido
+        } else if (isTimeSlotAvailable($zone_id, $after_slot->format('Y-m-d'), $after_slot->format('H:i:s'))) {
+            $available_slots[] = [
+                'date' => $after_slot->format('Y-m-d'),
+                'time' => $after_slot->format('H:i:s'),
+                'type' => 'after',
+                'related_appointment' => $appointmentData
+            ];
+        }
     }
     
     return $available_slots;
@@ -410,23 +460,73 @@ function getNext3AppointmentDates($slots, $zoneId) {
     $next3Days = [];
     $currentDate = new DateTime();
     $currentDayOfWeek = $currentDate->format('N'); // Day of the week (1 = Monday, 7 = Sunday)
-
-    while (count($next3Days) < 3) {
-        foreach ($slots as $slot) {
-            $slotDayOfWeek = date('N', strtotime($slot['day']));
-            $daysUntilSlot = ($slotDayOfWeek - $currentDayOfWeek + 7) % 7;
-            $appointmentDate = clone $currentDate;
-            $appointmentDate->modify("+$daysUntilSlot days");
-            $formattedDate = $appointmentDate->format('Y-m-d');
-
-            // Check if slot is available
-            if (isAppointmentAvailable($zoneId, $formattedDate, $slot['time'])) {
-                $next3Days[$formattedDate][] = $slot['time'];
+    $iterationCount = 0; // Per evitare cicli infiniti
+    
+    while (count($next3Days) < 3 && $iterationCount < 10) { // Limitiamo a 10 iterazioni per sicurezza
+        // Per ogni giorno della settimana, verifica gli slot disponibili
+        for ($dayOffset = 0; $dayOffset < 7; $dayOffset++) {
+            $checkDate = clone $currentDate;
+            $checkDate->modify("+$dayOffset days");
+            $checkDayOfWeek = $checkDate->format('N');
+            $formattedDate = $checkDate->format('Y-m-d');
+            
+            // Ottieni tutti gli slot per questo giorno della settimana
+            $daySlots = array_filter($slots, function($slot) use ($checkDayOfWeek) {
+                return date('N', strtotime($slot['day'])) == $checkDayOfWeek;
+            });
+            
+            if (empty($daySlots)) {
+                continue; // Nessuno slot per questo giorno della settimana
+            }
+            
+            // Controlla quanti slot sono già prenotati per questa data
+            $bookedSlotsSql = "SELECT appointment_time FROM cp_appointments 
+                              WHERE zone_id = ? AND appointment_date = ?";
+            $stmt = $conn->prepare($bookedSlotsSql);
+            $stmt->bind_param("is", $zoneId, $formattedDate);
+            $stmt->execute();
+            $bookedResult = $stmt->get_result();
+            
+            $bookedTimes = [];
+            while ($row = $bookedResult->fetch_assoc()) {
+                $bookedTimes[] = $row['appointment_time'];
+            }
+            
+            // Conta gli slot disponibili per questa data
+            $availableSlots = [];
+            foreach ($daySlots as $slot) {
+                $slotTime = $slot['time'];
+                
+                // Se la data è oggi e l'orario è già passato, salta
+                if ($formattedDate == date('Y-m-d') && $slotTime <= date('H:i:s')) {
+                    continue;
+                }
+                
+                // Verifica se lo slot è già prenotato
+                if (!in_array($slotTime, $bookedTimes) && isAppointmentAvailable($zoneId, $formattedDate, $slotTime)) {
+                    $availableSlots[] = $slotTime;
+                }
+            }
+            
+            // Se ci sono almeno 2 slot disponibili, aggiungi questa data
+            if (count($availableSlots) >= 2) {
+                $next3Days[$formattedDate] = $availableSlots;
+                
+                // Se abbiamo già 3 giorni, interrompiamo
+                if (count($next3Days) >= 3) {
+                    break;
+                }
             }
         }
-        $currentDate->modify('+1 week');
+        
+        // Passa alla settimana successiva
+        $currentDate->modify('+7 days');
+        $iterationCount++;
     }
-
+    
+    // Ordina per data
+    ksort($next3Days);
+    
     return array_slice($next3Days, 0, 3, true);
 }
 
@@ -535,6 +635,55 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
             echo "</center></div>";
         }
         
+        
+        // Aggiungi questa funzione di debug prima della visualizzazione degli slot disponibili
+function displayAppointmentDetails($appointments) {
+    echo "<div class='container'><center>";
+    echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
+    echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
+    echo "<thead><tr><th>ID</th><th>Zona</th><th>Data</th><th>Ora</th><th>Distanza</th><th>Primo Slot</th><th>Ultimo Slot</th></tr></thead>";
+    echo "<tbody>";
+    
+    foreach ($appointments as $appointment) {
+        // Ottieni il primo e l'ultimo slot per questa zona e data
+        global $conn;
+        $zone_id = $appointment['zone_id'];
+        $date = $appointment['appointment_date'];
+        
+        $sql = "SELECT MIN(appointment_time) as first_time, MAX(appointment_time) as last_time 
+                FROM cp_appointments 
+                WHERE zone_id = ? AND appointment_date = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("is", $zone_id, $date);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        
+        $first_time = $row['first_time'] ?: 'N/A';
+        $last_time = $row['last_time'] ?: 'N/A';
+        
+        echo "<tr>";
+        echo "<td>{$appointment['id']}</td>";
+        echo "<td>{$appointment['zone_id']}</td>";
+        echo "<td>{$appointment['appointment_date']}</td>";
+        echo "<td>{$appointment['appointment_time']}</td>";
+        echo "<td>" . number_format($appointment['distance'], 2) . " km</td>";
+        echo "<td>{$first_time}</td>";
+        echo "<td>{$last_time}</td>";
+        echo "</tr>";
+    }
+    
+    echo "</tbody></table>";
+    echo "</center></div><hr>";
+}
+
+        // Mostra i dettagli degli appuntamenti considerati
+if (!empty($nearby_appointments)) {
+    displayAppointmentDetails($nearby_appointments);
+}
+        
+        
+        
 // Codice esistente per la visualizzazione degli slot disponibili
 if (!empty($available_slots_near_appointments)) {
     echo "<div class='container'><center>";
@@ -598,6 +747,40 @@ if (!empty($available_slots_near_appointments)) {
                 $slots = getSlotsForZone($zone['id']);
                 if (!empty($slots)) {
                     echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
+                    
+                    // Aggiungi questo codice prima di chiamare getNext3AppointmentDates()
+echo "<div class='container'><center>";
+echo "<h4>Debug - Slots e appuntamenti per la zona {$zone['name']}:</h4>";
+
+// Mostra tutti gli slot configurati per questa zona
+$allZoneSlots = getSlotsForZone($zone['id']);
+echo "<p><strong>Slot configurati:</strong> " . count($allZoneSlots) . "</p>";
+echo "<ul style='list-style-type:none; padding:0;'>";
+foreach ($allZoneSlots as $slot) {
+    echo "<li>{$slot['day']} {$slot['time']}</li>";
+}
+echo "</ul>";
+
+// Mostra tutti gli appuntamenti futuri per questa zona
+$futureAppsSql = "SELECT appointment_date, appointment_time FROM cp_appointments 
+                 WHERE zone_id = ? AND appointment_date >= CURDATE() 
+                 ORDER BY appointment_date, appointment_time";
+$appsStmt = $conn->prepare($futureAppsSql);
+$appsStmt->bind_param("i", $zone['id']);
+$appsStmt->execute();
+$appsResult = $appsStmt->get_result();
+
+echo "<p><strong>Appuntamenti futuri:</strong> " . $appsResult->num_rows . "</p>";
+echo "<ul style='list-style-type:none; padding:0;'>";
+while ($app = $appsResult->fetch_assoc()) {
+    echo "<li>{$app['appointment_date']} {$app['appointment_time']}</li>";
+}
+echo "</ul>";
+
+echo "</center></div>";
+
+
+                    
                     $next3Days = getNext3AppointmentDates($slots, $zone['id']);
                     foreach ($next3Days as $date => $times) {
                         $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
