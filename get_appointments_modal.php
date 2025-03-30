@@ -8,7 +8,7 @@ include_once 'db.php';
 // Pulisci il buffer per rimuovere eventuali messaggi indesiderati
 ob_clean();
 
-// Log per debug
+// Log per debug (verifica che i parametri arrivino correttamente)
 $date_param = isset($_GET['date']) ? $_GET['date'] : 'non impostato';
 $zone_id_param = isset($_GET['zone_id']) ? $_GET['zone_id'] : 'non impostato';
 error_log("GET_APPOINTMENTS_MODAL - Ricevuto richiesta: date={$date_param}, zone_id={$zone_id_param}");
@@ -28,52 +28,52 @@ if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
     exit;
 }
 
-// Function to get appointments for a specific date and zone
-function getAppointmentsByDate($conn, $date, $zoneId = 0) {
-    $sql = "SELECT a.id, p.name, p.surname, CONCAT('+39', p.phone) as phone, 
-            a.notes, a.appointment_date, a.appointment_time, a.address, a.zone_id,
-            CASE WHEN z.name IS NULL THEN 'N/A' ELSE z.name END as zone_name
-            FROM cp_appointments a
-            JOIN cp_patients p ON a.patient_id = p.id
-            LEFT JOIN cp_zones z ON a.zone_id = z.id
-            WHERE a.appointment_date = ?";
-    
-    $params = array($date);
-    $types = "s";
-    
-    // If zone_id is provided and not 0, filter by zone
-    if ($zoneId > 0) {
-        $sql .= " AND a.zone_id = ?";
-        $params[] = $zoneId;
-        $types .= "i";
-    }
-    
-    $sql .= " ORDER BY a.appointment_time ASC";
-    
-    $stmt = $conn->prepare($sql);
-    
-    if (!$stmt) {
-        error_log("GET_APPOINTMENTS_MODAL - Errore preparazione query: " . $conn->error);
-        return array();
-    }
-    
-    // Usa call_user_func_array per la compatibilità con versioni meno recenti di PHP
-    call_user_func_array(array($stmt, 'bind_param'), array_merge(array($types), $params));
-    
-    $stmt->execute();
-    if ($stmt->error) {
-        error_log("GET_APPOINTMENTS_MODAL - Errore SQL: " . $stmt->error);
-        return array();
-    }
-    
-    $result = $stmt->get_result();
-    $appointments = array();
-    
-    while ($row = $result->fetch_assoc()) {
-        $appointments[] = $row;
-    }
-    
-    return $appointments;
+// Get appointments for a specific date and zone
+$appointments = array();
+$sql = "SELECT a.id, p.name, p.surname, CONCAT('+39', p.phone) as phone, 
+        a.notes, a.appointment_date, a.appointment_time, a.address, a.zone_id,
+        CASE WHEN z.name IS NULL THEN 'N/A' ELSE z.name END as zone_name
+        FROM cp_appointments a
+        JOIN cp_patients p ON a.patient_id = p.id
+        LEFT JOIN cp_zones z ON a.zone_id = z.id
+        WHERE a.appointment_date = ?";
+
+$params = array($date);
+$types = "s";
+
+// If zone_id is provided and not 0, filter by zone
+if ($zoneId > 0) {
+    $sql .= " AND a.zone_id = ?";
+    $types .= "i";
+}
+
+$sql .= " ORDER BY a.appointment_time ASC";
+
+$stmt = $conn->prepare($sql);
+
+if (!$stmt) {
+    error_log("GET_APPOINTMENTS_MODAL - Errore preparazione query: " . $conn->error);
+    echo '<div class="alert alert-danger">Errore nella preparazione della query.</div>';
+    exit;
+}
+
+// Usa il metodo standard bind_param con controlli appropriati per la versione PHP
+if ($zoneId > 0) {
+    $stmt->bind_param($types, $date, $zoneId); // Se c'è zona, aggiungi il parametro
+} else {
+    $stmt->bind_param($types, $date); // Solo data
+}
+
+if (!$stmt->execute()) {
+    error_log("GET_APPOINTMENTS_MODAL - Errore esecuzione query: " . $stmt->error);
+    echo '<div class="alert alert-danger">Errore nell\'esecuzione della query.</div>';
+    exit;
+}
+
+$result = $stmt->get_result();
+
+while ($row = $result->fetch_assoc()) {
+    $appointments[] = $row;
 }
 
 // Get zone name if zoneId is provided
@@ -90,9 +90,6 @@ if ($zoneId > 0) {
     }
 }
 
-// Get appointments for the specified date and zone
-$appointments = getAppointmentsByDate($conn, $date, $zoneId);
-
 // Format date for display
 setlocale(LC_TIME, 'it_IT.UTF-8');
 $formattedDate = strftime('%d %B %Y', strtotime($date));
@@ -100,7 +97,7 @@ $formattedDate = strftime('%d %B %Y', strtotime($date));
 // Clear any buffered output before sending our content
 ob_end_clean();
 
-// Output the appointments HTML for the modal
+// Output the appointments HTML
 if (empty($appointments)) {
     ?>
     <div class="text-center py-5">
