@@ -480,110 +480,112 @@ function getNext3AppointmentDates($slots, $zoneId) {
     global $conn;
     $next3Days = [];
     $currentDate = new DateTime();
-    $currentDayOfWeek = $currentDate->format('N'); // Day of the week (1 = Monday, 7 = Sunday)
     $iterationCount = 0; // Per evitare cicli infiniti
     
-    while (count($next3Days) < 3 && $iterationCount < 10) { // Limitiamo a 10 iterazioni per sicurezza
-        // Per ogni giorno della settimana, verifica gli slot disponibili
-        for ($dayOffset = 0; $dayOffset < 7; $dayOffset++) {
+    // Per debug
+    error_log("Ricerca delle prossime 3 date disponibili per la zona ID: " . $zoneId);
+    
+    while (count($next3Days) < 3 && $iterationCount < 10) {
+        // Controlliamo le date per le prossime 3 settimane
+        for ($dayOffset = 0; $dayOffset < 21; $dayOffset++) {
             $checkDate = clone $currentDate;
             $checkDate->modify("+$dayOffset days");
-            $checkDayOfWeek = $checkDate->format('N');
+            $checkDayOfWeek = $checkDate->format('N'); // 1 (lunedì) fino a 7 (domenica)
             $formattedDate = $checkDate->format('Y-m-d');
             
-            // Ottieni tutti gli slot per questo giorno della settimana
+            // Salta le date già verificate
+            if (isset($next3Days[$formattedDate])) {
+                continue;
+            }
+            
+            // Ottieni tutti gli slot configurati per questo giorno della settimana
             $daySlots = array_filter($slots, function($slot) use ($checkDayOfWeek) {
                 return date('N', strtotime($slot['day'])) == $checkDayOfWeek;
             });
             
             if (empty($daySlots)) {
-                continue; // Nessuno slot per questo giorno della settimana
+                continue; // Nessuno slot configurato per questo giorno della settimana
             }
             
-            // MODIFICA: Non saltare più immediatamente le date con appuntamenti esistenti
-            // Conta gli slot disponibili per questa data tenendo conto del buffer
+            // Estrai solo gli orari dai daySlots
+            $configuredTimes = array_column($daySlots, 'time');
+            
+            // Per debug
+            error_log("Data " . $formattedDate . " ha " . count($configuredTimes) . " slot configurati");
+            
+            // ----- FASE 1: Ottieni gli appuntamenti già prenotati per questa data -----
+            $bookedAppointments = [];
+            $bookedSlotsSql = "SELECT appointment_time FROM cp_appointments 
+                              WHERE zone_id = ? AND appointment_date = ? 
+                              ORDER BY appointment_time";
+            $stmt = $conn->prepare($bookedSlotsSql);
+            $stmt->bind_param("is", $zoneId, $formattedDate);
+            $stmt->execute();
+            $bookedResult = $stmt->get_result();
+            
+            while ($row = $bookedResult->fetch_assoc()) {
+                $bookedAppointments[] = $row['appointment_time'];
+            }
+            
+            // Per debug
+            error_log("Data " . $formattedDate . " ha " . count($bookedAppointments) . " appuntamenti già prenotati");
+            
+            // ----- FASE 2: Calcola gli slot disponibili (escludendo quelli già prenotati e quelli troppo vicini) -----
             $availableSlots = [];
-            foreach ($daySlots as $slot) {
-                $slotTime = $slot['time'];
-                
+            
+            foreach ($configuredTimes as $slotTime) {
                 // Se la data è oggi e l'orario è già passato, salta
                 if ($formattedDate == date('Y-m-d') && $slotTime <= date('H:i:s')) {
                     continue;
                 }
                 
-                // Verifica se lo slot è disponibile con il nuovo criterio di buffer di 60 minuti
-                if (isAppointmentAvailable($zoneId, $formattedDate, $slotTime, 60)) {
+                // Controlla se questo slot è già prenotato
+                if (in_array($slotTime, $bookedAppointments)) {
+                    continue; // Slot già prenotato, passa al prossimo
+                }
+                
+                // Controlla se ci sono appuntamenti troppo vicini a questo slot (entro 60 minuti)
+                $slotDateTime = strtotime($formattedDate . ' ' . $slotTime);
+                $tooClose = false;
+                
+                foreach ($bookedAppointments as $bookedTime) {
+                    $bookedDateTime = strtotime($formattedDate . ' ' . $bookedTime);
+                    $timeDifferenceMinutes = abs(($bookedDateTime - $slotDateTime) / 60);
+                    
+                    if ($timeDifferenceMinutes < 60) {
+                        $tooClose = true;
+                        break;
+                    }
+                }
+                
+                // Se lo slot non è vicino a nessun appuntamento esistente, è disponibile
+                if (!$tooClose) {
                     $availableSlots[] = $slotTime;
                 }
             }
             
-            // Se ci sono almeno 2 slot disponibili, aggiungi questa data
+            // Per debug
+            error_log("Data " . $formattedDate . " ha " . count($availableSlots) . " slot disponibili dopo i controlli");
+            
+            // ----- FASE 3: Se ci sono almeno 2 slot disponibili, aggiungi la data -----
             if (count($availableSlots) >= 2) {
                 $next3Days[$formattedDate] = $availableSlots;
                 
-                // Se abbiamo già 3 giorni, interrompiamo
                 if (count($next3Days) >= 3) {
-                    break;
+                    break; // Abbiamo trovato le 3 date richieste
                 }
             }
         }
         
-        // Se non abbiamo trovato abbastanza giorni liberi, proviamo con la seconda settimana
-        if (count($next3Days) < 3 && $iterationCount >= 1) {
-            for ($dayOffset = 7; $dayOffset < 14; $dayOffset++) {  // Seconda settimana
-                $checkDate = clone $currentDate;
-                $checkDate->modify("+$dayOffset days");
-                $checkDayOfWeek = $checkDate->format('N');
-                $formattedDate = $checkDate->format('Y-m-d');
-                
-                // Salta le date già aggiunte
-                if (isset($next3Days[$formattedDate])) {
-                    continue;
-                }
-                
-                // Ottieni tutti gli slot per questo giorno della settimana
-                $daySlots = array_filter($slots, function($slot) use ($checkDayOfWeek) {
-                    return date('N', strtotime($slot['day'])) == $checkDayOfWeek;
-                });
-                
-                if (empty($daySlots)) {
-                    continue;
-                }
-                
-                // Controlla quanti slot sono disponibili usando la nuova funzione con buffer
-                $availableSlots = [];
-                foreach ($daySlots as $slot) {
-                    $slotTime = $slot['time'];
-                    
-                    // Se la data è oggi e l'orario è già passato, salta
-                    if ($formattedDate == date('Y-m-d') && $slotTime <= date('H:i:s')) {
-                        continue;
-                    }
-                    
-                    // Verifica se lo slot è disponibile con il nuovo criterio di buffer di 60 minuti
-                    if (isAppointmentAvailable($zoneId, $formattedDate, $slotTime, 60)) {
-                        $availableSlots[] = $slotTime;
-                    }
-                }
-                
-                // Se ci sono almeno 2 slot disponibili, aggiungi questa data
-                if (count($availableSlots) >= 2) {
-                    $next3Days[$formattedDate] = $availableSlots;
-                    
-                    if (count($next3Days) >= 3) {
-                        break;
-                    }
-                }
-            }
-        }
-        
-        // Passa alla settimana successiva
-        $currentDate->modify('+7 days');
+        $currentDate->modify('+7 days'); // Passa alla settimana successiva se necessario
         $iterationCount++;
     }
     
     // Ordina per data
     ksort($next3Days);
+    
+    // Per debug
+    error_log("Trovate " . count($next3Days) . " date disponibili");
     
     return array_slice($next3Days, 0, 3, true);
 }
