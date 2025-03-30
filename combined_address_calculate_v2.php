@@ -1174,27 +1174,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
 <div class="container">
     <h2>A quale indirizzo fare la visita?</h2>
     <form id="addressForm" method="POST" action="combined_address_calculate_v2.php" class="mb-4">
-        <div class="mb-3">
+        <div class="mb-3" style="width: 60%;">
             <label for="address" class="form-label fw-bold">Indirizzo:</label>
-            <input type="text" id="address" name="address" class="form-control form-control-lg" style="max-width: 100%; width: 100%;" required>
+            <input type="text" id="address" name="address" class="form-control" style="width: 60%; max-width: 100%;" required>
         </div>
-        <div class="mb-3">
+        <div class="mb-3" style="width: 60%;">
             <label for="latitude" class="form-label fw-bold">Latitudine:</label>
-            <input type="text" id="latitude" name="latitude" class="form-control form-control-lg" style="max-width: 100%; width: 100%;" readonly>
+            <input type="text" id="latitude" name="latitude" class="form-control" style="width: 60%; max-width: 100%;" readonly>
         </div>
-        <div class="mb-3">
+        <div class="mb-3" style="width: 60%;">
             <label for="longitude" class="form-label fw-bold">Longitudine:</label>
-            <input type="text" id="longitude" name="longitude" class="form-control form-control-lg" style="max-width: 100%; width: 100%;" readonly>
+            <input type="text" id="longitude" name="longitude" class="form-control" style="width: 60%; max-width: 100%;" readonly>
         </div>
         <input type="hidden" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>">
         <input type="hidden" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>">
         <input type="hidden" id="phone" name="phone" value="<?php echo htmlspecialchars($phone); ?>">
-        <button type="submit" class="btn btn-primary btn-lg">Avanti</button>
+        <button type="submit" class="btn btn-primary">Avanti</button>
     </form>
     <div id="coordinates" style="margin-top: 10px;"></div>
     <div id="messageContainer" style="display:none;"></div>
     <a href="dashboard.php">Torna alla dashboard</a>
 </div>
+
 
     <div class="container">
         <div id="appointmentForm" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
