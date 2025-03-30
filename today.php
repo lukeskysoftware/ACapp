@@ -110,7 +110,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
     <meta name="format-detection" content="telephone=no">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         body {
             padding: 20px;
@@ -175,18 +175,12 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
         .print-button {
             background-color: #6c757d;
             color: #fff;
-            border: none;
-            margin-right: 5px;
-        }
-        .print-button .bi {
-            margin-right: 5px;
         }
         .email-pdf-button {
             background-color: #28a745;
             color: #fff;
-            border: none;
         }
-        .email-pdf-button .bi {
+        .btn-icon {
             margin-right: 5px;
         }
 
@@ -199,6 +193,12 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
             }
             .btn {
                 flex-grow: 1;
+                margin: 5px 0;
+            }
+            .action-buttons {
+                flex-direction: column;
+            }
+            .action-buttons .btn {
                 margin: 5px 0;
             }
         }
@@ -225,42 +225,44 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
         }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.8.1/font/bootstrap-icons.min.css">
-    <!-- Aggiungiamo html2pdf.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </head>
 <body>
     <div class="container">
+        <!-- Barra superiore con pulsanti -->
         <div class="row mb-3 no-print">
-           <div class="col-6 col-md-4 text-start">
-        <a href="dashboard.php" class="btn btn-light dashboard-button">
-            <i class="bi bi-speedometer2"></i> Dashboard
-        </a>
-    </div>
-    <div class="col-6 col-md-4 text-center">
-        <?php if (!empty($appointments)): ?>
-            <button id="printPdfButton" class="btn btn-primary me-2">
-                <i class="bi bi-printer"></i> Stampa
-            </button>
-            <button id="emailPdfButton" class="btn btn-success">
-                <i class="bi bi-envelope-fill"></i> Email PDF
-            </button>
-        <?php endif; ?>
-    </div>
-    <div class="col-12 col-md-4 text-end">
-        <a href="today.php?logout=true" class="btn btn-light logout-button">
-            <i class="bi bi-x-circle"></i> Esci
-        </a>
-    </div>
+            <div class="col-12 d-flex justify-content-between align-items-center flex-wrap">
+                <a href="dashboard.php" class="btn btn-light dashboard-button">
+                    <i class="bi bi-speedometer2 btn-icon"></i> Dashboard
+                </a>
+                
+                <!-- Pulsanti di stampa e invio email -->
+                <?php if (!empty($appointments)): ?>
+                <div class="d-flex action-buttons">
+                    <button id="printPdfButton" class="btn btn-primary mx-1 print-button">
+                        <i class="bi bi-printer btn-icon"></i> Stampa
+                    </button>
+                    <button id="emailPdfButton" class="btn btn-success mx-1 email-pdf-button">
+                        <i class="bi bi-envelope btn-icon"></i> Email PDF
+                    </button>
+                </div>
+                <?php endif; ?>
+                
+                <a href="today.php?logout=true" class="btn btn-light logout-button">
+                    <i class="bi bi-x-circle btn-icon"></i> Esci
+                </a>
+            </div>
         </div>
+
+        <!-- Navigazione data -->
         <div class="navigation no-print">
             <a href="today.php?date=<?php echo date('Y-m-d', strtotime($selectedDate . ' -1 day')); ?>" class="btn btn-secondary">&lt;</a>
             <h1><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></h1>
             <a href="today.php?date=<?php echo date('Y-m-d', strtotime($selectedDate . ' +1 day')); ?>" class="btn btn-secondary">&gt;</a>
         </div>
-
         
+        <!-- Contenuto degli appuntamenti -->
         <div id="appointments-content">
-            <!-- Aggiungiamo un titolo visibile nelle stampe -->
+            <!-- Titolo visibile nelle stampe -->
             <div class="d-none d-print-block text-center mb-4">
                 <h2><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></h2>
             </div>
@@ -272,13 +274,13 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                     <div class="appointment-details">
                         <p class="appointment-time"><?php echo date('H:i', strtotime($appointment['appointment_time'])); ?></p>
                         <p><span class="name"><?php echo $appointment['name']; ?></span> <span class="surname"><?php echo $appointment['surname']; ?></span></p>
-                        <p>
+                                                <p>
                             <span><?php echo $appointment['phone']; ?></span>
-                            <a href="tel:<?php echo $appointment['phone']; ?>" class="btn call-button no-print"><i class="bi bi-telephone-fill"></i>Chiama</a>
+                            <a href="tel:<?php echo $appointment['phone']; ?>" class="btn call-button no-print"><i class="bi bi-telephone-fill btn-icon"></i>Chiama</a>
                         </p>
                         <p>
                             <?php echo $appointment['address']; ?>
-                            <a href="#" class="btn map-button no-print" data-address="<?php echo urlencode($appointment['address']); ?>"><i class="bi bi-geo-alt-fill"></i>Apri in Mappe</a>
+                            <a href="#" class="btn map-button no-print" data-address="<?php echo urlencode($appointment['address']); ?>"><i class="bi bi-geo-alt-fill btn-icon"></i>Apri in Mappe</a>
                         </p>
                         <?php if (!empty($appointment['notes'])): ?>
                             <p><strong>Note:</strong> <?php echo $appointment['notes']; ?></p>
@@ -289,7 +291,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                 
                 <div class="container mt-5 no-print">
                     <h2>Genera l'itinerario per oggi</h2>
-                    <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3"><i class="bi bi-geo-alt-fill"></i>Apri l'itinerario in Mappe</button>
+                    <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3"><i class="bi bi-geo-alt-fill btn-icon"></i>Apri l'itinerario in Mappe</button>
                     <hr>
                     <h2>Invia l'itinerario per email</h2>
                     <div id="emailGroup" class="container mt-3">
@@ -305,7 +307,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                                     <label class="form-check-label" for="formatApple">Apple Maps</label>
                                 </div>
                                 <div class="input-group mt-2">
-                                    <button id="sendEmail" class="btn btn-primary email-button"><i class="bi bi-envelope-fill"></i>Invia URL</button>
+                                    <button id="sendEmail" class="btn btn-primary email-button"><i class="bi bi-envelope-fill btn-icon"></i>Invia URL</button>
                                 </div>
                             </div>
                         </div>
@@ -345,11 +347,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
         </div>
     </div>
 
-    <!-- File PHP di supporto per generare il PDF (generatePDF.php) -->
-    <?php
-    // Devi creare questo file a parte
-    ?>
-        <script>
+    <script>
         document.addEventListener('DOMContentLoaded', function() {
             var appointments = <?php echo json_encode($appointments); ?>;
             var mapUrlGoogle = '';
@@ -373,8 +371,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                 document.getElementById('openMapButton').style.display = 'none';
                 document.getElementById('emailGroup').style.display = 'none';
             }
-
-            document.getElementById('sendEmail').addEventListener('click', function() {
+                        document.getElementById('sendEmail').addEventListener('click', function() {
                 const email = document.getElementById('email').value;
                 const formatGoogle = document.getElementById('formatGoogle').checked;
                 const formatApple = document.getElementById('formatApple').checked;
@@ -428,150 +425,150 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
             });
 
             document.querySelectorAll('.map-button').forEach(button => {
-                button.addEventListener('click', function() {
-                    const address = this.getAttribute('data-address');
-                    const googleUrl = `https://www.google.com/maps/search/?api=1&query=${address}`;
-                    const appleUrl = `maps://?q=${address}`;
-                    openMap(googleUrl, appleUrl);
-                });
-            });
+    button.addEventListener('click', function() {
+        const address = this.getAttribute('data-address');
+        const googleUrl = `https://www.google.com/maps/search/?api=1&query=${address}`;
+        const appleUrl = `maps://?q=${address}`;
+        openMap(googleUrl, appleUrl);
+    });
+});
 
-            function openMap(googleUrl, appleUrl) {
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                if (isIOS) {
-                    window.open(appleUrl, '_blank');
-                } else {
-                    window.open(googleUrl, '_blank');
-                }
-            }
-            
-            // Funzione per generare il PDF
-            function generatePDF() {
-                // Preparazione contenuto per il PDF (clonare il contenuto degli appuntamenti)
-                const element = document.getElementById('appointments-content');
-                const elementClone = element.cloneNode(true);
-                
-                // Visualizza gli elementi nascosti per la stampa
-                elementClone.querySelectorAll('.d-print-block').forEach(el => {
-                    el.classList.remove('d-none');
-                });
-                
-                // Nascondi gli elementi che non devono apparire nel PDF
-                elementClone.querySelectorAll('.no-print').forEach(el => {
-                    el.style.display = 'none';
-                });
-                
-                // Configurazione html2pdf
-                const opt = {
-                    margin: 10,
-                    filename: 'appuntamenti-<?php echo $displayDate; ?>.pdf',
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2 },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                };
-                
-                // Genera il PDF
-                return html2pdf().set(opt).from(elementClone).save();
-            }
-            
-            // Evento per il pulsante di stampa PDF
-            document.getElementById('printPdfButton').addEventListener('click', function() {
-                generatePDF();
-            });
-            
-            // Evento per l'invio del PDF via email
-            document.getElementById('sendPdfEmail').addEventListener('click', function() {
-                const email = document.getElementById('pdfEmailAddress').value;
-                const subject = document.getElementById('pdfEmailSubject').value;
-                const message = document.getElementById('pdfEmailMessage').value;
-                
-                if (!email) {
-                    alert('Inserisci un indirizzo email valido.');
-                    return;
-                }
-                
-                // Chiudi il modal
-                const modal = bootstrap.Modal.getInstance(document.getElementById('emailPdfModal'));
-                modal.hide();
-                
-                // Mostra messaggio di caricamento
-                const loadingDiv = document.createElement('div');
-                loadingDiv.id = 'loadingMessage';
-                loadingDiv.style.position = 'fixed';
-                loadingDiv.style.top = '50%';
-                loadingDiv.style.left = '50%';
-                loadingDiv.style.transform = 'translate(-50%, -50%)';
-                loadingDiv.style.padding = '20px';
-                loadingDiv.style.backgroundColor = 'rgba(0,0,0,0.7)';
-                loadingDiv.style.color = 'white';
-                loadingDiv.style.borderRadius = '5px';
-                loadingDiv.style.zIndex = '9999';
-                loadingDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-light" role="status"></div><div class="mt-2">Generazione e invio del PDF in corso...</div></div>';
-                document.body.appendChild(loadingDiv);
-                
-                // Genera il PDF e invialo per email
-                generatePDFForEmail(email, subject, message);
-            });
-            
-            // Genera il PDF per l'email
-            function generatePDFForEmail(email, subject, message) {
-                // Preparazione contenuto per il PDF
-                const element = document.getElementById('appointments-content');
-                const elementClone = element.cloneNode(true);
-                
-                // Visualizza gli elementi nascosti per la stampa
-                elementClone.querySelectorAll('.d-print-block').forEach(el => {
-                    el.classList.remove('d-none');
-                });
-                
-                // Nascondi gli elementi che non devono apparire nel PDF
-                elementClone.querySelectorAll('.no-print').forEach(el => {
-                    el.style.display = 'none';
-                });
-                
-                // Configurazione html2pdf
-                const opt = {
-                    margin: 10,
-                    filename: 'appuntamenti-<?php echo $displayDate; ?>.pdf',
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2 },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                };
-                
-                // Genera il PDF come blob
-                html2pdf().set(opt).from(elementClone).outputPdf('blob').then(function(pdfBlob) {
-                    // Crea un FormData e allega il PDF
-                    const formData = new FormData();
-                    formData.append('pdf', pdfBlob, 'appuntamenti-<?php echo $displayDate; ?>.pdf');
-                    formData.append('email', email);
-                    formData.append('subject', subject);
-                    formData.append('message', message);
-                    
-                    // Invia il PDF via email usando una richiesta AJAX
-                    fetch('send_pdf_email.php', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        // Rimuovi il messaggio di caricamento
-                        document.getElementById('loadingMessage').remove();
-                        
-                        if (data.success) {
-                            alert('PDF inviato con successo via email.');
-                        } else {
-                            alert('Errore nell\'invio del PDF: ' + data.error);
-                        }
-                    })
-                    .catch(error => {
-                        // Rimuovi il messaggio di caricamento
-                        document.getElementById('loadingMessage').remove();
-                        console.error('Error:', error);
-                        alert('Errore nell\'invio del PDF via email.');
-                    });
-                });
-            }
+function openMap(googleUrl, appleUrl) {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS) {
+        window.open(appleUrl, '_blank');
+    } else {
+        window.open(googleUrl, '_blank');
+    }
+}
+
+// Gestione dei pulsanti per il PDF
+document.addEventListener('DOMContentLoaded', function() {
+    // Verifica che i pulsanti esistano
+    const printPdfBtn = document.getElementById('printPdfButton');
+    const emailPdfBtn = document.getElementById('emailPdfButton');
+    
+    if (printPdfBtn) {
+        printPdfBtn.addEventListener('click', function() {
+            generatePDF(true);
         });
-    </script>
-</body>
-</html>
+    }
+    
+    if (emailPdfBtn) {
+        emailPdfBtn.addEventListener('click', function() {
+            showEmailModal();
+        });
+    }
+    
+    // Gestisci il modal per l'invio email
+    const sendEmailBtn = document.getElementById('sendPdfEmail');
+    if (sendEmailBtn) {
+        sendEmailBtn.addEventListener('click', function() {
+            sendPDFEmail();
+        });
+    }
+});
+
+// Funzione per generare il PDF
+function generatePDF(openInNewWindow = false) {
+    // Clona il contenitore degli appuntamenti
+    const element = document.getElementById('appointments-content');
+    const clone = element.cloneNode(true);
+    
+    // Rimuovi gli elementi che non devono apparire nel PDF
+    clone.querySelectorAll('.no-print').forEach(el => {
+        el.remove();
+    });
+    
+    // Assicurati che il titolo per la stampa sia visibile
+    clone.querySelectorAll('.d-none.d-print-block').forEach(el => {
+        el.classList.remove('d-none');
+    });
+    
+    // Configurazione per html2pdf
+    const opt = {
+        margin: 10,
+        filename: 'appuntamenti.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    
+    if (openInNewWindow) {
+        // Apri il PDF in una nuova finestra
+        html2pdf().from(clone).set(opt).outputPdf('dataurlnewwindow');
+    } else {
+        // Restituisci una promessa con il blob del PDF
+        return html2pdf().from(clone).set(opt).outputPdf('blob');
+    }
+}
+
+// Funzione per mostrare il modal dell'email
+function showEmailModal() {
+    const emailModal = new bootstrap.Modal(document.getElementById('emailPdfModal'));
+    emailModal.show();
+}
+
+// Funzione per inviare il PDF via email
+function sendPDFEmail() {
+    const email = document.getElementById('pdfEmailAddress').value;
+    const subject = document.getElementById('pdfEmailSubject').value;
+    const message = document.getElementById('pdfEmailMessage').value;
+    
+    if (!email) {
+        alert('Per favore inserisci un indirizzo email valido.');
+        return;
+    }
+    
+    // Mostra un indicatore di caricamento
+    const loadingDiv = document.createElement('div');
+    loadingDiv.id = 'loadingIndicator';
+    loadingDiv.style.position = 'fixed';
+    loadingDiv.style.top = '0';
+    loadingDiv.style.left = '0';
+    loadingDiv.style.width = '100%';
+    loadingDiv.style.height = '100%';
+    loadingDiv.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    loadingDiv.style.display = 'flex';
+    loadingDiv.style.alignItems = 'center';
+    loadingDiv.style.justifyContent = 'center';
+    loadingDiv.style.zIndex = '9999';
+    loadingDiv.innerHTML = '<div class="spinner-border text-light" role="status"></div><div class="text-light ms-2">Invio in corso...</div>';
+    document.body.appendChild(loadingDiv);
+    
+    // Chiudi il modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('emailPdfModal'));
+    modal.hide();
+    
+    // Genera il PDF e invialo
+    generatePDF(false).then(pdfBlob => {
+        // Crea un FormData per l'invio
+        const formData = new FormData();
+        formData.append('pdf', pdfBlob, 'appuntamenti.pdf');
+        formData.append('email', email);
+        formData.append('subject', subject);
+        formData.append('message', message);
+        
+        // Invia la richiesta al server
+        fetch('send_pdf_email.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Rimuovi l'indicatore di caricamento
+            document.getElementById('loadingIndicator').remove();
+            
+            if (data.success) {
+                alert('PDF inviato con successo!');
+            } else {
+                alert('Errore nell\'invio del PDF: ' + (data.error || 'Errore sconosciuto'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('loadingIndicator').remove();
+            alert('Si è verificato un errore durante l\'invio del PDF.');
+        });
+    });
+}
