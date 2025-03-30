@@ -1235,8 +1235,37 @@ function reloadAgenda(contentId, date, zoneId) {
     }
 </style>
 
-<script>
 
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+$(document).ready(function() {
+    // Quando si clicca sul pulsante "Vedi agenda"
+    $(document).on('click', '.vedi-agenda-btn', function() {
+        // Ottieni la data dal data-attribute del pulsante
+        var appointmentDate = $(this).data('date');
+        
+        // Mostra un loader o un messaggio di attesa
+        $('#toggle-appointments-container').html('<div class="loading">Caricamento appuntamenti...</div>');
+        $('#toggle-appointments-container').show();
+        
+        // Chiamata AJAX per caricare gli appuntamenti
+        $.ajax({
+            type: "POST",
+            url: "get_appointments_modal.php",
+            data: { appointment_date: appointmentDate },
+            success: function(response) {
+                // Inserisci la risposta nel container
+                $('#toggle-appointments-container').html(response);
+            },
+            error: function(xhr, status, error) {
+                // Gestisci eventuali errori
+                console.error("Errore nel caricamento degli appuntamenti:", error);
+                $('#toggle-appointments-container').html('<div class="error-message">Errore durante il caricamento degli appuntamenti.</div>');
+            }
+        });
+    });
+});
+</script>
 
 
 <?php // End of added head content ?>
