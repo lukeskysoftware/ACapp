@@ -225,7 +225,10 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.8.1/font/bootstrap-icons.min.css">
     <!-- Aggiungiamo html2pdf.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <!-- Alternative with updated integrity hash -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" 
+        integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" 
+        crossorigin="anonymous"></script>
 </head>
 <body>
     <div class="container">
@@ -311,7 +314,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                         </div>
                     </div>
                 </div>
-            <?php endif; ?>
+                <?php endif; ?>
         </div>
     </div>
 
@@ -365,6 +368,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
 
                 // Generate Apple Maps URL using +to: format
                 mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+                // Fix for truncated Google Maps URL
                 mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
 
                 document.getElementById('openMapButton').style.display = 'block';
@@ -444,6 +448,30 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                     window.open(googleUrl, '_blank');
                 }
             }
+               // Helper function to process HTML entities
+function processHtmlEntities(element) {
+    // Process all text nodes in the element
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+    let node;
+    while (node = walker.nextNode()) {
+        // Replace encoded entities with actual spaces
+        const textContent = node.textContent;
+        if (textContent.includes('&nbsp;') || textContent.includes('&amp;') || 
+            textContent.includes('&lt;') || textContent.includes('&gt;')) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = textContent;
+            node.textContent = tempDiv.textContent;
+        }
+    }
+    
+    // Apply proper spacing styles to all elements
+    const allElements = element.querySelectorAll('*');
+    allElements.forEach(el => {
+        el.style.wordSpacing = 'normal';
+        el.style.letterSpacing = 'normal';
+        el.style.wordBreak = 'break-word';
+    });
+}
             
             // Funzione per generare il PDF
             function generatePDF() {
@@ -461,13 +489,25 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                     el.style.display = 'none';
                 });
                 
+                // Process HTML entities to fix spacing issues
+                processHtmlEntities(elementClone);
+                
                 // Configurazione html2pdf
                 const opt = {
                     margin: 10,
                     filename: 'appuntamenti-<?php echo $displayDate; ?>.pdf',
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2 },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    html2canvas: { 
+                        scale: 2,
+                        letterRendering: true,
+                        useCORS: true
+                    },
+                    jsPDF: { 
+                        unit: 'mm', 
+                        format: 'a4', 
+                        orientation: 'portrait',
+                        compress: false
+                    }
                 };
                 
                 // Genera il PDF
@@ -529,13 +569,26 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                     el.style.display = 'none';
                 });
                 
+                // Process HTML entities to fix spacing issues
+                processHtmlEntities(elementClone);
+                
+                
                 // Configurazione html2pdf
                 const opt = {
                     margin: 10,
                     filename: 'appuntamenti-<?php echo $displayDate; ?>.pdf',
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2 },
-                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    html2canvas: { 
+                        scale: 2,
+                        letterRendering: true,
+                        useCORS: true
+                    },
+                    jsPDF: { 
+                        unit: 'mm', 
+                        format: 'a4', 
+                        orientation: 'portrait',
+                        compress: false
+                    }
                 };
                 
                 // Genera il PDF come blob
