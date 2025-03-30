@@ -110,6 +110,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
     <meta name="format-detection" content="telephone=no">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <style>
         body {
             padding: 20px;
@@ -230,34 +231,33 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
 <body>
     <div class="container">
         <div class="row mb-3 no-print">
-            <div class="col text-start">
-                <a href="dashboard.php" class="btn btn-light dashboard-button">
-                    <i class="bi bi-speedometer2"></i> Dashboard
-                </a>
-            </div>
-            <div class="col text-end">
-                <a href="today.php?logout=true" class="btn btn-light logout-button">
-                    <i class="bi bi-x-circle"></i> Esci
-                </a>
-            </div>
+           <div class="col-6 col-md-4 text-start">
+        <a href="dashboard.php" class="btn btn-light dashboard-button">
+            <i class="bi bi-speedometer2"></i> Dashboard
+        </a>
+    </div>
+    <div class="col-6 col-md-4 text-center">
+        <?php if (!empty($appointments)): ?>
+            <button id="printPdfButton" class="btn btn-primary me-2">
+                <i class="bi bi-printer"></i> Stampa
+            </button>
+            <button id="emailPdfButton" class="btn btn-success">
+                <i class="bi bi-envelope-fill"></i> Email PDF
+            </button>
+        <?php endif; ?>
+    </div>
+    <div class="col-12 col-md-4 text-end">
+        <a href="today.php?logout=true" class="btn btn-light logout-button">
+            <i class="bi bi-x-circle"></i> Esci
+        </a>
+    </div>
         </div>
         <div class="navigation no-print">
             <a href="today.php?date=<?php echo date('Y-m-d', strtotime($selectedDate . ' -1 day')); ?>" class="btn btn-secondary">&lt;</a>
             <h1><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></h1>
             <a href="today.php?date=<?php echo date('Y-m-d', strtotime($selectedDate . ' +1 day')); ?>" class="btn btn-secondary">&gt;</a>
         </div>
-        
-        <!-- Aggiungiamo i pulsanti per stampa e invio email -->
-       <?php if (!empty($appointments)): ?>
-<div class="text-center mb-4">
-    <button id="printPdfButton" class="btn btn-primary me-2">
-        <i class="bi bi-printer"></i> Stampa PDF
-    </button>
-    <button id="emailPdfButton" class="btn btn-success">
-        <i class="bi bi-envelope"></i> Invia PDF via Email
-    </button>
-</div>
-<?php endif; ?>
+
         
         <div id="appointments-content">
             <!-- Aggiungiamo un titolo visibile nelle stampe -->
