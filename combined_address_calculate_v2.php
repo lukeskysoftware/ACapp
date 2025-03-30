@@ -847,6 +847,36 @@ while ($app = $appsResult->fetch_assoc()) {
 echo "</ul>";
 echo "</center></div>";
 
+// Aggiungi questo codice per il debug prima di chiamare getNext3AppointmentDates()
+echo "<div class='container'><center>";
+echo "<h4>Debug - Slots e appuntamenti per la zona {$zone['name']}:</h4>";
+
+// Mostra tutti gli slot configurati per questa zona
+$allZoneSlots = getSlotsForZone($zone['id']);
+echo "<p><strong>Slot configurati:</strong> " . count($allZoneSlots) . "</p>";
+echo "<ul style='list-style-type:none; padding:0;'>";
+foreach ($allZoneSlots as $slot) {
+    echo "<li>{$slot['day']} {$slot['time']}</li>";
+}
+echo "</ul>";
+
+// Mostra tutti gli appuntamenti futuri per questa zona
+$futureAppsSql = "SELECT appointment_date, appointment_time FROM cp_appointments 
+                 WHERE zone_id = ? AND appointment_date >= CURDATE() 
+                 ORDER BY appointment_date, appointment_time";
+$appsStmt = $conn->prepare($futureAppsSql);
+$appsStmt->bind_param("i", $zone['id']);
+$appsStmt->execute();
+$appsResult = $appsStmt->get_result();
+
+echo "<p><strong>Appuntamenti futuri:</strong> " . $appsResult->num_rows . "</p>";
+echo "<ul style='list-style-type:none; padding:0;'>";
+while ($app = $appsResult->fetch_assoc()) {
+    echo "<li>{$app['appointment_date']} {$app['appointment_time']}</li>";
+}
+echo "</ul>";
+echo "</center></div>";
+
 $next3Days = getNext3AppointmentDates($slots, $zone['id']);
 
 // Diamo feedback all'utente se non ci sono date disponibili
@@ -859,7 +889,25 @@ if (empty($next3Days)) {
     
     foreach ($next3Days as $date => $times) {
         $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
-        echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}</p>";
+        
+        // Check if this date has existing appointments
+        $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
+                          WHERE zone_id = ? AND appointment_date = ?";
+        $existingStmt = $conn->prepare($existingAppsSql);
+        $existingStmt->bind_param("is", $zone['id'], $date);
+        $existingStmt->execute();
+        $existingResult = $existingStmt->get_result();
+        $existingRow = $existingResult->fetch_assoc();
+        $hasExistingAppointments = ($existingRow['count'] > 0);
+        
+        echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
+        
+        // Add an indicator if there are existing appointments
+        if ($hasExistingAppointments) {
+            echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
+        }
+        
+        echo "</p>";
         
         if (empty($times)) {
             echo "<p>Nessuna fascia oraria disponibile per questa data.</p>";
@@ -881,35 +929,34 @@ if (empty($next3Days)) {
             echo "</p>";
         }
     }
-    echo "</center></div><hr>";
-}
-
-
-                    
-  $next3Days = getNext3AppointmentDates($slots, $zone['id']);
-foreach ($next3Days as $date => $times) {
-    $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); 
+    echo "</center></div>";
     
-    // Check if this date has existing appointments
-    $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
-                        WHERE zone_id = ? AND appointment_date = ?";
-    $existingStmt = $conn->prepare($existingAppsSql);
-    $existingStmt->bind_param("is", $zone['id'], $date);
-    $existingStmt->execute();
-    $existingResult = $existingStmt->get_result();
-    $existingRow = $existingResult->fetch_assoc();
-    $hasExistingAppointments = ($existingRow['count'] > 0);
-    
-    echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
-    
-    // Add an indicator if there are existing appointments
-    if ($hasExistingAppointments) {
-        echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
+    // REMOVE THIS ENTIRE BLOCK - Lines 889-914
+    /* 
+    $next3Days = getNext3AppointmentDates($slots, $zone['id']);
+    foreach ($next3Days as $date => $times) {
+        $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); 
+        
+        // Check if this date has existing appointments
+        $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
+                            WHERE zone_id = ? AND appointment_date = ?";
+        $existingStmt = $conn->prepare($existingAppsSql);
+        $existingStmt->bind_param("is", $zone['id'], $date);
+        $existingStmt->execute();
+        $existingResult = $existingStmt->get_result();
+        $existingRow = $existingResult->fetch_assoc();
+        $hasExistingAppointments = ($existingRow['count'] > 0);
+        
+        echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
+        
+        // Add an indicator if there are existing appointments
+        if ($hasExistingAppointments) {
+            echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
+        }
+        
+        echo "</p>";
     }
-    
-    echo "</p>";
-    
-    // Continue with showing available times...
+    */
 }
                     echo "</center></div><hr>";
                 } else {
