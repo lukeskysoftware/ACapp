@@ -918,7 +918,7 @@ echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-togg
 // Questo è il codice corretto per il pulsante "Vedi agenda" con il toggle funzionante
 // Da inserire dove mostri i giorni disponibili (intorno alla riga 913-920)
 
-$collapseId = "collapse-" . str_replace(["-", ":"], "", $date) . "-" . $zone['id'];
+$collapseId = "collapse-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $zone['id'];
 $contentId = "agenda-content-" . $collapseId;
 
 echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
@@ -969,13 +969,6 @@ echo "<script>
     })();
 </script>";
 
-// Aggiungere lo script per caricare i dati quando il collapse è mostrato
-echo "<script>
-    document.getElementById('$collapseId').addEventListener('shown.bs.collapse', function () {
-        loadAgendaContent('$date', {$zone['id']}, '$collapseId');
-    });
-</script>";
-    
     echo "</p>";
     
     
@@ -1363,7 +1356,7 @@ function loadAgendaContent(date, zoneId, collapseId) {
     </div>
 
 
-</script>
+
 </body>
 </html>
 <?php
