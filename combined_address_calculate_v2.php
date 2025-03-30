@@ -908,9 +908,10 @@ foreach ($next3Days as $date => $times) {
     }
     
     // Add the "Vedi agenda" button with a data attribute instead of onclick
-    echo " <a href='javascript:void(0);' class='agenda-button' data-date='{$date}' data-zone='{$zone['id']}'>
-        <i class='bi bi-calendar'></i> Vedi agenda
-    </a>";
+
+echo " <a href='javascript:void(0);' class='agenda-button' onclick='showAppointments(\"$date\", \"{$zone['id']}\")'>
+    <i class='bi bi-calendar'></i> Vedi agenda
+</a>";
     
     echo "</p>";
     
@@ -1331,27 +1332,183 @@ function formatDate(dateString) {
     
     
 <script>
-    // Initialize agenda buttons after the page has loaded
-    document.addEventListener('DOMContentLoaded', function() {
-        // Find all agenda buttons and add click handlers
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM fully loaded');
+    
+    // First check if Bootstrap is properly loaded
+    if (typeof bootstrap === 'undefined') {
+        console.error('Bootstrap is not loaded! Loading it now...');
+        // Load Bootstrap if not already loaded
+        const bootstrapScript = document.createElement('script');
+        bootstrapScript.src = 'https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js';
+        bootstrapScript.integrity = 'sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p';
+        bootstrapScript.crossOrigin = 'anonymous';
+        document.head.appendChild(bootstrapScript);
+        
+        // Wait for Bootstrap to load before continuing
+        bootstrapScript.onload = initAgendaButtons;
+    } else {
+        initAgendaButtons();
+    }
+    
+    function initAgendaButtons() {
+        console.log('Initializing agenda buttons');
         const agendaButtons = document.querySelectorAll('.agenda-button');
+        console.log(`Found ${agendaButtons.length} agenda buttons`);
+        
         agendaButtons.forEach(button => {
-            button.addEventListener('click', function() {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
                 const date = this.getAttribute('data-date');
                 const zoneId = this.getAttribute('data-zone');
+                console.log(`Button clicked for date: ${date} and zone: ${zoneId}`);
                 
-                // Call the function to get appointments
-                if (typeof window.getAppointmentsForDate === 'function') {
-                    window.getAppointmentsForDate(date, zoneId);
-                } else {
-                    // Fallback if function is not available - just navigate to the page
-                    window.open(`get_appointments_for_date.php?date=${date}&zone_id=${zoneId}`, '_blank');
+                // For debugging
+                if (!date || !zoneId) {
+                    console.error('Button missing data attributes:', this);
+                    alert('Errore: dati mancanti sul pulsante');
+                    return;
                 }
+                
+                openAppointmentsModal(date, zoneId);
             });
         });
-    });
+    }
+    
+    // Make this function available globally
+    window.openAppointmentsModal = function(date, zoneId) {
+        console.log(`Opening modal for date ${date} and zone ${zoneId}`);
+        
+        // Format the date for display
+        const formattedDate = formatDate(date);
+        
+        // Generate unique modal ID
+        const modalId = `appointmentModal_${date.replace(/-/g, "")}`;
+        
+        // Check if modal already exists in the DOM
+        let modalElement = document.getElementById(modalId);
+        if (modalElement) {
+            console.log('Modal already exists, showing it');
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+            return;
+        }
+        
+        // Create the modal HTML structure
+        const modalHTML = `
+            <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="${modalId}_Label" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="${modalId}_Label">Appuntamenti per il ${formattedDate}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="appointments_${modalId}" class="p-2">
+                                <div class="d-flex justify-content-center">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Caricamento...</span>
+                                    </div>
+                                </div>
+                                <p class="text-center mt-2">Caricamento appuntamenti...</p>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add the modal to the document
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // Get reference to the newly created modal and show it
+        modalElement = document.getElementById(modalId);
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+        
+        // Fetch appointment data via AJAX to avoid page reload
+        fetchAppointments(date, zoneId, modalId);
+    }
+    
+    function fetchAppointments(date, zoneId, modalId) {
+        console.log(`Fetching appointments for date ${date} and zone ${zoneId}`);
+        
+        // Create an AJAX request
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', `get_appointments_modal.php?date=${date}&zone_id=${zoneId}`, true);
+        
+        xhr.onload = function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                // Update the modal body with the fetched content
+                const appointmentsContainer = document.getElementById(`appointments_${modalId}`);
+                if (appointmentsContainer) {
+                    appointmentsContainer.innerHTML = xhr.responseText;
+                }
+            } else {
+                console.error('Request failed with status', xhr.status);
+                const appointmentsContainer = document.getElementById(`appointments_${modalId}`);
+                if (appointmentsContainer) {
+                    appointmentsContainer.innerHTML = `
+                        <div class="alert alert-danger">
+                            Errore nel caricamento degli appuntamenti. 
+                            <button class="btn btn-sm btn-outline-danger" onclick="fetchAppointments('${date}', ${zoneId}, '${modalId}')">
+                                Riprova
+                            </button>
+                        </div>`;
+                }
+            }
+        };
+        
+        xhr.onerror = function() {
+            console.error('Network error occurred');
+            const appointmentsContainer = document.getElementById(`appointments_${modalId}`);
+            if (appointmentsContainer) {
+                appointmentsContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        Errore di rete durante il caricamento degli appuntamenti.
+                        <button class="btn btn-sm btn-outline-danger" onclick="fetchAppointments('${date}', ${zoneId}, '${modalId}')">
+                            Riprova
+                        </button>
+                    </div>`;
+            }
+        };
+        
+        xhr.send();
+    }
+    
+    function formatDate(dateString) {
+        const months = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 
+                        'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
+        const date = new Date(dateString + 'T00:00:00');
+        return date.getDate() + ' ' + months[date.getMonth()] + ' ' + date.getFullYear();
+    }
+});
 </script>
-
+<script>
+// Function to show appointments for a specific date and zone
+function showAppointments(date, zoneId) {
+    console.log("Opening appointments for date: " + date + ", zone: " + zoneId);
+    
+    // Open in a popup window
+    var popupWindow = window.open(
+        'view_agenda.php?date=' + date + '&zone_id=' + zoneId,
+        'AppointmentsWindow',
+        'width=800,height=600,scrollbars=yes,resizable=yes'
+    );
+    
+    // Focus the popup window
+    if (popupWindow) {
+        popupWindow.focus();
+    } else {
+        // If popup is blocked, provide a direct link
+        alert('Il popup è stato bloccato. Per favore clicca sul link seguente per aprire gli appuntamenti in una nuova finestra.');
+        window.open('view_agenda.php?date=' + date + '&zone_id=' + zoneId, '_blank');
+    }
+}
+</script>
 </body>
 </html>
 <?php
