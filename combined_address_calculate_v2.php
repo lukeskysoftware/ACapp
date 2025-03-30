@@ -1243,24 +1243,21 @@ $(document).ready(function() {
     $(document).on('click', '.vedi-agenda-btn', function() {
         // Ottieni la data dal data-attribute del pulsante
         var appointmentDate = $(this).data('date');
+        console.log("Data selezionata:", appointmentDate); // debug
         
-        // Mostra un loader o un messaggio di attesa
         $('#toggle-appointments-container').html('<div class="loading">Caricamento appuntamenti...</div>');
         $('#toggle-appointments-container').show();
         
-        // Chiamata AJAX per caricare gli appuntamenti
         $.ajax({
             type: "POST",
             url: "get_appointments_modal.php",
             data: { appointment_date: appointmentDate },
             success: function(response) {
-                // Inserisci la risposta nel container
                 $('#toggle-appointments-container').html(response);
             },
             error: function(xhr, status, error) {
-                // Gestisci eventuali errori
-                console.error("Errore nel caricamento degli appuntamenti:", error);
-                $('#toggle-appointments-container').html('<div class="error-message">Errore durante il caricamento degli appuntamenti.</div>');
+                console.error("Errore:", error);
+                $('#toggle-appointments-container').html('<div class="error-message">Errore durante il caricamento.</div>');
             }
         });
     });
@@ -1301,6 +1298,8 @@ $(document).ready(function() {
     <a href="dashboard.php">Torna alla dashboard</a>
 </div>
 
+<button class='btn btn-secondary vedi-agenda-btn' data-date='<?php echo date("Y-m-d"); ?>'>Vedi agenda</button>
+<div id="toggle-appointments-container" style="display:none;" class="mt-3"></div>
 
     <div class="container">
         <div id="appointmentForm" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
