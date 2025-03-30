@@ -248,16 +248,16 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
         </div>
         
         <!-- Aggiungiamo i pulsanti per stampa e invio email -->
-        <div class="row mb-3 no-print">
-            <div class="col-12 text-end">
-                <button id="printPdfButton" class="btn print-button">
-                    <i class="bi bi-printer-fill"></i> Stampa PDF
-                </button>
-                <button id="emailPdfButton" class="btn email-pdf-button" data-bs-toggle="modal" data-bs-target="#emailPdfModal">
-                    <i class="bi bi-envelope-fill"></i> Invia PDF via email
-                </button>
-            </div>
-        </div>
+       <?php if (!empty($appointments)): ?>
+<div class="text-center mb-4">
+    <button id="printPdfButton" class="btn btn-primary me-2">
+        <i class="bi bi-printer"></i> Stampa PDF
+    </button>
+    <button id="emailPdfButton" class="btn btn-success">
+        <i class="bi bi-envelope"></i> Invia PDF via Email
+    </button>
+</div>
+<?php endif; ?>
         
         <div id="appointments-content">
             <!-- Aggiungiamo un titolo visibile nelle stampe -->
