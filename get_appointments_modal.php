@@ -11,12 +11,9 @@ if(isset($_POST['appointment_date']) && !empty($_POST['appointment_date'])) {
     $appointment_date = $_POST['appointment_date'];
     
     // Formatta correttamente la data per MySQL (Y-m-d)
-    // Questo è fondamentale perché MySQL confronta le date in questo formato
     $formatted_date = date('Y-m-d', strtotime($appointment_date));
     
     // Query SQL per ottenere gli appuntamenti della data selezionata
-    // JOIN con cp_patients per ottenere i dati del paziente
-    // JOIN opzionale con cp_zones per ottenere la zona (se necessario)
     $sql = "SELECT a.id, a.appointment_date, a.appointment_time, a.notes, a.address, 
                   p.name, p.surname, p.phone, z.name AS zone_name
            FROM cp_appointments a
