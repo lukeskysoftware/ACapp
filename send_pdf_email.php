@@ -1,61 +1,428 @@
 <?php
-// File per gestire l'invio di email con PDF allegato
+include_once 'db.php';
 
-// Verifica se la richiesta è di tipo POST
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['success' => false, 'error' => 'Metodo non consentito']);
+// Verifica che la connessione al database sia stata stabilita correttamente
+if (!$conn) {
+    die("Connessione al database non riuscita: " . mysqli_connect_error());
+}
+
+session_start();
+
+// Gestisci la disconnessione
+if (isset($_GET['logout'])) {
+    session_destroy();
+    header("Location: today.php");
     exit;
 }
 
-// Verifica la presenza dei dati necessari
-if (!isset($_FILES['pdf']) || !isset($_POST['email']) || !isset($_POST['subject']) || !isset($_POST['message'])) {
-    echo json_encode(['success' => false, 'error' => 'Dati mancanti']);
+// Gestisci la sottomissione del modulo di login
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $username = $_POST['username'];
+    $password = $_POST['password'];
+
+    // Verifica le credenziali
+    $sql = "SELECT * FROM cp_users WHERE username = ?";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "s", $username);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $user = mysqli_fetch_assoc($result);
+
+    if ($user && password_verify($password, $user['password'])) {
+        $_SESSION['user_id'] = $user['id'];
+    } else {
+        $login_error = "Credenziali non valide.";
+    }
+    mysqli_stmt_close($stmt);
+}
+
+// Verifica se l'utente è loggato
+if (!isset($_SESSION['user_id'])) {
+    // Mostra il modulo di login
+    echo '<!DOCTYPE html>
+    <html>
+    <head>
+        <title>Login</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+        <meta name="format-detection" content="telephone=no">
+    </head>
+    <body>
+        <div class="container d-flex justify-content-center align-items-center" style="height: 100vh;">
+            <div class="card p-4 shadow-sm" style="width: 100%; max-width: 400px;">
+                <h2 class="text-center">Login</h2>
+                <form method="post" action="today.php">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username:</label>
+                        <input type="text" id="username" name="username" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password:</label>
+                        <input type="password" id="password" name="password" class="form-control" required>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Login</button>
+                    </div>
+                </form>';
+    if (isset($login_error)) {
+        echo '<p class="text-danger text-center mt-3">' . $login_error . '</p>';
+    }
+    echo '  </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>';
     exit;
 }
 
-$email = $_POST['email'];
-$subject = $_POST['subject'];
-$message = $_POST['message'];
-
-// Verifica che il file PDF sia stato caricato correttamente
-if ($_FILES['pdf']['error'] !== UPLOAD_ERR_OK) {
-    echo json_encode(['success' => false, 'error' => 'Errore nel caricamento del file']);
+// Verifica se l'utente loggato ha i permessi corretti
+if (!in_array($_SESSION['user_id'], [6, 9])) {
+    echo "<p>Non hai permessi per accedere alla risorsa.</p>";
     exit;
 }
 
-// Leggi il contenuto del file PDF
-$pdf_content = file_get_contents($_FILES['pdf']['tmp_name']);
-$pdf_name = $_FILES['pdf']['name'];
-
-// Crea un boundary per il messaggio multipart
-$boundary = md5(time());
-
-// Intestazioni dell'email
-$headers = "From: ACapp <noreply@acapp.it>\r\n";
-$headers .= "Reply-To: noreply@acapp.it\r\n";
-$headers .= "MIME-Version: 1.0\r\n";
-$headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n";
-
-// Corpo dell'email
-$email_body = "--$boundary\r\n";
-$email_body .= "Content-Type: text/plain; charset=utf-8\r\n";
-$email_body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-$email_body .= $message . "\r\n\r\n";
-
-// Allegato PDF
-$email_body .= "--$boundary\r\n";
-$email_body .= "Content-Type: application/pdf; name=\"$pdf_name\"\r\n";
-$email_body .= "Content-Disposition: attachment; filename=\"$pdf_name\"\r\n";
-$email_body .= "Content-Transfer-Encoding: base64\r\n\r\n";
-$email_body .= chunk_split(base64_encode($pdf_content)) . "\r\n";
-$email_body .= "--$boundary--";
-
-// Invia l'email
-$mail_sent = mail($email, $subject, $email_body, $headers);
-
-if ($mail_sent) {
-    echo json_encode(['success' => true]);
-} else {
-    echo json_encode(['success' => false, 'error' => 'Errore nell\'invio dell\'email']);
+function getAppointmentsByDate($conn, $date) {
+    $sql = "SELECT a.id, p.name, p.surname, CONCAT('+39', p.phone) as phone, a.notes, a.appointment_date, a.appointment_time, a.address
+            FROM cp_appointments a
+            JOIN cp_patients p ON a.patient_id = p.id
+            WHERE a.appointment_date = '$date'
+            ORDER BY a.appointment_time ASC";
+    $result = mysqli_query($conn, $sql);
+    if (!$result) {
+        die('Error: ' . mysqli_error($conn));
+    }
+    return mysqli_fetch_all($result, MYSQLI_ASSOC);
 }
+
+$selectedDate = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
+$appointments = getAppointmentsByDate($conn, $selectedDate);
+$today = date('Y-m-d');
+$isToday = $selectedDate === $today;
+$displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
 ?>
+
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <meta name="format-detection" content="telephone=no">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <style>
+        body {
+            padding: 20px;
+        }
+        .appointment-time {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        .appointment-details {
+            margin-bottom: 20px;
+        }
+        hr {
+            border-top: 2px solid #bbb;
+        }
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .btn {
+            flex-grow: 1;
+            margin: 0 5px;
+        }
+        .logout-button {
+            margin-left: auto;
+        }
+        .dashboard-button {
+            margin-right: auto;
+        }
+        .map-link {
+            color: #007bff;
+        }
+        .map-button {
+            margin-left: 10px;
+            background-color: #17a2b8;
+            color: #fff;
+            border: none;
+        }
+        .map-button .bi {
+            margin-right: 5px;
+        }
+        .name, .surname {
+            font-weight: bold;
+            font-size: 120%;
+        }
+        .call-button {
+            background-color: #fd7e14;
+            color: #fff;
+            border: none;
+            transition: background-color 0.3s ease;
+        }
+        .call-button .bi {
+            margin-right: 5px;
+        }
+        .call-button:hover {
+            background-color: #e8590c;
+        }
+        .email-button .bi {
+            margin-right: 5px;
+        }
+        .print-button {
+            background-color: #6c757d;
+            color: #fff;
+        }
+        .email-pdf-button {
+            background-color: #28a745;
+            color: #fff;
+        }
+        .btn-icon {
+            margin-right: 5px;
+        }
+
+        @media (max-width: 576px) {
+            .appointment-time {
+                font-size: 1.2rem;
+            }
+            .name, .surname {
+                font-size: 100%;
+            }
+            .btn {
+                flex-grow: 1;
+                margin: 5px 0;
+            }
+            .action-buttons {
+                flex-direction: column;
+            }
+            .action-buttons .btn {
+                margin: 5px 0;
+            }
+        }
+        
+        /* Stile per la versione di stampa */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            .container {
+                width: 100%;
+                max-width: 100%;
+                padding: 0;
+                margin: 0;
+            }
+            body {
+                padding: 0;
+                margin: 0;
+                font-size: 12pt;
+            }
+            .appointment-details {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.8.1/font/bootstrap-icons.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Barra superiore con pulsanti -->
+        <div class="row mb-3 no-print">
+            <div class="col-12 d-flex justify-content-between align-items-center flex-wrap">
+                <a href="dashboard.php" class="btn btn-light dashboard-button">
+                    <i class="bi bi-speedometer2 btn-icon"></i> Dashboard
+                </a>
+                
+                <!-- Pulsanti di stampa e invio email -->
+                <?php if (!empty($appointments)): ?>
+                <div class="d-flex action-buttons">
+                    <button id="printPdfButton" class="btn btn-primary mx-1 print-button">
+                        <i class="bi bi-printer btn-icon"></i> Stampa
+                    </button>
+                    <button id="emailPdfButton" class="btn btn-success mx-1 email-pdf-button">
+                        <i class="bi bi-envelope btn-icon"></i> Email PDF
+                    </button>
+                </div>
+                <?php endif; ?>
+                
+                <a href="today.php?logout=true" class="btn btn-light logout-button">
+                    <i class="bi bi-x-circle btn-icon"></i> Esci
+                </a>
+            </div>
+        </div>
+ 
+        <!-- Navigazione data -->
+        <div class="navigation no-print">
+            <a href="today.php?date=<?php echo date('Y-m-d', strtotime($selectedDate . ' -1 day')); ?>" class="btn btn-secondary">&lt;</a>
+            <h1><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></h1>
+            <a href="today.php?date=<?php echo date('Y-m-d', strtotime($selectedDate . ' +1 day')); ?>" class="btn btn-secondary">&gt;</a>
+        </div>
+        
+        <!-- Contenuto degli appuntamenti -->
+        <div id="appointments-content">
+            <!-- Titolo visibile nelle stampe -->
+            <div class="d-none d-print-block text-center mb-4">
+                <h2><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></h2>
+            </div>
+            
+            <?php if (empty($appointments)): ?>
+                <p class="text-center">Nessun appuntamento registrato</p>
+            <?php else: ?>
+                <?php foreach ($appointments as $appointment): ?>
+                    <div class="appointment-details">
+                        <p class="appointment-time"><?php echo date('H:i', strtotime($appointment['appointment_time'])); ?></p>
+                        <p><span class="name"><?php echo $appointment['name']; ?></span> <span class="surname"><?php echo $appointment['surname']; ?></span></p>
+                        <p>
+                            <span><?php echo $appointment['phone']; ?></span>
+                            <a href="tel:<?php echo $appointment['phone']; ?>" class="btn call-button no-print"><i class="bi bi-telephone-fill btn-icon"></i>Chiama</a>
+                        </p>
+                        <p>
+                            <?php echo $appointment['address']; ?>
+                            <a href="#" class="btn map-button no-print" data-address="<?php echo urlencode($appointment['address']); ?>"><i class="bi bi-geo-alt-fill btn-icon"></i>Apri in Mappe</a>
+                        </p>
+                        <?php if (!empty($appointment['notes'])): ?>
+                            <p><strong>Note:</strong> <?php echo $appointment['notes']; ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <hr>
+                <?php endforeach; ?>
+                
+                <div class="container mt-5 no-print">
+                    <h2>Genera l'itinerario per oggi</h2>
+                    <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3"><i class="bi bi-geo-alt-fill btn-icon"></i>Apri l'itinerario in Mappe</button>
+                    <hr>
+                    <h2>Invia l'itinerario per email</h2>
+                    <div id="emailGroup" class="container mt-3">
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <input type="email" id="email" placeholder="Inserisci email" class="form-control">
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" id="formatGoogle" value="google">
+                                    <label class="form-check-label" for="formatGoogle">Google Maps</label>
+                                </div>
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" id="formatApple" value="apple">
+                                    <label class="form-check-label" for="formatApple">Apple Maps</label>
+                                </div>
+                                <div class="input-group mt-2">
+                                    <button id="sendEmail" class="btn btn-primary email-button"><i class="bi bi-envelope-fill btn-icon"></i>Invia URL</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <!-- Modal per l'invio del PDF via email -->
+    <div class="modal fade" id="emailPdfModal" tabindex="-1" aria-labelledby="emailPdfModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="emailPdfModalLabel">Invia PDF via email</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="pdfEmailAddress" class="form-label">Indirizzo email</label>
+                        <input type="email" class="form-control" id="pdfEmailAddress" placeholder="nome@esempio.it" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="pdfEmailSubject" class="form-label">Oggetto</label>
+                        <input type="text" class="form-control" id="pdfEmailSubject" value="Appuntamenti del <?php echo $displayDate; ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label for="pdfEmailMessage" class="form-label">Messaggio</label>
+                        <textarea class="form-control" id="pdfEmailMessage" rows="3">In allegato trovi il PDF degli appuntamenti del giorno <?php echo $displayDate; ?>.</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="button" class="btn btn-primary" id="sendPdfEmail">Invia</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var appointments = <?php echo json_encode($appointments); ?>;
+            var mapUrlGoogle = '';
+            var mapUrlApple = '';
+
+            if (appointments.length > 0) {
+                let waypoints = appointments.map(appointment => appointment.address);
+                
+                // Ensure at least a start and end point
+                let start = "Current+Location";
+                let end = waypoints.pop(); // Last waypoint as end
+                let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
+                
+                // Generate Apple Maps URL using +to: format
+                mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+                mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+                
+                document.getElementById('openMapButton').style.display = 'block';
+                document.getElementById('emailGroup').style.display = 'block';
+            } else {
+                document.getElementById('openMapButton').style.display = 'none';
+                document.getElementById('emailGroup').style.display = 'none';
+            }
+
+            document.getElementById('sendEmail').addEventListener('click', function() {
+                const email = document.getElementById('email').value;
+                const formatGoogle = document.getElementById('formatGoogle').checked;
+                const formatApple = document.getElementById('formatApple').checked;
+
+                if (!email) {
+                    alert('Inserisci un indirizzo email valido.');
+                    return;
+                }
+
+                if (!formatGoogle && !formatApple) {
+                    alert('Seleziona almeno un formato per l\'URL delle mappe.');
+                    return;
+                }
+
+                let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti del giorno " + "<?php echo $displayDate; ?>" + ":\n\n";
+                if (formatGoogle) {
+                    message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
+                }
+                if (formatApple) {
+                    message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
+                }
+                message += "Cordiali saluti,\nIl Team degli Appuntamenti";
+
+                sendEmail(email, "Itinerario per gli appuntamenti del giorno " + "<?php echo $displayDate; ?>", message);
+            });
+
+            function sendEmail(email, subject, message) {
+                fetch('send_email.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: email, subject: subject, message: message })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Email inviata con successo.');
+                    } else {
+                       alert('Errore nell\'invio del PDF: ' + (data.error || 'Errore sconosciuto'));
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        document.getElementById('loadingIndicator').remove();
+                        alert('Si è verificato un errore durante l\'invio del PDF.');
+                    });
+                });
+            }
+        });
+    </script>
+</body>
+</html>
