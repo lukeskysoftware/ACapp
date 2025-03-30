@@ -911,13 +911,9 @@ foreach ($next3Days as $date => $times) {
 
 // Sostituiamo il pulsante "Vedi agenda" con un pulsante collapsible
 $collapseId = "collapse-" . str_replace("-", "", $date) . "-" . $zone['id'];
-echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
-    <i class='bi bi-calendar'></i> Vedi agenda
-</button>";
 
-// Questo è il codice corretto per il pulsante "Vedi agenda" con il toggle funzionante
-// Da inserire dove mostri i giorni disponibili (intorno alla riga 913-920)
 
+// Crea un ID univoco per il collapsible
 $collapseId = "collapse-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $zone['id'];
 $contentId = "agenda-content-" . $collapseId;
 
@@ -1165,7 +1161,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             messageContainer.style.display = 'block';
         }
         
-        // Funzione per ricaricare l'agenda in caso di errore
+// Funzione per ricaricare l'agenda
 function reloadAgenda(contentId, date, zoneId) {
     var contentEl = document.getElementById(contentId);
     contentEl.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Caricamento appuntamenti...</span></div><p>Caricamento appuntamenti...</p></div>';
