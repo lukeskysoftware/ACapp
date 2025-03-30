@@ -99,70 +99,183 @@ $appointments = getAppointmentsByDate($conn, $selectedDate);
 $today = date('Y-m-d');
 $isToday = $selectedDate === $today;
 $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
-?>
 
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <title><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
-    <meta name="format-detection" content="telephone=no">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <style>
-        body {
-            padding: 20px;
+// Check if we need to generate a PDF using FPDF
+if (isset($_GET['pdf'])) {
+    // Include FPDF library
+    require('ext_parts/fpdf/fpdf.php');
+
+    // Extend FPDF to create custom header and footer
+    class PDF extends FPDF {
+        // Variables to store date information
+        protected $pageDate;
+        protected $isToday;
+
+        // Constructor to set date information
+        function __construct($orientation='P', $unit='mm', $size='A4', $isToday=false, $displayDate='') {
+            parent::__construct($orientation, $unit, $size);
+            $this->isToday = $isToday;
+            $this->pageDate = $displayDate;
         }
-        .appointment-time {
-            font-weight: bold;
-            font-size: 1.5rem;
+
+        // Page header
+        function Header() {
+            // Set font
+            $this->SetFont('Times', 'B', 15);
+            // Title
+            $title = $this->isToday ? "Appuntamenti di Oggi" : "Appuntamenti del " . $this->pageDate;
+            $this->Cell(0, 10, utf8_decode($title), 0, 1, 'C');
+            // Line break
+            $this->Ln(5);
         }
-        .appointment-details {
-            margin-bottom: 20px;
+
+        // Page footer
+        function Footer() {
+            // Position at 1.5 cm from bottom
+            $this->SetY(-15);
+            // Set font
+            $this->SetFont('Times', 'I', 8);
+            // Page number
+            $this->Cell(0, 10, 'Pagina '.$this->PageNo().'/{nb}', 0, 0, 'C');
         }
-        hr {
-            border-top: 2px solid #bbb;
+    }
+        // Create PDF instance
+        $pdf = new PDF('P', 'mm', 'A4', $isToday, $displayDate);
+        $pdf->AliasNbPages();
+        $pdf->AddPage();
+        $pdf->SetFont('Times', '', 12);
+        
+        // Check if there are appointments
+        if (empty($appointments)) {
+            $pdf->Cell(0, 10, utf8_decode('Nessun appuntamento registrato'), 0, 1, 'C');
+        } else {
+            // Add each appointment to the PDF
+            foreach ($appointments as $appointment) {
+                // Time
+                $pdf->SetFont('Times', 'B', 14);
+                $pdf->Cell(0, 10, date('H:i', strtotime($appointment['appointment_time'])), 0, 1);
+                
+                // Name and surname
+                $pdf->SetFont('Times', 'B', 12);
+                $fullName = utf8_decode($appointment['name'] . ' ' . $appointment['surname']);
+                $pdf->Cell(0, 8, $fullName, 0, 1);
+                
+                // Phone
+                $pdf->SetFont('Times', '', 11);
+                $pdf->Cell(0, 6, $appointment['phone'], 0, 1);
+                
+                // Address
+                $pdf->Cell(0, 6, utf8_decode($appointment['address']), 0, 1);
+                
+                // Notes if any
+                if (!empty($appointment['notes'])) {
+                    $pdf->SetFont('Times', 'B', 10);
+                    $pdf->Cell(20, 6, 'Note:', 0, 0);
+                    $pdf->SetFont('Times', '', 10);
+                    $pdf->MultiCell(0, 6, utf8_decode($appointment['notes']));
+                }
+                
+                // Add separator
+                $pdf->Ln(5);
+                $pdf->Line($pdf->GetX(), $pdf->GetY(), $pdf->GetX() + 190, $pdf->GetY());
+                $pdf->Ln(5);
+            }
         }
-        .navigation {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
+        
+        // Output the PDF
+        if (isset($_GET['email']) && !empty($_GET['email'])) {
+            // Save the PDF to send via email
+            $pdfFileName = 'appuntamenti-' . $displayDate . '.pdf';
+            $pdfFilePath = sys_get_temp_dir() . '/' . $pdfFileName;
+            $pdf->Output('F', $pdfFilePath);
+            
+            // Get email parameters
+            $email = $_GET['email'];
+            $subject = isset($_GET['subject']) ? $_GET['subject'] : 'Appuntamenti del ' . $displayDate;
+            $message = isset($_GET['message']) ? $_GET['message'] : 'In allegato trovi il PDF degli appuntamenti del giorno ' . $displayDate . '.';
+            
+            // Use the existing send_pdf_email.php logic (assuming it exists)
+            $data = [
+                'success' => false,
+                'error' => 'PDF email function not implemented yet'
+            ];
+            
+            // Return JSON response
+            header('Content-Type: application/json');
+            echo json_encode($data);
+            exit;
+        } else {
+            // Output PDF directly to browser
+            $pdf->Output('I', 'appuntamenti-' . $displayDate . '.pdf');
+            exit;
         }
-        .btn {
-            flex-grow: 1;
-            margin: 0 5px;
-        }
-        .logout-button {
-            margin-left: auto;
-        }
-        .dashboard-button {
-            margin-right: auto;
-        }
-        .map-link {
-            color: #007bff;
-        }
-        .map-button {
-            margin-left: 10px;
-            background-color: #17a2b8;
-            color: #fff;
-            border: none;
-        }
-        .map-button .bi {
-            margin-right: 5px;
-        }
-        .name, .surname {
-            font-weight: bold;
-            font-size: 120%;
-        }
-        .call-button {
-            background-color: #fd7e14;
-            color: #fff;
-            border: none;
-            transition: background-color 0.3s ease;
-        }
-        .call-button .bi {
+    }
+    
+    // Continue with the normal page display
+    ?>
+    
+    <!DOCTYPE html>
+    <html lang="it">
+    <head>
+        <meta charset="UTF-8">
+        <title><?php echo $isToday ? "Appuntamenti di Oggi" : "Appuntamenti del $displayDate"; ?></title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+        <meta name="format-detection" content="telephone=no">
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+        <style>
+            body {
+                padding: 20px;
+            }
+            .appointment-time {
+                font-weight: bold;
+                font-size: 1.5rem;
+            }
+            .appointment-details {
+                margin-bottom: 20px;
+            }
+            hr {
+                border-top: 2px solid #bbb;
+            }
+            .navigation {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+            }
+            .btn {
+                flex-grow: 1;
+                margin: 0 5px;
+            }
+            .logout-button {
+                margin-left: auto;
+            }
+            .dashboard-button {
+                margin-right: auto;
+            }
+            .map-link {
+                color: #007bff;
+            }
+            .map-button {
+                margin-left: 10px;
+                background-color: #17a2b8;
+                color: #fff;
+                border: none;
+            }
+            .map-button .bi {
+                margin-right: 5px;
+            }
+            .name, .surname {
+                font-weight: bold;
+                font-size: 120%;
+            }
+            .call-button {
+                background-color: #fd7e14;
+                color: #fff;
+                border: none;
+                transition: background-color 0.3s ease;
+            }
+            .call-button .bi {
             margin-right: 5px;
         }
         .call-button:hover {
@@ -224,8 +337,6 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
         }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.8.1/font/bootstrap-icons.min.css">
-    <!-- Fixed html2pdf.js script tag by removing the integrity attribute -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -247,12 +358,12 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
             <a href="today.php?date=<?php echo date('Y-m-d', strtotime($selectedDate . ' +1 day')); ?>" class="btn btn-secondary">&gt;</a>
         </div>
         
-        <!-- Aggiungiamo i pulsanti per stampa e invio email -->
+        <!-- Pulsanti per PDF e invio email -->
         <div class="row mb-3 no-print">
             <div class="col-12 text-end">
-                <button id="printPdfButton" class="btn print-button">
-                    <i class="bi bi-printer-fill"></i> Stampa PDF
-                </button>
+                <a id="printPdfButton" href="today.php?date=<?php echo $selectedDate; ?>&pdf=1" target="_blank" class="btn print-button">
+                    <i class="bi bi-printer-fill"></i> Scarica PDF
+                </a>
                 <button id="emailPdfButton" class="btn email-pdf-button" data-bs-toggle="modal" data-bs-target="#emailPdfModal">
                     <i class="bi bi-envelope-fill"></i> Invia PDF via email
                 </button>
@@ -344,297 +455,156 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
         </div>
     </div>
 
-    <!-- File PHP di supporto per generare il PDF (generatePDF.php) -->
-    <?php
-    // Devi creare questo file a parte
-    ?>
-        <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            var appointments = <?php echo json_encode($appointments); ?>;
-            var mapUrlGoogle = '';
-            var mapUrlApple = '';
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var appointments = <?php echo json_encode($appointments); ?>;
+        var mapUrlGoogle = '';
+        var mapUrlApple = '';
 
-            if (appointments.length > 0) {
-                let waypoints = appointments.map(appointment => appointment.address);
-                
-                // Ensure at least a start and end point
-                let start = "Current+Location";
-                let end = waypoints.pop(); // Last waypoint as end
-                let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
+        if (appointments.length > 0) {
+            let waypoints = appointments.map(appointment => appointment.address);
+            
+            // Ensure at least a start and end point
+            let start = "Current+Location";
+            let end = waypoints.pop(); // Last waypoint as end
+            let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
 
-                // Generate Apple Maps URL using +to: format
-                mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
-                
-                // Fixed Google Maps URL so it's not truncated
-                mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
+            // Generate Apple Maps URL using +to: format
+            mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+            
+            // Fixed Google Maps URL
+            mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
 
-                document.getElementById('openMapButton').style.display = 'block';
-                document.getElementById('emailGroup').style.display = 'block';
-            } else {
-                document.getElementById('openMapButton').style.display = 'none';
-                document.getElementById('emailGroup').style.display = 'none';
+            document.getElementById('openMapButton').style.display = 'block';
+            document.getElementById('emailGroup').style.display = 'block';
+        } else {
+            document.getElementById('openMapButton').style.display = 'none';
+            document.getElementById('emailGroup').style.display = 'none';
+        }
+
+        document.getElementById('sendEmail').addEventListener('click', function() {
+            const email = document.getElementById('email').value;
+            const formatGoogle = document.getElementById('formatGoogle').checked;
+            const formatApple = document.getElementById('formatApple').checked;
+
+            if (!email) {
+                alert('Inserisci un indirizzo email valido.');
+                return;
             }
 
-            document.getElementById('sendEmail').addEventListener('click', function() {
-                const email = document.getElementById('email').value;
-                const formatGoogle = document.getElementById('formatGoogle').checked;
-                const formatApple = document.getElementById('formatApple').checked;
+            if (!formatGoogle && !formatApple) {
+                alert('Seleziona almeno un formato per l\'URL delle mappe.');
+                return;
+            }
+            let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti del giorno " + "<?php echo $displayDate; ?>" + ":\n\n";
+            if (formatGoogle) {
+                message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
+            }
+            if (formatApple) {
+                message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
+            }
+            message += "Cordiali saluti,\nIl Team degli Appuntamenti";
 
-                if (!email) {
-                    alert('Inserisci un indirizzo email valido.');
-                    return;
+            sendEmail(email, "Itinerario per gli appuntamenti del giorno " + "<?php echo $displayDate; ?>", message);
+        });
+        
+        function sendEmail(email, subject, message) {
+            fetch('send_email.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email: email, subject: subject, message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Email inviata con successo.');
+                } else {
+                    alert('Errore nell\'invio dell\'email.');
                 }
-
-                if (!formatGoogle && !formatApple) {
-                    alert('Seleziona almeno un formato per l\'URL delle mappe.');
-                    return;
-                }
-
-                let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti del giorno " + "<?php echo $displayDate; ?>" + ":\n\n";
-                if (formatGoogle) {
-                    message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
-                }
-                if (formatApple) {
-                    message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
-                }
-                message += "Cordiali saluti,\nIl Team degli Appuntamenti";
-
-                sendEmail(email, "Itinerario per gli appuntamenti del giorno " + "<?php echo $displayDate; ?>", message);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Errore nell\'invio dell\'email.');
             });
-            function sendEmail(email, subject, message) {
-                fetch('send_email.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ email: email, subject: subject, message: message })
-                })
+        }
+
+        document.getElementById('openMapButton').addEventListener('click', function() {
+            openMap(mapUrlGoogle, mapUrlApple);
+        });
+
+        document.querySelectorAll('.map-button').forEach(button => {
+            button.addEventListener('click', function() {
+                const address = this.getAttribute('data-address');
+                const googleUrl = `https://www.google.com/maps/search/?api=1&query=${address}`;
+                const appleUrl = `maps://?q=${address}`;
+                openMap(googleUrl, appleUrl);
+            });
+        });
+
+        function openMap(googleUrl, appleUrl) {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            if (isIOS) {
+                window.open(appleUrl, '_blank');
+            } else {
+                window.open(googleUrl, '_blank');
+            }
+        }
+
+        // Email PDF function
+        document.getElementById('sendPdfEmail').addEventListener('click', function() {
+            const email = document.getElementById('pdfEmailAddress').value;
+            const subject = document.getElementById('pdfEmailSubject').value;
+            const message = document.getElementById('pdfEmailMessage').value;
+            
+            if (!email) {
+                alert('Inserisci un indirizzo email valido.');
+                return;
+            }
+            
+            // Close the modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('emailPdfModal'));
+            modal.hide();
+            
+            // Show loading message
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = 'loadingMessage';
+            loadingDiv.style.position = 'fixed';
+            loadingDiv.style.top = '50%';
+            loadingDiv.style.left = '50%';
+            loadingDiv.style.transform = 'translate(-50%, -50%)';
+            loadingDiv.style.padding = '20px';
+            loadingDiv.style.backgroundColor = 'rgba(0,0,0,0.7)';
+            loadingDiv.style.color = 'white';
+            loadingDiv.style.borderRadius = '5px';
+            loadingDiv.style.zIndex = '9999';
+            loadingDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-light" role="status"></div><div class="mt-2">Invio del PDF in corso...</div></div>';
+            document.body.appendChild(loadingDiv);
+            
+            // Use the server-side PDF generation with FPDF and email it
+            const url = `today.php?date=<?php echo $selectedDate; ?>&pdf=1&email=${encodeURIComponent(email)}&subject=${encodeURIComponent(subject)}&message=${encodeURIComponent(message)}`;
+            
+            fetch(url)
                 .then(response => response.json())
                 .then(data => {
+                    // Remove loading message
+                    document.getElementById('loadingMessage').remove();
+                    
                     if (data.success) {
-                        alert('Email inviata con successo.');
+                        alert('PDF inviato con successo via email.');
                     } else {
-                        alert('Errore nell\'invio dell\'email.');
+                        alert('Errore nell\'invio del PDF: ' + data.error);
                     }
                 })
                 .catch(error => {
+                    // Remove loading message
+                    document.getElementById('loadingMessage').remove();
                     console.error('Error:', error);
-                    alert('Errore nell\'invio dell\'email.');
+                    alert('Errore nell\'invio del PDF via email.');
                 });
-            }
-
-            document.getElementById('openMapButton').addEventListener('click', function() {
-                openMap(mapUrlGoogle, mapUrlApple);
-            });
-
-            document.querySelectorAll('.map-button').forEach(button => {
-                button.addEventListener('click', function() {
-                    const address = this.getAttribute('data-address');
-                    const googleUrl = `https://www.google.com/maps/search/?api=1&query=${address}`;
-                    const appleUrl = `maps://?q=${address}`;
-                    openMap(googleUrl, appleUrl);
-                });
-            });
-
-            function openMap(googleUrl, appleUrl) {
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                if (isIOS) {
-                    window.open(appleUrl, '_blank');
-                } else {
-                    window.open(googleUrl, '_blank');
-                }
-            }
-            
-            // Helper function to properly handle HTML entities and ensure spaces between words
-            function fixWordSpacingForPDF(element) {
-                // Step 1: Replace HTML entities with actual spaces
-                const replaceEntities = function(node) {
-                    if (node.nodeType === 3) { // Text node
-                        // Create temporary element to decode entities
-                        const temp = document.createElement('div');
-                        temp.innerHTML = node.nodeValue;
-                        node.nodeValue = temp.textContent;
-                    } else if (node.nodeType === 1) { // Element node
-                        Array.from(node.childNodes).forEach(replaceEntities);
-                    }
-                };
-                
-                // Apply entity replacement to all nodes
-                replaceEntities(element);
-                
-                // Step 2: Apply explicit CSS for spacing
-                const allElements = element.querySelectorAll('*');
-                allElements.forEach(el => {
-                    el.style.wordSpacing = '0.15em';
-                    el.style.letterSpacing = '0.05em';
-                    el.style.whiteSpace = 'normal';
-                    el.style.wordBreak = 'break-word';
-
-                    // Ensure textContent has proper spaces - this is a critical step
-                    if (el.textContent) {
-                        let text = el.textContent;
-                        // Replace consecutive spaces with a single space
-                        text = text.replace(/\s+/g, ' ');
-                        el.textContent = text;
-                    }
-                });
-
-                // Step 3: Add explicit CSS to the parent element
-                element.style.wordSpacing = '0.15em';
-                element.style.letterSpacing = '0.05em';
-            }
-
-            // Funzione per generare il PDF
-            function generatePDF() {
-                // Preparazione contenuto per il PDF (clonare il contenuto degli appuntamenti)
-                const element = document.getElementById('appointments-content');
-                const elementClone = element.cloneNode(true);
-
-                // Visualizza gli elementi nascosti per la stampa
-                elementClone.querySelectorAll('.d-print-block').forEach(el => {
-                    el.classList.remove('d-none');
-                });
-
-                // Nascondi gli elementi che non devono apparire nel PDF
-                elementClone.querySelectorAll('.no-print').forEach(el => {
-                    el.style.display = 'none';
-                });
-
-                // Fix spacing issues
-                fixWordSpacingForPDF(elementClone);
-
-                // Configurazione html2pdf
-                const opt = {
-                    margin: 10,
-                    filename: 'appuntamenti-<?php echo $displayDate; ?>.pdf',
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { 
-                        scale: 2,
-                        letterRendering: true,
-                        useCORS: true
-                    },
-                    jsPDF: { 
-                        unit: 'mm', 
-                        format: 'a4', 
-                        orientation: 'portrait',
-                        compress: false
-                    }
-                };
-
-                // Genera il PDF
-                return html2pdf().set(opt).from(elementClone).save();
-            }
-
-            // Evento per il pulsante di stampa PDF
-            document.getElementById('printPdfButton').addEventListener('click', function() {
-                generatePDF();
-            });
-
-            // Evento per l'invio del PDF via email
-            document.getElementById('sendPdfEmail').addEventListener('click', function() {
-                const email = document.getElementById('pdfEmailAddress').value;
-                const subject = document.getElementById('pdfEmailSubject').value;
-                const message = document.getElementById('pdfEmailMessage').value;
-
-                if (!email) {
-                    alert('Inserisci un indirizzo email valido.');
-                    return;
-                }
-
-                // Chiudi il modal
-                const modal = bootstrap.Modal.getInstance(document.getElementById('emailPdfModal'));
-                modal.hide();
-
-                // Mostra messaggio di caricamento
-                const loadingDiv = document.createElement('div');
-                loadingDiv.id = 'loadingMessage';
-                loadingDiv.style.position = 'fixed';
-                loadingDiv.style.top = '50%';
-                loadingDiv.style.left = '50%';
-                loadingDiv.style.transform = 'translate(-50%, -50%)';
-                loadingDiv.style.padding = '20px';
-                loadingDiv.style.backgroundColor = 'rgba(0,0,0,0.7)';
-                loadingDiv.style.color = 'white';
-                loadingDiv.style.borderRadius = '5px';
-                loadingDiv.style.zIndex = '9999';
-                loadingDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-light" role="status"></div><div class="mt-2">Generazione e invio del PDF in corso...</div></div>';
-                document.body.appendChild(loadingDiv);
-
-                // Genera il PDF e invialo per email
-                generatePDFForEmail(email, subject, message);
-            });
-
-            // Genera il PDF per l'email
-            function generatePDFForEmail(email, subject, message) {
-                // Preparazione contenuto per il PDF
-                const element = document.getElementById('appointments-content');
-                const elementClone = element.cloneNode(true);
-
-                // Visualizza gli elementi nascosti per la stampa
-                elementClone.querySelectorAll('.d-print-block').forEach(el => {
-                    el.classList.remove('d-none');
-                });
-
-                // Nascondi gli elementi che non devono apparire nel PDF
-                elementClone.querySelectorAll('.no-print').forEach(el => {
-                    el.style.display = 'none';
-                });
-
-                // Fix spacing issues
-                fixWordSpacingForPDF(elementClone);
-
-                // Configurazione html2pdf
-                const opt = {
-                    margin: 10,
-                    filename: 'appuntamenti-<?php echo $displayDate; ?>.pdf',
-                    image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { 
-                        scale: 2,
-                        letterRendering: true,
-                        useCORS: true
-                    },
-                    jsPDF: { 
-                        unit: 'mm', 
-                        format: 'a4', 
-                        orientation: 'portrait',
-                        compress: false
-                    }
-                };
-
-                // Genera il PDF come blob
-                return html2pdf().set(opt).from(elementClone).outputPdf('blob').then(function(pdfBlob) {
-                    // Crea un FormData e allega il PDF
-                    const formData = new FormData();
-                    formData.append('pdf', pdfBlob, 'appuntamenti-<?php echo $displayDate; ?>.pdf');
-                    formData.append('email', email);
-                    formData.append('subject', subject);
-                    formData.append('message', message);
-                    
-                    // Invia il PDF via email usando una richiesta AJAX
-                    fetch('send_pdf_email.php', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        // Rimuovi il messaggio di caricamento
-                        document.getElementById('loadingMessage').remove();
-                        
-                        if (data.success) {
-                            alert('PDF inviato con successo via email.');
-                        } else {
-                            alert('Errore nell\'invio del PDF: ' + data.error);
-                        }
-                    })
-                    .catch(error => {
-                        // Rimuovi il messaggio di caricamento
-                        document.getElementById('loadingMessage').remove();
-                        console.error('Error:', error);
-                        alert('Errore nell\'invio del PDF via email.');
-                    });
-                });
-            }
         });
-        </script>
+    });
+    </script>
 </body>
 </html>
