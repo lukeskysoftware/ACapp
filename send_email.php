@@ -3,11 +3,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $data = json_decode(file_get_contents('php://input'), true);
 
     $email = $data['email'];
-    $url = $data['url'];
-    $selectedDate = $data['selectedDate']; // Get the selected date
-
-    $subject = "Itinerario per gli appuntamenti del giorno " . $selectedDate;
-    $message = "Ciao,\n\necco il link per l'itinerario degli appuntamenti del giorno " . $selectedDate . ":\n\n" . $url . "\n\nCordiali saluti,\nIl Team degli Appuntamenti";
+    $subject = $data['subject'];
+    $message = $data['message'];
 
     $headers = 'From: no-reply@yourdomain.com' . "\r\n" .
                'Reply-To: no-reply@yourdomain.com' . "\r\n" .
