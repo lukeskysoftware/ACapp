@@ -909,11 +909,31 @@ foreach ($next3Days as $date => $times) {
     
     // Add the "Vedi agenda" button with a data attribute instead of onclick
 
-echo " <button type='button' class='agenda-button btn btn-sm btn-outline-primary' 
-           data-date='{$date}' 
-           data-zone-id='{$zone['id']}'>
-           <i class='bi bi-calendar'></i> Vedi agenda
-       </button>";
+// Sostituiamo il pulsante "Vedi agenda" con un pulsante collapsible
+$collapseId = "collapse-" . str_replace("-", "", $date) . "-" . $zone['id'];
+echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
+    <i class='bi bi-calendar'></i> Vedi agenda
+</button>";
+
+// Aggiungere il div collapsible per i dettagli dell'agenda
+echo "</p>";
+echo "<div class='collapse mb-3' id='$collapseId'>
+    <div class='card card-body agenda-details' id='agenda-content-$collapseId'>
+        <div class='text-center'>
+            <div class='spinner-border text-primary' role='status'>
+                <span class='visually-hidden'>Caricamento appuntamenti...</span>
+            </div>
+            <p>Caricamento appuntamenti...</p>
+        </div>
+    </div>
+</div>";
+
+// Aggiungere lo script per caricare i dati quando il collapse è mostrato
+echo "<script>
+    document.getElementById('$collapseId').addEventListener('shown.bs.collapse', function () {
+        loadAgendaContent('$date', {$zone['id']}, '$collapseId');
+    });
+</script>";
     
     echo "</p>";
     
@@ -1166,6 +1186,41 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     }
 </style>
 
+<script>
+// Funzione per caricare il contenuto dell'agenda in un div specifico
+function loadAgendaContent(date, zoneId, collapseId) {
+    document.getElementById('agenda-content-' + collapseId).innerHTML = `
+        <div class='text-center'>
+            <div class='spinner-border text-primary' role='status'>
+                <span class='visually-hidden'>Caricamento appuntamenti...</span>
+            </div>
+            <p>Caricamento appuntamenti...</p>
+        </div>
+    `;
+    
+    fetch('get_appointments_modal.php?date=' + date + '&zone_id=' + zoneId)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Errore nel caricamento dei dati');
+            }
+            return response.text();
+        })
+        .then(html => {
+            document.getElementById('agenda-content-' + collapseId).innerHTML = html;
+        })
+        .catch(error => {
+            document.getElementById('agenda-content-' + collapseId).innerHTML = `
+                <div class='alert alert-danger'>
+                    <p>Si è verificato un errore: \${error.message}</p>
+                    <button class='btn btn-sm btn-outline-danger' onclick='loadAgendaContent("${date}", ${zoneId}, "${collapseId}")'>
+                        <i class='bi bi-arrow-clockwise'></i> Riprova
+                    </button>
+                </div>
+            `;
+        });
+}
+</script>
+
 
 <?php // End of added head content ?>
 </head>
@@ -1173,24 +1228,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
    
 <div class="container">
     <h2>A quale indirizzo fare la visita?</h2>
-    <form id="addressForm" method="POST" action="combined_address_calculate_v2.php" class="mb-4">
-        <div class="mb-3" style="width: 60%;">
-            <label for="address" class="form-label fw-bold">Indirizzo:</label>
-            <input type="text" id="address" name="address" class="form-control" style="width: 60%; max-width: 100%;" required>
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-6"> <!-- Sarà al 100% su mobile, ~60% su desktop -->
+            <form id="addressForm" method="POST" action="combined_address_calculate_v2.php" class="mb-4">
+                <div class="mb-3">
+                    <label for="address" class="form-label fw-bold">Indirizzo:</label>
+                    <input type="text" id="address" name="address" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label for="latitude" class="form-label fw-bold">Latitudine:</label>
+                    <input type="text" id="latitude" name="latitude" class="form-control" readonly>
+                </div>
+                <div class="mb-3">
+                    <label for="longitude" class="form-label fw-bold">Longitudine:</label>
+                    <input type="text" id="longitude" name="longitude" class="form-control" readonly>
+                </div>
+                <input type="hidden" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>">
+                <input type="hidden" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>">
+                <input type="hidden" id="phone" name="phone" value="<?php echo htmlspecialchars($phone); ?>">
+                <button type="submit" class="btn btn-primary">Avanti</button>
+            </form>
         </div>
-        <div class="mb-3" style="width: 60%;">
-            <label for="latitude" class="form-label fw-bold">Latitudine:</label>
-            <input type="text" id="latitude" name="latitude" class="form-control" style="width: 60%; max-width: 100%;" readonly>
-        </div>
-        <div class="mb-3" style="width: 60%;">
-            <label for="longitude" class="form-label fw-bold">Longitudine:</label>
-            <input type="text" id="longitude" name="longitude" class="form-control" style="width: 60%; max-width: 100%;" readonly>
-        </div>
-        <input type="hidden" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>">
-        <input type="hidden" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>">
-        <input type="hidden" id="phone" name="phone" value="<?php echo htmlspecialchars($phone); ?>">
-        <button type="submit" class="btn btn-primary">Avanti</button>
-    </form>
+    </div>
     <div id="coordinates" style="margin-top: 10px;"></div>
     <div id="messageContainer" style="display:none;"></div>
     <a href="dashboard.php">Torna alla dashboard</a>
