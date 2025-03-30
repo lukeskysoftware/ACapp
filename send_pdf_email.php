@@ -31,8 +31,8 @@ $pdf_name = $_FILES['pdf']['name'];
 $boundary = md5(time());
 
 // Intestazioni dell'email
-$headers = "From: ACapp <noreply@acapp.it>\r\n";
-$headers .= "Reply-To: noreply@acapp.it\r\n";
+$headers = "From: ACapp <agenda@acapp.com>\r\n";
+$headers .= "Reply-To: noreply@acapp.com\r\n";
 $headers .= "MIME-Version: 1.0\r\n";
 $headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n";
 
