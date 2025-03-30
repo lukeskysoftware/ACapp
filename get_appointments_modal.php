@@ -27,53 +27,82 @@ if(isset($_POST['appointment_date']) && !empty($_POST['appointment_date'])) {
     
     // Controlla se ci sono appuntamenti
     if($result && $result->num_rows > 0) {
-        // Inizia il container degli appuntamenti
-        $output .= '<div class="appointments-container">';
+        // Formatta la data per la visualizzazione
+        $display_date = date('d-m-Y', strtotime($formatted_date));
+        
+        // Aggiungi l'intestazione
+        $output .= '<div class="container">';
+        $output .= '<h4 class="mb-3">Appuntamenti del ' . $display_date . '</h4>';
         
         // Cicla attraverso gli appuntamenti trovati
         while($row = $result->fetch_assoc()) {
             // Formatta l'ora per la visualizzazione (formato H:i)
             $time = date('H:i', strtotime($row['appointment_time']));
             
-            // Costruisci l'HTML per ogni appuntamento
-            $output .= '<div class="appointment-item">';
-            $output .= '<div class="appointment-time">' . $time . '</div>';
+            // Costruisci l'HTML per ogni appuntamento nello stile di today.php
             $output .= '<div class="appointment-details">';
-            $output .= '<div class="appointment-name">' . $row['name'] . ' ' . $row['surname'] . '</div>';
-            $output .= '<div class="appointment-phone">' . $row['phone'] . '</div>';
+            $output .= '<p class="appointment-time">' . $time . '</p>';
+            $output .= '<p><span class="name">' . $row['name'] . '</span> <span class="surname">' . $row['surname'] . '</span></p>';
+            $output .= '<p>' . $row['phone'] . '</p>';
             
             // Mostra l'indirizzo se disponibile
             if (!empty($row['address'])) {
-                $output .= '<div class="appointment-address">' . $row['address'] . '</div>';
+                $output .= '<p>' . $row['address'] . '</p>';
             }
             
             // Mostra le note se disponibili
             if (!empty($row['notes'])) {
-                $output .= '<div class="appointment-notes">' . $row['notes'] . '</div>';
+                $output .= '<p><strong>Note:</strong> ' . $row['notes'] . '</p>';
             }
             
             // Mostra la zona se disponibile
             if (!empty($row['zone_name'])) {
-                $output .= '<div class="appointment-zone">Zona: ' . $row['zone_name'] . '</div>';
+                $output .= '<p><strong>Zona:</strong> ' . $row['zone_name'] . '</p>';
             }
             
-            $output .= '</div>'; // Chiudi appointment-details
-            $output .= '</div>'; // Chiudi appointment-item
+            $output .= '</div>';
+            $output .= '<hr>';
         }
         
-        // Chiudi il container degli appuntamenti
-        $output .= '</div>';
+        $output .= '</div>'; // Chiudi il container
     } else {
         // Non ci sono appuntamenti per questa data
-        $output .= '<div class="no-appointments">Non ci sono appuntamenti registrati per questa data.</div>';
+        $output .= '<div class="no-appointments text-center p-4">Non ci sono appuntamenti registrati per questa data.</div>';
     }
 } else {
     // Non è stata fornita una data
-    $output .= '<div class="error-message">Errore: data non specificata.</div>';
+    $output .= '<div class="error-message text-danger text-center p-4">Errore: data non specificata.</div>';
 }
 
 // Chiudi la connessione al database
 $conn->close();
+
+// Aggiungi stili CSS inline per la formattazione
+$output .= '
+<style>
+    .appointment-time {
+        font-weight: bold;
+        font-size: 1.5rem;
+    }
+    .appointment-details {
+        margin-bottom: 20px;
+    }
+    hr {
+        border-top: 1px solid #ddd;
+    }
+    .name, .surname {
+        font-weight: bold;
+        font-size: 120%;
+    }
+    @media (max-width: 576px) {
+        .appointment-time {
+            font-size: 1.2rem;
+        }
+        .name, .surname {
+            font-size: 100%;
+        }
+    }
+</style>';
 
 // Restituisci l'output HTML
 echo $output;
