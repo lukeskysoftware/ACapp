@@ -887,48 +887,54 @@ if (empty($next3Days)) {
 } else {
     echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
     
-    foreach ($next3Days as $date => $times) {
-        $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
-        
-        // Check if this date has existing appointments
-        $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
-                          WHERE zone_id = ? AND appointment_date = ?";
-        $existingStmt = $conn->prepare($existingAppsSql);
-        $existingStmt->bind_param("is", $zone['id'], $date);
-        $existingStmt->execute();
-        $existingResult = $existingStmt->get_result();
-        $existingRow = $existingResult->fetch_assoc();
-        $hasExistingAppointments = ($existingRow['count'] > 0);
-        
-        echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
-        
-        // Add an indicator if there are existing appointments
-        if ($hasExistingAppointments) {
-            echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
-        }
-        
-        echo "</p>";
-        
-        if (empty($times)) {
-            echo "<p>Nessuna fascia oraria disponibile per questa data.</p>";
-        } else {
-            echo "<p>Fasce orarie disponibili: ";
-            foreach ($times as $time) {
-                $formattedTime = date('H:i', strtotime($time)); // Remove seconds
-                
-                $nameEncoded = !empty($name) ? urlencode($name) : '';
-                $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
-                $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
-                $addressEncoded = urlencode($address);
-                
-                echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
-                echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
-                echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-                echo "' class='pure-button pure-button-primary' style='margin:0.2rem;'>{$formattedTime}</a>";
-            }
-            echo "</p>";
-        }
+foreach ($next3Days as $date => $times) {
+    $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
+    
+    // Check if this date has existing appointments
+    $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
+                      WHERE zone_id = ? AND appointment_date = ?";
+    $existingStmt = $conn->prepare($existingAppsSql);
+    $existingStmt->bind_param("is", $zone['id'], $date);
+    $existingStmt->execute();
+    $existingResult = $existingStmt->get_result();
+    $existingRow = $existingResult->fetch_assoc();
+    $hasExistingAppointments = ($existingRow['count'] > 0);
+    
+    echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
+    
+    // Add an indicator if there are existing appointments
+    if ($hasExistingAppointments) {
+        echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
     }
+    
+    // Add the "Vedi agenda" button with a data attribute instead of onclick
+    echo " <a href='javascript:void(0);' class='agenda-button' data-date='{$date}' data-zone='{$zone['id']}'>
+        <i class='bi bi-calendar'></i> Vedi agenda
+    </a>";
+    
+    echo "</p>";
+    
+    
+    if (empty($times)) {
+        echo "<p>Nessuna fascia oraria disponibile per questa data.</p>";
+    } else {
+        echo "<p>Fasce orarie disponibili: ";
+        foreach ($times as $time) {
+            $formattedTime = date('H:i', strtotime($time)); // Remove seconds
+            
+            $nameEncoded = !empty($name) ? urlencode($name) : '';
+            $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
+            $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
+            $addressEncoded = urlencode($address);
+            
+            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
+            echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
+            echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
+            echo "' class='pure-button pure-button-primary' style='margin:0.2rem;'>{$formattedTime}</a>";
+        }
+        echo "</p>";
+    }
+}
     echo "</center></div>";
     
     // REMOVE THIS ENTIRE BLOCK - Lines 889-914
@@ -1097,7 +1103,166 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             messageContainer.innerHTML = `<p>${message}</p>`;
             messageContainer.style.display = 'block';
         }
+        
+        
+        
     </script>
+    
+    
+    
+    
+    <?php
+// Keep the existing head content, then add our script at the end of the head section (just before </head>)
+
+// Add these CSS and JavaScript to the head section (around line 1000, inside the <head> tag)
+?>
+<!-- Bootstrap and Calendar Resources -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.8.1/font/bootstrap-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<style>
+    .agenda-button {
+        background-color: #fd7e14;
+        color: #fff;
+        border: none;
+        margin-left: 10px;
+        padding: 5px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: inline-block;
+        text-decoration: none;
+    }
+    .agenda-button:hover {
+        background-color: #e8590c;
+        color: #fff;
+    }
+    .appointment-time {
+        font-weight: bold;
+        font-size: 1.2rem;
+    }
+    .appointment-details {
+        margin-bottom: 15px;
+        padding: 10px;
+        border-bottom: 1px solid #ddd;
+    }
+    .modal-xl {
+        max-width: 90%;
+    }
+    .name, .surname {
+        font-weight: bold;
+    }
+    .no-appointments {
+        text-align: center;
+        padding: 20px;
+        color: #6c757d;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Make the function available globally
+    window.getAppointmentsForDate = function(date, zoneId) {
+        // Create the modal HTML
+        let modalId = `appointmentModal_${date.replace(/-/g, "")}`;
+        
+        // Check if modal already exists
+        if (document.getElementById(modalId)) {
+            // Just show the existing modal
+            var existingModal = new bootstrap.Modal(document.getElementById(modalId));
+            existingModal.show();
+            return;
+        }
+        
+        // Create modal skeleton
+        let modalHTML = `
+            <div class="modal fade" id="${modalId}" tabindex="-1" aria-labelledby="appointmentModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-xl">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="appointmentModalLabel">Appuntamenti per il ${formatDate(date)}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="appointmentsList_${date.replace(/-/g, "")}">
+                                <div class="text-center">
+                                    <div class="spinner-border" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p>Caricamento appuntamenti...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+                            <a href="get_appointments_for_date.php?date=${date}&zone_id=${zoneId}" target="_blank" class="btn btn-primary">
+                                <i class="bi bi-fullscreen"></i> Vista completa
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add modal to the document
+        document.body.insertAdjacentHTML("beforeend", modalHTML);
+        
+        // Show the modal
+        var appointmentModal = new bootstrap.Modal(document.getElementById(modalId));
+        appointmentModal.show();
+        
+        // Fetch the appointments
+        fetch(`get_appointments_for_date.php?date=${date}&zone_id=${zoneId}&format=json`)
+            .then(response => response.json())
+            .then(data => {
+                let appointmentsList = document.getElementById(`appointmentsList_${date.replace(/-/g, "")}`);
+                
+                if (data.length === 0) {
+                    appointmentsList.innerHTML = '<div class="no-appointments"><i class="bi bi-calendar-x" style="font-size: 2rem;"></i><p>Nessun appuntamento registrato per questa data.</p></div>';
+                } else {
+                    let html = '';
+                    data.sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
+                    
+                    data.forEach(appointment => {
+                        const time = appointment.appointment_time.substring(0, 5); // Format H:i
+                        html += `
+                            <div class="appointment-details">
+                                <p class="appointment-time">${time}</p>
+                                <p><span class="name">${appointment.name}</span> <span class="surname">${appointment.surname}</span></p>
+                                <p>${appointment.phone}
+                                    <a href="tel:${appointment.phone}" class="btn btn-sm" style="background-color: #fd7e14; color: white;">
+                                        <i class="bi bi-telephone-fill"></i> Chiama
+                                    </a>
+                                </p>
+                                <p>${appointment.address}
+                                    <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(appointment.address)}" 
+                                       target="_blank" class="btn btn-sm btn-info text-white">
+                                        <i class="bi bi-geo-alt-fill"></i> Apri in Mappe
+                                    </a>
+                                </p>
+                                ${appointment.notes ? `<p><strong>Note:</strong> ${appointment.notes}</p>` : ''}
+                            </div>
+                        `;
+                    });
+                    
+                    appointmentsList.innerHTML = html;
+                }
+            })
+            .catch(error => {
+                console.error("Error fetching appointments:", error);
+                document.getElementById(`appointmentsList_${date.replace(/-/g, "")}`).innerHTML = 
+                    `<div class="alert alert-danger">Errore nel caricamento degli appuntamenti: ${error.message}</div>`;
+            });
+    }
+});
+
+function formatDate(dateString) {
+    const date = new Date(dateString + "T00:00:00");
+    const options = { day: "numeric", month: "long", year: "numeric" };
+    return date.toLocaleDateString("it-IT", options);
+}
+</script>
+<?php // End of added head content ?>
 </head>
 <body>
    
@@ -1163,6 +1328,30 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             </form>
         </div>
     </div>
+    
+    
+<script>
+    // Initialize agenda buttons after the page has loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Find all agenda buttons and add click handlers
+        const agendaButtons = document.querySelectorAll('.agenda-button');
+        agendaButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const date = this.getAttribute('data-date');
+                const zoneId = this.getAttribute('data-zone');
+                
+                // Call the function to get appointments
+                if (typeof window.getAppointmentsForDate === 'function') {
+                    window.getAppointmentsForDate(date, zoneId);
+                } else {
+                    // Fallback if function is not available - just navigate to the page
+                    window.open(`get_appointments_for_date.php?date=${date}&zone_id=${zoneId}`, '_blank');
+                }
+            });
+        });
+    });
+</script>
+
 </body>
 </html>
 <?php
