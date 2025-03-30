@@ -1,7 +1,14 @@
 <?php
+// Inizia l'output buffering per catturare eventuali output indesiderati
+ob_start();
+
+// Includi il file di connessione al database
 include_once 'db.php';
 
-// Prevent direct access without date parameter
+// Pulisci il buffer per rimuovere eventuali messaggi indesiderati
+ob_clean();
+
+// Previeni l'accesso diretto senza parametro data
 if (!isset($_GET['date'])) {
     echo '<div class="alert alert-danger">Parametro data mancante.</div>';
     exit;
@@ -9,6 +16,7 @@ if (!isset($_GET['date'])) {
 
 $date = $_GET['date'];
 $zoneId = isset($_GET['zone_id']) ? (int)$_GET['zone_id'] : 0;
+
 
 // Validate date format (YYYY-MM-DD)
 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
@@ -71,6 +79,9 @@ $appointments = getAppointmentsByDate($conn, $date, $zoneId);
 // Format date for display
 setlocale(LC_TIME, 'it_IT.UTF-8');
 $formattedDate = strftime('%d %B %Y', strtotime($date));
+
+// Clear any buffered output before sending our content
+ob_end_clean();
 
 // Output the appointments HTML for the modal
 if (empty($appointments)) {
