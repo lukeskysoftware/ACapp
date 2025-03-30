@@ -26,24 +26,29 @@ if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity']) >
 
 // Update last activity time stamp
 $_SESSION['last_activity'] = time();
+
+// Check if the user has admin privileges (ID 6 or 9)
+$isAdmin = ($_SESSION['user_id'] == 6 || $_SESSION['user_id'] == 9);
 ?>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <nav class="navbar navbar-expand-lg navbar-light bg-light">
     <div class="container-fluid">
-        <a class="navbar-brand" href="#">ACapp</a>
+        <a class="navbar-brand" href="dashboard.php">ACapp</a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav">
+                <?php if ($isAdmin): ?>
                 <li class="nav-item">
                     <a class="nav-link" href="create_zone_form.php">Crea Zona</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="list_zones.php">Gestisci Zone</a> <!-- Updated to point to list_zones.php -->
                 </li>
+                <?php endif; ?>
                 <li class="nav-item">
                     <a class="nav-link text-dark" href="waiting_room.php">Richiesta App.to</a>
                 </li>
