@@ -1,4 +1,9 @@
 <?php
+// Enable error reporting
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 include_once 'db.php';
 include_once 'ext_parts/fpdf/fpdf.php';
 
@@ -116,30 +121,41 @@ function generatePDF($appointments, $displayDate) {
         $pdf->Ln(5);
     }
 
-    return $pdf->Output('S');
+    $output = $pdf->Output('S');
+    if (!$output) {
+        echo "Error generating PDF";
+        return false;
+    }
+    return $output;
 }
 
 // Funzione per inviare email con il PDF allegato
 function sendEmailWithPDF($appointments, $displayDate, $recipientEmail) {
     $pdfContent = generatePDF($appointments, $displayDate);
 
+    if (!$pdfContent) {
+        return false;
+    }
+
     $subject = "Appuntamenti del $displayDate";
     $message = "In allegato il PDF con gli appuntamenti del $displayDate.";
+    $boundary = md5(uniqid(time()));
+
     $headers = "From: your_email@example.com\r\n";
     $headers .= "Reply-To: your_email@example.com\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
-    $headers .= "Content-Type: multipart/mixed; boundary=\"boundary\"\r\n\r\n";
+    $headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n\r\n";
 
-    $body = "--boundary\r\n";
+    $body = "--$boundary\r\n";
     $body .= "Content-Type: text/plain; charset=\"UTF-8\"\r\n";
     $body .= "Content-Transfer-Encoding: 7bit\r\n\r\n";
     $body .= "$message\r\n\r\n";
-    $body .= "--boundary\r\n";
+    $body .= "--$boundary\r\n";
     $body .= "Content-Type: application/pdf; name=\"appuntamenti.pdf\"\r\n";
     $body .= "Content-Transfer-Encoding: base64\r\n";
     $body .= "Content-Disposition: attachment; filename=\"appuntamenti.pdf\"\r\n\r\n";
     $body .= chunk_split(base64_encode($pdfContent)) . "\r\n";
-    $body .= "--boundary--";
+    $body .= "--$boundary--";
 
     return mail($recipientEmail, $subject, $body, $headers);
 }
@@ -148,6 +164,17 @@ if (isset($_POST['action']) && $_POST['action'] === 'send_pdf') {
     $recipientEmail = $_POST['email'];
     $success = sendEmailWithPDF($appointments, $displayDate, $recipientEmail);
     echo json_encode(['success' => $success]);
+    exit;
+}
+
+if (isset($_GET['action']) && $_GET['action'] === 'generate_pdf') {
+    $pdfContent = generatePDF($appointments, $displayDate);
+    if ($pdfContent) {
+        header('Content-Type: application/pdf');
+        echo $pdfContent;
+    } else {
+        echo "Error generating PDF";
+    }
     exit;
 }
 ?>
@@ -339,6 +366,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'send_pdf') {
             .catch(error => {
                 console.error('Error:', error);
                 alert('Errore nell\'invio dell\'email.');
+                var emailModal = bootstrap.Modal.getInstance(document.getElementById('emailModal'));
+                emailModal.hide();
             });
         });
     </script>
