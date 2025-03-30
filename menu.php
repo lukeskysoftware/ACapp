@@ -51,7 +51,7 @@ $_SESSION['last_activity'] = time();
                     <a class="nav-link" href="waiting_list.php">Attesa App.to</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="address__calculate.php">Prenota Appuntamento</a>
+                    <a class="nav-link" href="address__calculate_v2.php">Prenota Appuntamento</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="manage_appointments.php">Gestisci Appuntamenti</a>
