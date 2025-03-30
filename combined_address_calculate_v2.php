@@ -430,27 +430,48 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
     
     return ($count == 0);
 }
-// Check if appointment is available
-function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime) {
-    global $conn;
-    $sql = "SELECT COUNT(*) FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? AND appointment_time = ?";
-    $stmt = $conn->prepare($sql);
 
+// Check if appointment is available
+function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $buffer_minutes = 60) {
+    global $conn;
+    
+    // Convertire l'orario dell'appuntamento in oggetto DateTime
+    $appointmentDateTime = new DateTime($appointmentDate . ' ' . $appointmentTime);
+    
+    // Calcolare l'inizio e la fine della finestra di buffer
+    $bufferStart = clone $appointmentDateTime;
+    $bufferStart->modify("-{$buffer_minutes} minutes");
+    
+    $bufferEnd = clone $appointmentDateTime;
+    $bufferEnd->modify("+{$buffer_minutes} minutes");
+    
+    // Verificare se ci sono appuntamenti che si sovrappongono alla finestra di buffer
+    $sql = "SELECT appointment_time 
+            FROM cp_appointments 
+            WHERE zone_id = ? AND appointment_date = ? 
+            AND CONCAT(appointment_date, ' ', appointment_time) BETWEEN ? AND ?";
+    
+    $stmt = $conn->prepare($sql);
+    
     if (!$stmt) {
         error_log("Database prepare failed for checking appointment availability: " . mysqli_error($conn));
         throw new Exception("Database prepare failed for checking appointment availability: " . mysqli_error($conn));
     }
-
-    $stmt->bind_param("iss", $zoneId, $appointmentDate, $appointmentTime);
-
+    
+    $bufferStartStr = $bufferStart->format('Y-m-d H:i:s');
+    $bufferEndStr = $bufferEnd->format('Y-m-d H:i:s');
+    
+    $stmt->bind_param("isss", $zoneId, $appointmentDate, $bufferStartStr, $bufferEndStr);
+    
     if (!$stmt->execute()) {
         error_log("Database query failed for checking appointment availability: " . mysqli_error($conn));
         throw new Exception("Database query failed for checking appointment availability: " . mysqli_error($conn));
     }
-
-    $stmt->bind_result($count);
-    $stmt->fetch();
-
+    
+    $result = $stmt->get_result();
+    $count = $result->num_rows;
+    
+    // Lo slot è disponibile se non ci sono appuntamenti nella finestra di buffer
     return $count === 0;
 }
 
@@ -479,25 +500,8 @@ function getNext3AppointmentDates($slots, $zoneId) {
                 continue; // Nessuno slot per questo giorno della settimana
             }
             
-            // Controlla quali slot sono già prenotati per questa data e zona
-            $bookedSlotsSql = "SELECT appointment_time FROM cp_appointments 
-                              WHERE zone_id = ? AND appointment_date = ?";
-            $stmt = $conn->prepare($bookedSlotsSql);
-            $stmt->bind_param("is", $zoneId, $formattedDate);
-            $stmt->execute();
-            $bookedResult = $stmt->get_result();
-            
-            $bookedTimes = [];
-            while ($row = $bookedResult->fetch_assoc()) {
-                $bookedTimes[] = $row['appointment_time'];
-            }
-            
-            // Se ci sono già appuntamenti in questa data, salta
-            if (count($bookedTimes) > 0) {
-                continue; // Salta questa data se ha già appuntamenti registrati
-            }
-            
-            // Conta gli slot disponibili per questa data
+            // MODIFICA: Non saltare più immediatamente le date con appuntamenti esistenti
+            // Conta gli slot disponibili per questa data tenendo conto del buffer
             $availableSlots = [];
             foreach ($daySlots as $slot) {
                 $slotTime = $slot['time'];
@@ -507,8 +511,8 @@ function getNext3AppointmentDates($slots, $zoneId) {
                     continue;
                 }
                 
-                // Verifica se lo slot è disponibile
-                if (isAppointmentAvailable($zoneId, $formattedDate, $slotTime)) {
+                // Verifica se lo slot è disponibile con il nuovo criterio di buffer di 60 minuti
+                if (isAppointmentAvailable($zoneId, $formattedDate, $slotTime, 60)) {
                     $availableSlots[] = $slotTime;
                 }
             }
@@ -524,9 +528,9 @@ function getNext3AppointmentDates($slots, $zoneId) {
             }
         }
         
-        // Se non abbiamo trovato abbastanza giorni liberi, proviamo ad allentare i criteri
+        // Se non abbiamo trovato abbastanza giorni liberi, proviamo con la seconda settimana
         if (count($next3Days) < 3 && $iterationCount >= 1) {
-            for ($dayOffset = 0; $dayOffset < 14; $dayOffset++) {  // Esteso a due settimane
+            for ($dayOffset = 7; $dayOffset < 14; $dayOffset++) {  // Seconda settimana
                 $checkDate = clone $currentDate;
                 $checkDate->modify("+$dayOffset days");
                 $checkDayOfWeek = $checkDate->format('N');
@@ -546,7 +550,7 @@ function getNext3AppointmentDates($slots, $zoneId) {
                     continue;
                 }
                 
-                // Controlla quanti slot sono disponibili dopo aver considerato le prenotazioni esistenti
+                // Controlla quanti slot sono disponibili usando la nuova funzione con buffer
                 $availableSlots = [];
                 foreach ($daySlots as $slot) {
                     $slotTime = $slot['time'];
@@ -556,8 +560,8 @@ function getNext3AppointmentDates($slots, $zoneId) {
                         continue;
                     }
                     
-                    // Verifica se lo slot è disponibile
-                    if (isAppointmentAvailable($zoneId, $formattedDate, $slotTime)) {
+                    // Verifica se lo slot è disponibile con il nuovo criterio di buffer di 60 minuti
+                    if (isAppointmentAvailable($zoneId, $formattedDate, $slotTime, 60)) {
                         $availableSlots[] = $slotTime;
                     }
                 }
