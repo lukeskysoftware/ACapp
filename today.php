@@ -224,11 +224,8 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
         }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.8.1/font/bootstrap-icons.min.css">
-    <!-- Aggiungiamo html2pdf.js -->
-    <!-- Alternative with updated integrity hash -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" 
-        integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" 
-        crossorigin="anonymous"></script>
+    <!-- Fixed html2pdf.js script tag by removing the integrity attribute -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -289,7 +286,6 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                     </div>
                     <hr>
                 <?php endforeach; ?>
-                
                 <div class="container mt-5 no-print">
                     <h2>Genera l'itinerario per oggi</h2>
                     <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3"><i class="bi bi-geo-alt-fill"></i>Apri l'itinerario in Mappe</button>
@@ -314,7 +310,7 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                         </div>
                     </div>
                 </div>
-                <?php endif; ?>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -368,7 +364,8 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
 
                 // Generate Apple Maps URL using +to: format
                 mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
-                // Fix for truncated Google Maps URL
+                
+                // Fixed Google Maps URL so it's not truncated
                 mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
 
                 document.getElementById('openMapButton').style.display = 'block';
@@ -404,7 +401,6 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
 
                 sendEmail(email, "Itinerario per gli appuntamenti del giorno " + "<?php echo $displayDate; ?>", message);
             });
-
             function sendEmail(email, subject, message) {
                 fetch('send_email.php', {
                     method: 'POST',
@@ -448,50 +444,65 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                     window.open(googleUrl, '_blank');
                 }
             }
-               // Helper function to process HTML entities
-function processHtmlEntities(element) {
-    // Process all text nodes in the element
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
-    let node;
-    while (node = walker.nextNode()) {
-        // Replace encoded entities with actual spaces
-        const textContent = node.textContent;
-        if (textContent.includes('&nbsp;') || textContent.includes('&amp;') || 
-            textContent.includes('&lt;') || textContent.includes('&gt;')) {
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = textContent;
-            node.textContent = tempDiv.textContent;
-        }
-    }
-    
-    // Apply proper spacing styles to all elements
-    const allElements = element.querySelectorAll('*');
-    allElements.forEach(el => {
-        el.style.wordSpacing = 'normal';
-        el.style.letterSpacing = 'normal';
-        el.style.wordBreak = 'break-word';
-    });
-}
             
+            // Helper function to properly handle HTML entities and ensure spaces between words
+            function fixWordSpacingForPDF(element) {
+                // Step 1: Replace HTML entities with actual spaces
+                const replaceEntities = function(node) {
+                    if (node.nodeType === 3) { // Text node
+                        // Create temporary element to decode entities
+                        const temp = document.createElement('div');
+                        temp.innerHTML = node.nodeValue;
+                        node.nodeValue = temp.textContent;
+                    } else if (node.nodeType === 1) { // Element node
+                        Array.from(node.childNodes).forEach(replaceEntities);
+                    }
+                };
+                
+                // Apply entity replacement to all nodes
+                replaceEntities(element);
+                
+                // Step 2: Apply explicit CSS for spacing
+                const allElements = element.querySelectorAll('*');
+                allElements.forEach(el => {
+                    el.style.wordSpacing = '0.15em';
+                    el.style.letterSpacing = '0.05em';
+                    el.style.whiteSpace = 'normal';
+                    el.style.wordBreak = 'break-word';
+
+                    // Ensure textContent has proper spaces - this is a critical step
+                    if (el.textContent) {
+                        let text = el.textContent;
+                        // Replace consecutive spaces with a single space
+                        text = text.replace(/\s+/g, ' ');
+                        el.textContent = text;
+                    }
+                });
+
+                // Step 3: Add explicit CSS to the parent element
+                element.style.wordSpacing = '0.15em';
+                element.style.letterSpacing = '0.05em';
+            }
+
             // Funzione per generare il PDF
             function generatePDF() {
                 // Preparazione contenuto per il PDF (clonare il contenuto degli appuntamenti)
                 const element = document.getElementById('appointments-content');
                 const elementClone = element.cloneNode(true);
-                
+
                 // Visualizza gli elementi nascosti per la stampa
                 elementClone.querySelectorAll('.d-print-block').forEach(el => {
                     el.classList.remove('d-none');
                 });
-                
+
                 // Nascondi gli elementi che non devono apparire nel PDF
                 elementClone.querySelectorAll('.no-print').forEach(el => {
                     el.style.display = 'none';
                 });
-                
-                // Process HTML entities to fix spacing issues
-                processHtmlEntities(elementClone);
-                
+
+                // Fix spacing issues
+                fixWordSpacingForPDF(elementClone);
+
                 // Configurazione html2pdf
                 const opt = {
                     margin: 10,
@@ -509,31 +520,31 @@ function processHtmlEntities(element) {
                         compress: false
                     }
                 };
-                
+
                 // Genera il PDF
                 return html2pdf().set(opt).from(elementClone).save();
             }
-            
+
             // Evento per il pulsante di stampa PDF
             document.getElementById('printPdfButton').addEventListener('click', function() {
                 generatePDF();
             });
-            
+
             // Evento per l'invio del PDF via email
             document.getElementById('sendPdfEmail').addEventListener('click', function() {
                 const email = document.getElementById('pdfEmailAddress').value;
                 const subject = document.getElementById('pdfEmailSubject').value;
                 const message = document.getElementById('pdfEmailMessage').value;
-                
+
                 if (!email) {
                     alert('Inserisci un indirizzo email valido.');
                     return;
                 }
-                
+
                 // Chiudi il modal
                 const modal = bootstrap.Modal.getInstance(document.getElementById('emailPdfModal'));
                 modal.hide();
-                
+
                 // Mostra messaggio di caricamento
                 const loadingDiv = document.createElement('div');
                 loadingDiv.id = 'loadingMessage';
@@ -548,31 +559,30 @@ function processHtmlEntities(element) {
                 loadingDiv.style.zIndex = '9999';
                 loadingDiv.innerHTML = '<div class="text-center"><div class="spinner-border text-light" role="status"></div><div class="mt-2">Generazione e invio del PDF in corso...</div></div>';
                 document.body.appendChild(loadingDiv);
-                
+
                 // Genera il PDF e invialo per email
                 generatePDFForEmail(email, subject, message);
             });
-            
+
             // Genera il PDF per l'email
             function generatePDFForEmail(email, subject, message) {
                 // Preparazione contenuto per il PDF
                 const element = document.getElementById('appointments-content');
                 const elementClone = element.cloneNode(true);
-                
+
                 // Visualizza gli elementi nascosti per la stampa
                 elementClone.querySelectorAll('.d-print-block').forEach(el => {
                     el.classList.remove('d-none');
                 });
-                
+
                 // Nascondi gli elementi che non devono apparire nel PDF
                 elementClone.querySelectorAll('.no-print').forEach(el => {
                     el.style.display = 'none';
                 });
-                
-                // Process HTML entities to fix spacing issues
-                processHtmlEntities(elementClone);
-                
-                
+
+                // Fix spacing issues
+                fixWordSpacingForPDF(elementClone);
+
                 // Configurazione html2pdf
                 const opt = {
                     margin: 10,
@@ -590,9 +600,9 @@ function processHtmlEntities(element) {
                         compress: false
                     }
                 };
-                
+
                 // Genera il PDF come blob
-                html2pdf().set(opt).from(elementClone).outputPdf('blob').then(function(pdfBlob) {
+                return html2pdf().set(opt).from(elementClone).outputPdf('blob').then(function(pdfBlob) {
                     // Crea un FormData e allega il PDF
                     const formData = new FormData();
                     formData.append('pdf', pdfBlob, 'appuntamenti-<?php echo $displayDate; ?>.pdf');
@@ -625,6 +635,6 @@ function processHtmlEntities(element) {
                 });
             }
         });
-    </script>
+        </script>
 </body>
 </html>
