@@ -479,7 +479,7 @@ function getNext3AppointmentDates($slots, $zoneId) {
                 continue; // Nessuno slot per questo giorno della settimana
             }
             
-            // Controlla quanti slot sono già prenotati per questa data
+            // Controlla quali slot sono già prenotati per questa data e zona
             $bookedSlotsSql = "SELECT appointment_time FROM cp_appointments 
                               WHERE zone_id = ? AND appointment_date = ?";
             $stmt = $conn->prepare($bookedSlotsSql);
@@ -492,6 +492,11 @@ function getNext3AppointmentDates($slots, $zoneId) {
                 $bookedTimes[] = $row['appointment_time'];
             }
             
+            // Se ci sono già appuntamenti in questa data, salta
+            if (count($bookedTimes) > 0) {
+                continue; // Salta questa data se ha già appuntamenti registrati
+            }
+            
             // Conta gli slot disponibili per questa data
             $availableSlots = [];
             foreach ($daySlots as $slot) {
@@ -502,8 +507,8 @@ function getNext3AppointmentDates($slots, $zoneId) {
                     continue;
                 }
                 
-                // Verifica se lo slot è già prenotato
-                if (!in_array($slotTime, $bookedTimes) && isAppointmentAvailable($zoneId, $formattedDate, $slotTime)) {
+                // Verifica se lo slot è disponibile
+                if (isAppointmentAvailable($zoneId, $formattedDate, $slotTime)) {
                     $availableSlots[] = $slotTime;
                 }
             }
@@ -515,6 +520,55 @@ function getNext3AppointmentDates($slots, $zoneId) {
                 // Se abbiamo già 3 giorni, interrompiamo
                 if (count($next3Days) >= 3) {
                     break;
+                }
+            }
+        }
+        
+        // Se non abbiamo trovato abbastanza giorni liberi, proviamo ad allentare i criteri
+        if (count($next3Days) < 3 && $iterationCount >= 1) {
+            for ($dayOffset = 0; $dayOffset < 14; $dayOffset++) {  // Esteso a due settimane
+                $checkDate = clone $currentDate;
+                $checkDate->modify("+$dayOffset days");
+                $checkDayOfWeek = $checkDate->format('N');
+                $formattedDate = $checkDate->format('Y-m-d');
+                
+                // Salta le date già aggiunte
+                if (isset($next3Days[$formattedDate])) {
+                    continue;
+                }
+                
+                // Ottieni tutti gli slot per questo giorno della settimana
+                $daySlots = array_filter($slots, function($slot) use ($checkDayOfWeek) {
+                    return date('N', strtotime($slot['day'])) == $checkDayOfWeek;
+                });
+                
+                if (empty($daySlots)) {
+                    continue;
+                }
+                
+                // Controlla quanti slot sono disponibili dopo aver considerato le prenotazioni esistenti
+                $availableSlots = [];
+                foreach ($daySlots as $slot) {
+                    $slotTime = $slot['time'];
+                    
+                    // Se la data è oggi e l'orario è già passato, salta
+                    if ($formattedDate == date('Y-m-d') && $slotTime <= date('H:i:s')) {
+                        continue;
+                    }
+                    
+                    // Verifica se lo slot è disponibile
+                    if (isAppointmentAvailable($zoneId, $formattedDate, $slotTime)) {
+                        $availableSlots[] = $slotTime;
+                    }
+                }
+                
+                // Se ci sono almeno 2 slot disponibili, aggiungi questa data
+                if (count($availableSlots) >= 2) {
+                    $next3Days[$formattedDate] = $availableSlots;
+                    
+                    if (count($next3Days) >= 3) {
+                        break;
+                    }
                 }
             }
         }
@@ -690,17 +744,32 @@ if (!empty($available_slots_near_appointments)) {
     echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
     foreach ($available_slots_near_appointments as $slot) {
         $slot_date = date('d/m/Y', strtotime($slot['date']));
-        $slot_time = date('H:i', strtotime($slot['time'])); // Assicurarsi che l'orario sia nel formato HH:MM
+        $slot_time = date('H:i', strtotime($slot['time']));
         $distance = number_format($slot['related_appointment']['distance'], 1);
         $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
-
+        
+        // Check if this is the first appointment of the day
+        $firstAppSql = "SELECT MIN(appointment_time) as first_time FROM cp_appointments 
+                        WHERE zone_id = ? AND appointment_date = ?";
+        $firstAppStmt = $conn->prepare($firstAppSql);
+        $firstAppStmt->bind_param("is", $slot['related_appointment']['zone_id'], $slot['date']);
+        $firstAppStmt->execute();
+        $firstAppResult = $firstAppStmt->get_result();
+        $firstAppRow = $firstAppResult->fetch_assoc();
+        $isFirstSlot = ($firstAppRow['first_time'] == $slot['related_appointment']['appointment_time']);
+        
         echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
         echo "<h4>{$slot_date} {$slot_time}</h4>";
         echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
         echo "{$slot['related_appointment']['address']}<br>";
         echo "<small>Distanza: {$distance} km</small></p>";
+        
+        // Add an indicator if this is before the first appointment
+        if ($slot['type'] == 'before' && $isFirstSlot) {
+            echo "<p style='color:#ff9900;'><small>⚠️ Questo slot precede il primo appuntamento della giornata</small></p>";
+        }
 
-        // Correzione dei parametri nel link "seleziona"
+        // Continue with the booking link...
         $nameEncoded = !empty($name) ? urlencode($name) : '';
         $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
         $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
@@ -714,7 +783,7 @@ if (!empty($available_slots_near_appointments)) {
         echo "</div>";
     }
     echo "</center></div><hr>";
-} else {
+}else {
     echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
 }
 // Assicurati che anche gli altri link "Seleziona" nel codice siano aggiornati nello stesso modo.
@@ -748,7 +817,7 @@ if (!empty($available_slots_near_appointments)) {
                 if (!empty($slots)) {
                     echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
                     
-                    // Aggiungi questo codice prima di chiamare getNext3AppointmentDates()
+// Aggiungi questo codice per il debug prima di chiamare getNext3AppointmentDates()
 echo "<div class='container'><center>";
 echo "<h4>Debug - Slots e appuntamenti per la zona {$zone['name']}:</h4>";
 
@@ -776,33 +845,72 @@ while ($app = $appsResult->fetch_assoc()) {
     echo "<li>{$app['appointment_date']} {$app['appointment_time']}</li>";
 }
 echo "</ul>";
-
 echo "</center></div>";
 
+$next3Days = getNext3AppointmentDates($slots, $zone['id']);
+
+// Diamo feedback all'utente se non ci sono date disponibili
+if (empty($next3Days)) {
+    echo "<div class='container'><center>";
+    echo "<p style='color:red;'>Non sono state trovate date con slot disponibili per la zona {$zone['name']}.</p>";
+    echo "</center></div>";
+} else {
+    echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
+    
+    foreach ($next3Days as $date => $times) {
+        $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
+        echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}</p>";
+        
+        if (empty($times)) {
+            echo "<p>Nessuna fascia oraria disponibile per questa data.</p>";
+        } else {
+            echo "<p>Fasce orarie disponibili: ";
+            foreach ($times as $time) {
+                $formattedTime = date('H:i', strtotime($time)); // Remove seconds
+                
+                $nameEncoded = !empty($name) ? urlencode($name) : '';
+                $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
+                $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
+                $addressEncoded = urlencode($address);
+                
+                echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
+                echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
+                echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
+                echo "' class='pure-button pure-button-primary' style='margin:0.2rem;'>{$formattedTime}</a>";
+            }
+            echo "</p>";
+        }
+    }
+    echo "</center></div><hr>";
+}
+
 
                     
-                    $next3Days = getNext3AppointmentDates($slots, $zone['id']);
-                    foreach ($next3Days as $date => $times) {
-                        $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
-                        echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}</p>";
-                        echo "<p>Fasce orarie disponibili: ";
-                        foreach ($times as $time) {
-                            $formattedTime = date('H:i', strtotime($time)); // Remove seconds
-                            
-$nameEncoded = !empty($name) ? urlencode($name) : '';
-$surnameEncoded = !empty($surname) ? urlencode($surname) : '';
-$phoneEncoded = !empty($phone) ? urlencode($phone) : '';
-$addressEncoded = urlencode($address);
-
-echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
-echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
-echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-echo "' class='pure-button pure-button-primary' style='margin:0.2rem;'>{$formattedTime}</a>";
-                    
-                            
-                        }
-                        echo "</p>";
-                    }
+  $next3Days = getNext3AppointmentDates($slots, $zone['id']);
+foreach ($next3Days as $date => $times) {
+    $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); 
+    
+    // Check if this date has existing appointments
+    $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
+                        WHERE zone_id = ? AND appointment_date = ?";
+    $existingStmt = $conn->prepare($existingAppsSql);
+    $existingStmt->bind_param("is", $zone['id'], $date);
+    $existingStmt->execute();
+    $existingResult = $existingStmt->get_result();
+    $existingRow = $existingResult->fetch_assoc();
+    $hasExistingAppointments = ($existingRow['count'] > 0);
+    
+    echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
+    
+    // Add an indicator if there are existing appointments
+    if ($hasExistingAppointments) {
+        echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
+    }
+    
+    echo "</p>";
+    
+    // Continue with showing available times...
+}
                     echo "</center></div><hr>";
                 } else {
                     echo "<div class='container'><p>Nessun appuntamento disponibile per i prossimi 3 giorni per la zona {$zone['name']}.</p></div>";
