@@ -909,8 +909,6 @@ foreach ($next3Days as $date => $times) {
     
     // Add the "Vedi agenda" button with a data attribute instead of onclick
 
-// Sostituiamo il pulsante "Vedi agenda" con un pulsante collapsible
-$collapseId = "collapse-" . str_replace("-", "", $date) . "-" . $zone['id'];
 
 
 // Crea un ID univoco per il collapsible
@@ -1238,39 +1236,7 @@ function reloadAgenda(contentId, date, zoneId) {
 </style>
 
 <script>
-// Funzione per caricare il contenuto dell'agenda in un div specifico
-function loadAgendaContent(date, zoneId, collapseId) {
-    document.getElementById('agenda-content-' + collapseId).innerHTML = `
-        <div class='text-center'>
-            <div class='spinner-border text-primary' role='status'>
-                <span class='visually-hidden'>Caricamento appuntamenti...</span>
-            </div>
-            <p>Caricamento appuntamenti...</p>
-        </div>
-    `;
-    
-    fetch('get_appointments_modal.php?date=' + date + '&zone_id=' + zoneId)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Errore nel caricamento dei dati');
-            }
-            return response.text();
-        })
-        .then(html => {
-            document.getElementById('agenda-content-' + collapseId).innerHTML = html;
-        })
-        .catch(error => {
-            document.getElementById('agenda-content-' + collapseId).innerHTML = `
-                <div class='alert alert-danger'>
-                    <p>Si è verificato un errore: ${error.message}</p>
-                    <button class='btn btn-sm btn-outline-danger' onclick="loadAgendaContent('${date}', ${zoneId}, '${collapseId}')">
-                        <i class='bi bi-arrow-clockwise'></i> Riprova
-                    </button>
-                </div>
-            `;
-        });
-}
-</script>
+
 
 
 <?php // End of added head content ?>
