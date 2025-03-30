@@ -909,9 +909,11 @@ foreach ($next3Days as $date => $times) {
     
     // Add the "Vedi agenda" button with a data attribute instead of onclick
 
-echo " <a href='javascript:void(0);' class='agenda-button' onclick='showAppointments(\"$date\", \"{$zone['id']}\")'>
-    <i class='bi bi-calendar'></i> Vedi agenda
-</a>";
+echo " <button type='button' class='agenda-button btn btn-sm btn-outline-primary' 
+           data-date='{$date}' 
+           data-zone-id='{$zone['id']}'>
+           <i class='bi bi-calendar'></i> Vedi agenda
+       </button>";
     
     echo "</p>";
     
@@ -1024,8 +1026,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calcolo Indirizzo</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
-    <link rel="stylesheet" href="styles.css">
+  <!-- Bootstrap CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Bootstrap Icons -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.min.css">
+<!-- Bootstrap Bundle with Popper -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <style>
         .container {
             max-width: 600px;
@@ -1508,6 +1514,161 @@ function showAppointments(date, zoneId) {
         window.open('view_agenda.php?date=' + date + '&zone_id=' + zoneId, '_blank');
     }
 }
+</script>
+
+<!-- Appointments Modal -->
+<div class="modal fade" id="appointmentsModal" tabindex="-1" aria-labelledby="appointmentsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="appointmentsModalLabel">Appuntamenti</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="appointmentsModalBody">
+        <div class="text-center">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Caricamento...</span>
+          </div>
+          <p>Caricamento appuntamenti...</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- JavaScript code for appointments modal -->
+<script>
+// Global variable to hold modal instance
+let appointmentsModalInstance;
+
+// Initialize when document is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize modal
+    const appointmentsModalEl = document.getElementById('appointmentsModal');
+    appointmentsModalInstance = new bootstrap.Modal(appointmentsModalEl);
+    
+    // Add event listeners to all agenda buttons
+    document.querySelectorAll('.agenda-button').forEach(button => {
+        button.addEventListener('click', function() {
+            const date = this.getAttribute('data-date');
+            const zoneId = this.getAttribute('data-zone-id');
+            loadAppointments(date, zoneId);
+        });
+    });
+    
+    // Listen for modal hidden event to clean up
+    appointmentsModalEl.addEventListener('hidden.bs.modal', function () {
+        document.getElementById('appointmentsModalBody').innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Caricamento...</span>
+                </div>
+                <p>Caricamento appuntamenti...</p>
+            </div>
+        `;
+    });
+});
+
+// Function to load appointments into modal
+function loadAppointments(date, zoneId) {
+    // Show modal with loading indicator
+    appointmentsModalInstance.show();
+    
+    // Format date for display
+    const dateObj = new Date(date);
+    const formattedDate = dateObj.toLocaleDateString('it-IT', {
+        day: 'numeric', month: 'long', year: 'numeric'
+    });
+    
+    // Update modal title
+    document.getElementById('appointmentsModalLabel').textContent = 'Appuntamenti del ' + formattedDate;
+    
+    // Fetch appointments
+    fetch(`get_appointments_modal.php?date=${date}&zone_id=${zoneId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Errore nel caricamento dei dati');
+            }
+            return response.text();
+        })
+        .then(html => {
+            document.getElementById('appointmentsModalBody').innerHTML = html;
+        })
+        .catch(error => {
+            document.getElementById('appointmentsModalBody').innerHTML = `
+                <div class="alert alert-danger">
+                    <p>Si è verificato un errore: ${error.message}</p>
+                    <button class="btn btn-sm btn-outline-danger" onclick="loadAppointments('${date}', ${zoneId})">
+                        <i class="bi bi-arrow-clockwise"></i> Riprova
+                    </button>
+                </div>
+            `;
+        });
+}
+</script>
+<script>
+// Function to open the appointment modal
+function openAppointmentModal(button) {
+    // Get the date and zone from the button data attributes
+    const date = button.getAttribute('data-date');
+    const zoneId = button.getAttribute('data-zone');
+    
+    // Update the modal title to include the date
+    document.getElementById('appointmentModalLabel').innerText = 'Caricamento appuntamenti...';
+    
+    // Clear previous content
+    document.getElementById('appointmentContent').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Caricamento...</span>
+            </div>
+            <p class="mt-2">Caricamento appuntamenti...</p>
+        </div>
+    `;
+    
+    // Show the modal
+    const appointmentModal = new bootstrap.Modal(document.getElementById('appointmentModal'));
+    appointmentModal.show();
+    
+    // Fetch the appointment data using AJAX
+    fetch(`get_appointments_modal.php?date=${date}&zone_id=${zoneId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.text();
+        })
+        .then(html => {
+            // Update the modal title and content
+            const formattedDate = new Date(date).toLocaleDateString('it-IT', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+            });
+            document.getElementById('appointmentModalLabel').innerText = `Appuntamenti del ${formattedDate}`;
+            document.getElementById('appointmentContent').innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error fetching appointments:', error);
+            document.getElementById('appointmentContent').innerHTML = `
+                <div class="alert alert-danger">
+                    Errore nel caricamento degli appuntamenti: ${error.message}
+                    <button class="btn btn-sm btn-outline-danger ms-2" onclick="openAppointmentModal(this)" 
+                        data-date="${date}" data-zone="${zoneId}">
+                        Riprova
+                    </button>
+                </div>
+            `;
+        });
+}
+
+// Initialize all modals when the document is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing modals...');
+});
 </script>
 </body>
 </html>
