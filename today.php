@@ -1,10 +1,6 @@
 <?php
 include_once 'db.php';
-
-// Verifica che la connessione al database sia stata stabilita correttamente
-if (!$conn) {
-    die("Connessione al database non riuscita: " . mysqli_connect_error());
-}
+include_once 'ext_parts/fpdf/fpdf.php';
 
 session_start();
 
@@ -16,7 +12,7 @@ if (isset($_GET['logout'])) {
 }
 
 // Gestisci la sottomissione del modulo di login
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset($_POST['password'])) {
     $username = $_POST['username'];
     $password = $_POST['password'];
 
@@ -40,30 +36,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if (!isset($_SESSION['user_id'])) {
     // Mostra il modulo di login
     echo '<!DOCTYPE html>
-<html>
-<head>
-    <title>Login</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
-    <meta name="format-detection" content="telephone=no">
-</head>
-<body>
-    <div class="container d-flex justify-content-center align-items-center" style="height: 100vh;">
-        <div class="card p-4 shadow-sm" style="width: 100%; max-width: 400px;">
-            <h2 class="text-center">Login</h2>
-            <form method="post" action="today.php">
-                <div class="mb-3">
-                    <label for="username" class="form-label">Username:</label>
-                    <input type="text" id="username" name="username" class="form-control" required>
-                </div>
-                <div class="mb-3">
-                    <label for="password" class="form-label">Password:</label>
-                    <input type="password" id="password" name="password" class="form-control" required>
-                </div>
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary">Login</button>
-                </div>
-            </form>';
+    <html>
+    <head>
+        <title>Login</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+        <meta name="format-detection" content="telephone=no">
+    </head>
+    <body>
+        <div class="container d-flex justify-content-center align-items-center" style="height: 100vh;">
+            <div class="card p-4 shadow-sm" style="width: 100%; max-width: 400px;">
+                <h2 class="text-center">Login</h2>
+                <form method="post" action="today.php">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username:</label>
+                        <input type="text" id="username" name="username" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password:</label>
+                        <input type="password" id="password" name="password" class="form-control" required>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Login</button>
+                    </div>
+                </form>';
     if (isset($login_error)) {
         echo '<p class="text-danger text-center mt-3">' . $login_error . '</p>';
     }
@@ -99,6 +95,68 @@ $appointments = getAppointmentsByDate($conn, $selectedDate);
 $today = date('Y-m-d');
 $isToday = $selectedDate === $today;
 $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
+
+// Funzione per generare il PDF
+function generatePDF($appointments, $displayDate) {
+    $pdf = new FPDF();
+    $pdf->AddPage();
+    $pdf->SetFont('Arial', 'B', 16);
+    $pdf->Cell(0, 10, "Appuntamenti del $displayDate", 0, 1, 'C');
+    $pdf->Ln(10);
+
+    foreach ($appointments as $appointment) {
+        $pdf->SetFont('Arial', 'B', 12);
+        $pdf->Cell(0, 10, date('H:i', strtotime($appointment['appointment_time'])) . " - " . $appointment['name'] . " " . $appointment['surname'], 0, 1);
+        $pdf->SetFont('Arial', '', 12);
+        $pdf->Cell(0, 10, "Telefono: " . $appointment['phone'], 0, 1);
+        $pdf->Cell(0, 10, "Indirizzo: " . $appointment['address'], 0, 1);
+        if (!empty($appointment['notes'])) {
+            $pdf->Cell(0, 10, "Note: " . $appointment['notes'], 0, 1);
+        }
+        $pdf->Ln(5);
+    }
+
+    return $pdf->Output('S');
+}
+
+// Funzione per inviare email con il PDF allegato
+function sendEmailWithPDF($appointments, $displayDate, $recipientEmail) {
+    $pdfContent = generatePDF($appointments, $displayDate);
+
+    $subject = "Appuntamenti del $displayDate";
+    $message = "In allegato il PDF con gli appuntamenti del $displayDate.";
+    $boundary = md5(uniqid(time()));
+
+    $headers = "From: your_email@example.com\r\n";
+    $headers .= "Reply-To: your_email@example.com\r\n";
+    $headers .= "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n\r\n";
+
+    $body = "--$boundary\r\n";
+    $body .= "Content-Type: text/plain; charset=\"UTF-8\"\r\n";
+    $body .= "Content-Transfer-Encoding: 7bit\r\n\r\n";
+    $body .= "$message\r\n\r\n";
+    $body .= "--$boundary\r\n";
+    $body .= "Content-Type: application/pdf; name=\"appuntamenti.pdf\"\r\n";
+    $body .= "Content-Transfer-Encoding: base64\r\n";
+    $body .= "Content-Disposition: attachment; filename=\"appuntamenti.pdf\"\r\n\r\n";
+    $body .= chunk_split(base64_encode($pdfContent)) . "\r\n";
+    $body .= "--$boundary--";
+
+    return mail($recipientEmail, $subject, $body, $headers);
+}
+
+if (isset($_POST['action']) && $_POST['action'] === 'send_pdf') {
+    $recipientEmail = $_POST['email'];
+    $success = sendEmailWithPDF($appointments, $displayDate, $recipientEmail);
+    echo json_encode(['success' => $success]);
+    exit;
+}
+
+if (isset($_GET['action']) && $_GET['action'] === 'generate_pdf') {
+    generatePDF($appointments, $displayDate);
+    exit;
+}
 ?>
 
 <!DOCTYPE html>
@@ -196,6 +254,12 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                 </a>
             </div>
             <div class="col text-end">
+                <a href="today.php?action=generate_pdf&date=<?php echo $selectedDate; ?>" class="btn btn-primary mx-1 print-button">
+                    <i class="bi bi-printer"></i> Stampa PDF
+                </a>
+                <button id="emailPdfButton" class="btn btn-primary mx-1 email-button">
+                    <i class="bi bi-envelope"></i> Invia PDF via Email
+                </button>
                 <a href="today.php?logout=true" class="btn btn-light logout-button">
                     <i class="bi bi-x-circle"></i> Esci
                 </a>
@@ -225,128 +289,64 @@ $displayDate = $isToday ? "Oggi" : date('d-m-Y', strtotime($selectedDate));
                 </div>
                 <hr>
             <?php endforeach; ?>
-            <div class="container mt-5">
-                <h2>Genera l'itinerario per oggi</h2>
-                <button id="openMapButton" style="margin:0 auto 2rem auto;" class="btn btn-success mt-3"><i class="bi bi-geo-alt-fill"></i>Apri l'itinerario in Mappe</button>
-                <hr>
-                <h2>Invia l'itinerario per email</h2>
-                <div id="emailGroup" class="container mt-3">
-                    <div class="row">
-                        <div class="col-md-12 mb-3">
-                            <input type="email" id="email" placeholder="Inserisci email" class="form-control">
-                            <div class="form-check mt-2">
-                                <input class="form-check-input" type="checkbox" id="formatGoogle" value="google">
-                                <label class="form-check-label" for="formatGoogle">Google Maps</label>
-                            </div>
-                            <div class="form-check mt-2">
-                                <input class="form-check-input" type="checkbox" id="formatApple" value="apple">
-                                <label class="form-check-label" for="formatApple">Apple Maps</label>
-                            </div>
-                            <div class="input-group mt-2">
-                                <button id="sendEmail" class="btn btn-primary email-button"><i class="bi bi-envelope-fill"></i>Invia URL</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         <?php endif; ?>
     </div>
 
+    <!-- Modal for sending email -->
+    <div class="modal fade" id="emailModal" tabindex="-1" aria-labelledby="emailModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="emailModalLabel">Invia PDF via Email</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="emailForm">
+                        <div class="mb-3">
+                            <label for="recipientEmail" class="form-label">Indirizzo Email</label>
+                            <input type="email" class="form-control" id="recipientEmail" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Invia</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            var appointments = <?php echo json_encode($appointments); ?>;
-            var mapUrlGoogle = '';
-            var mapUrlApple = '';
+        document.getElementById('emailPdfButton').addEventListener('click', function() {
+            var emailModal = new bootstrap.Modal(document.getElementById('emailModal'));
+            emailModal.show();
+        });
 
-            if (appointments.length > 0) {
-                let waypoints = appointments.map(appointment => appointment.address);
-                
-                // Ensure at least a start and end point
-                let start = "Current+Location";
-                let end = waypoints.pop(); // Last waypoint as end
-                let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
+        document.getElementById('emailForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            var recipientEmail = document.getElementById('recipientEmail').value;
 
-                // Generate Apple Maps URL using +to: format
-                mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
-                mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
-
-                document.getElementById('openMapButton').style.display = 'block';
-                document.getElementById('emailGroup').style.display = 'block';
-            } else {
-                document.getElementById('openMapButton').style.display = 'none';
-                document.getElementById('emailGroup').style.display = 'none';
-            }
-
-            document.getElementById('sendEmail').addEventListener('click', function() {
-                const email = document.getElementById('email').value;
-                const formatGoogle = document.getElementById('formatGoogle').checked;
-                const formatApple = document.getElementById('formatApple').checked;
-
-                if (!email) {
-                    alert('Inserisci un indirizzo email valido.');
-                    return;
-                }
-
-                if (!formatGoogle && !formatApple) {
-                    alert('Seleziona almeno un formato per l\'URL delle mappe.');
-                    return;
-                }
-
-                let message = `Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti del giorno ${"<?php echo $displayDate; ?>"}:\n\n`;
-                if (formatGoogle) {
-                    message += `**APRI IN GOOGLE MAPS**\n${mapUrlGoogle}\n\n`;
-                }
-                if (formatApple) {
-                    message += `**APRI IN MAPPE APPLE**\n${mapUrlApple}\n\n`;
-                }
-                message += "Cordiali saluti,\nIl Team degli Appuntamenti";
-
-                sendEmail(email, `Itinerario per gli appuntamenti del giorno ${"<?php echo $displayDate; ?>"}`, message);
-            });
-
-            function sendEmail(email, subject, message) {
-                fetch('send_email.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ email: email, subject: subject, message: message })
+            fetch('today.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'send_pdf',
+                    email: recipientEmail
                 })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Email inviata con successo.');
-                    } else {
-                        alert('Errore nell\'invio dell\'email.');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Errore nell\'invio dell\'email.');
-                });
-            }
-
-            document.getElementById('openMapButton').addEventListener('click', function() {
-                openMap(mapUrlGoogle, mapUrlApple);
-            });
-
-            document.querySelectorAll('.map-button').forEach(button => {
-                button.addEventListener('click', function() {
-                    const address = this.getAttribute('data-address');
-                    const googleUrl = `https://www.google.com/maps/search/?api=1&query=${address}`;
-                    const appleUrl = `maps://?q=${address}`;
-                    openMap(googleUrl, appleUrl);
-                });
-            });
-
-            function openMap(googleUrl, appleUrl) {
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                if (isIOS) {
-                    window.open(appleUrl, '_blank');
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Email inviata con successo.');
                 } else {
-                    window.open(googleUrl, '_blank');
+                    alert('Errore nell\'invio dell\'email.');
                 }
-            }
+                var emailModal = bootstrap.Modal.getInstance(document.getElementById('emailModal'));
+                emailModal.hide();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Errore nell\'invio dell\'email.');
+            });
         });
     </script>
 </body>
