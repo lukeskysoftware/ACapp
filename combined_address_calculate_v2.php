@@ -915,10 +915,20 @@ echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-togg
     <i class='bi bi-calendar'></i> Vedi agenda
 </button>";
 
-// Aggiungere il div collapsible per i dettagli dell'agenda
+// Questo è il codice corretto per il pulsante "Vedi agenda" con il toggle funzionante
+// Da inserire dove mostri i giorni disponibili (intorno alla riga 913-920)
+
+$collapseId = "collapse-" . str_replace(["-", ":"], "", $date) . "-" . $zone['id'];
+$contentId = "agenda-content-" . $collapseId;
+
+echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
+    <i class='bi bi-calendar'></i> Vedi agenda
+</button>";
+
+// Aggiunta del div collassabile per i contenuti dell'agenda
 echo "</p>";
 echo "<div class='collapse mb-3' id='$collapseId'>
-    <div class='card card-body agenda-details' id='agenda-content-$collapseId'>
+    <div class='card card-body agenda-details' id='$contentId'>
         <div class='text-center'>
             <div class='spinner-border text-primary' role='status'>
                 <span class='visually-hidden'>Caricamento appuntamenti...</span>
@@ -927,6 +937,37 @@ echo "<div class='collapse mb-3' id='$collapseId'>
         </div>
     </div>
 </div>";
+
+// Script inline per caricare i contenuti
+echo "<script>
+    (function() {
+        var collapseEl = document.getElementById('$collapseId');
+        var contentEl = document.getElementById('$contentId');
+        var date = '$date';
+        var zoneId = {$zone['id']};
+        
+        if (collapseEl) {
+            collapseEl.addEventListener('shown.bs.collapse', function() {
+                fetch('get_appointments_modal.php?date=' + date + '&zone_id=' + zoneId)
+                    .then(function(response) {
+                        if (!response.ok) throw new Error('Errore di rete');
+                        return response.text();
+                    })
+                    .then(function(html) {
+                        contentEl.innerHTML = html;
+                    })
+                    .catch(function(error) {
+                        contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
+                            '<p>Si è verificato un errore: ' + error.message + '</p>' +
+                            '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
+                            '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
+                            '</button>' +
+                        '</div>';
+                    });
+            });
+        }
+    })();
+</script>";
 
 // Aggiungere lo script per caricare i dati quando il collapse è mostrato
 echo "<script>
@@ -1131,7 +1172,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             messageContainer.style.display = 'block';
         }
         
-        
+        // Funzione per ricaricare l'agenda in caso di errore
+function reloadAgenda(contentId, date, zoneId) {
+    var contentEl = document.getElementById(contentId);
+    contentEl.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Caricamento appuntamenti...</span></div><p>Caricamento appuntamenti...</p></div>';
+    
+    fetch('get_appointments_modal.php?date=' + date + '&zone_id=' + zoneId)
+        .then(function(response) {
+            if (!response.ok) throw new Error('Errore di rete');
+            return response.text();
+        })
+        .then(function(html) {
+            contentEl.innerHTML = html;
+        })
+        .catch(function(error) {
+            contentEl.innerHTML = '<div class="alert alert-danger">' +
+                '<p>Si è verificato un errore: ' + error.message + '</p>' +
+                '<button class="btn btn-sm btn-outline-danger" onclick="reloadAgenda(\'' + contentId + '\', \'' + date + '\', ' + zoneId + ')">' +
+                '<i class="bi bi-arrow-clockwise"></i> Riprova' +
+                '</button>' +
+            '</div>';
+        });
+}
         
     </script>
     
@@ -1211,8 +1273,8 @@ function loadAgendaContent(date, zoneId, collapseId) {
         .catch(error => {
             document.getElementById('agenda-content-' + collapseId).innerHTML = `
                 <div class='alert alert-danger'>
-                    <p>Si è verificato un errore: \${error.message}</p>
-                    <button class='btn btn-sm btn-outline-danger' onclick='loadAgendaContent("${date}", ${zoneId}, "${collapseId}")'>
+                    <p>Si è verificato un errore: ${error.message}</p>
+                    <button class='btn btn-sm btn-outline-danger' onclick="loadAgendaContent('${date}', ${zoneId}, '${collapseId}')">
                         <i class='bi bi-arrow-clockwise'></i> Riprova
                     </button>
                 </div>
@@ -1299,95 +1361,8 @@ function loadAgendaContent(date, zoneId, collapseId) {
             </form>
         </div>
     </div>
-    
-    
 
 
-<!-- Appointments Modal -->
-<div class="modal fade" id="appointmentsModal" tabindex="-1" aria-labelledby="appointmentsModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="appointmentsModalLabel">Appuntamenti</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="appointmentsModalBody">
-        <div class="text-center">
-          <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Caricamento...</span>
-          </div>
-          <p>Caricamento appuntamenti...</p>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-// Funzione per inizializzare i pulsanti dell'agenda
-document.addEventListener('DOMContentLoaded', function() {
-    // Usa un event listener delegato per catturare i click sui pulsanti agenda
-    document.body.addEventListener('click', function(event) {
-        // Controlla se l'elemento cliccato o un suo genitore ha la classe agenda-button
-        const button = event.target.closest('.agenda-button');
-        if (button) {
-            const date = button.getAttribute('data-date');
-            const zoneId = button.getAttribute('data-zone-id');
-            console.log(`Pulsante cliccato con data: ${date}, zoneId: ${zoneId}`);
-            loadAppointmentsIntoModal(date, zoneId);
-        }
-    });
-});
-
-// Funzione per caricare gli appuntamenti nel modal
-function loadAppointmentsIntoModal(date, zoneId) {
-    // Mostra il modal
-    const appointmentsModal = new bootstrap.Modal(document.getElementById('appointmentsModal'));
-    appointmentsModal.show();
-    
-    // Formatta la data per la visualizzazione
-    const dateObj = new Date(date);
-    const options = { day: 'numeric', month: 'long', year: 'numeric' };
-    const formattedDate = dateObj.toLocaleDateString('it-IT', options);
-    
-    // Aggiorna il titolo del modal
-    document.getElementById('appointmentsModalLabel').textContent = 'Appuntamenti del ' + formattedDate;
-    
-    // Reimposta il contenuto del modal allo stato di caricamento
-    document.getElementById('appointmentsModalBody').innerHTML = `
-        <div class="text-center">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Caricamento...</span>
-            </div>
-            <p>Caricamento appuntamenti...</p>
-        </div>
-    `;
-    
-    // Carica gli appuntamenti con AJAX
-    fetch(`get_appointments_modal.php?date=${date}&zone_id=${zoneId}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Errore nel caricamento dei dati');
-            }
-            return response.text();
-        })
-        .then(html => {
-            document.getElementById('appointmentsModalBody').innerHTML = html;
-        })
-        .catch(error => {
-            document.getElementById('appointmentsModalBody').innerHTML = `
-                <div class="alert alert-danger">
-                    <p>Si è verificato un errore: ${error.message}</p>
-                    <button class="btn btn-sm btn-outline-danger" onclick="loadAppointmentsIntoModal('${date}', ${zoneId})">
-                        <i class="bi bi-arrow-clockwise"></i> Riprova
-                    </button>
-                </div>
-            `;
-        });
-}
 </script>
 </body>
 </html>
