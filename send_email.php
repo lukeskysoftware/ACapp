@@ -6,8 +6,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $subject = $data['subject'];
     $message = $data['message'];
 
-    $headers = 'From: no-reply@yourdomain.com' . "\r\n" .
-               'Reply-To: no-reply@yourdomain.com' . "\r\n" .
+    $headers = 'From: ACapp <agenda@acapp.com>' . "\r\n" .
+               'Reply-To: no-reply@acapp.com' . "\r\n" .
                'X-Mailer: PHP/' . phpversion();
 
     if (mail($email, $subject, $message, $headers)) {
