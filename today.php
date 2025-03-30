@@ -141,8 +141,8 @@ function sendEmailWithPDF($appointments, $displayDate, $recipientEmail) {
     $message = "In allegato il PDF con gli appuntamenti del $displayDate.";
     $boundary = md5(uniqid(time()));
 
-    $headers = "From: your_email@example.com\r\n";
-    $headers .= "Reply-To: your_email@example.com\r\n";
+    $headers = "From: gestioneappuntamenti@ac.it\r\n";
+    $headers .= "Reply-To:\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n\r\n";
 
