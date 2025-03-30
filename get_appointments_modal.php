@@ -1,6 +1,6 @@
 <?php
 // Connessione al database
-require_once 'database_connection.php';
+require_once 'db.php';
 
 // Inizializza l'output
 $output = '';
