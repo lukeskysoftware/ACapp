@@ -297,8 +297,32 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     $available_slots = [];
     $zone_id = $appointmentData['zone_id'];
     $duration = 60; // Default duration for zone_id=0
+    $last_slot_time = null; // Per memorizzare l'ultimo slot configurato per il giorno
     
-    // Se la zona non è 0, calcola il tempo tra appuntamenti dalla tabella cp_slots
+    // Ottieni il giorno della settimana dell'appuntamento
+    $appointment_date = $appointmentData['appointment_date'];
+    $appointment_day_of_week = date('N', strtotime($appointment_date)); // 1-7 (Lun-Dom)
+    
+    // MODIFICA: Ottieni l'ultimo slot configurato per questo giorno della settimana IN QUALSIASI ZONA
+    $last_slot_sql = "SELECT MAX(time) as last_time 
+                      FROM cp_slots 
+                      WHERE DATE_FORMAT(STR_TO_DATE(day, '%W'), '%w') = ?";
+    $last_slot_stmt = $conn->prepare($last_slot_sql);
+    
+    if ($last_slot_stmt) {
+        // Converti da 1-7 (Lun-Dom) a 0-6 (Dom-Sab) per MySQL DATE_FORMAT
+        $mysql_day_of_week = ($appointment_day_of_week % 7); // 0=Dom, 1=Lun, ..., 6=Sab
+        $last_slot_stmt->bind_param("i", $mysql_day_of_week);
+        $last_slot_stmt->execute();
+        $last_slot_result = $last_slot_stmt->get_result();
+        
+        if ($last_slot_row = $last_slot_result->fetch_assoc()) {
+            $last_slot_time = $last_slot_row['last_time'];
+            error_log("Ultimo slot configurato per il giorno della settimana $appointment_day_of_week (in qualsiasi zona): $last_slot_time");
+        }
+    }
+    
+    // Ora procedi con il calcolo della durata dello slot per la zona specifica
     if ($zone_id != 0) {
         // Ottieni gli slot per questa zona
         $sql = "SELECT day, time FROM cp_slots WHERE zone_id = ? ORDER BY day, time";
@@ -308,19 +332,30 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
             $stmt->execute();
             $result = $stmt->get_result();
             
-            if ($result->num_rows > 1) {
+            if ($result->num_rows > 0) {
                 // Estrai tutti gli orari in un array
                 $times = [];
+                
                 while ($row = $result->fetch_assoc()) {
-                    $times[] = $row['time'];
+                    $slot_day_of_week = date('N', strtotime($row['day'])); // 1-7 (Lun-Dom)
+                    
+                    // Prendi solo gli slot del giorno corrispondente
+                    if ($slot_day_of_week == $appointment_day_of_week) {
+                        $times[] = $row['time'];
+                    }
                 }
                 
-                // Calcola la differenza di tempo tra il primo e il secondo slot
+                // Ordina gli orari
+                sort($times);
+                
+                // Calcola la differenza di tempo tra slot consecutivi
                 if (count($times) >= 2) {
                     $first_time = strtotime($times[0]);
                     $second_time = strtotime($times[1]);
                     $duration_seconds = $second_time - $first_time;
                     $duration = $duration_seconds / 60; // Converti in minuti
+                    
+                    error_log("Durata calcolata dello slot per la zona $zone_id: $duration minuti");
                 }
             }
         }
@@ -336,6 +371,16 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     // Slot dopo (+durata minuti)
     $after_slot = clone $appointment_datetime;
     $after_slot->modify('+' . $duration . ' minutes');
+    
+    // Verifica se lo slot dopo è successivo all'ultimo slot configurato
+    $after_slot_exceeds_limit = false;
+    if ($last_slot_time) {
+        $last_slot_datetime = new DateTime($appointmentData['appointment_date'] . ' ' . $last_slot_time);
+        if ($after_slot > $last_slot_datetime) {
+            $after_slot_exceeds_limit = true;
+            error_log("Lo slot dopo (" . $after_slot->format('H:i:s') . ") supera l'ultimo orario configurato ($last_slot_time) per il giorno");
+        }
+    }
     
     // Ottieni tutti gli appuntamenti del giorno per questa zona
     $sql = "SELECT id, appointment_time, address 
@@ -430,11 +475,11 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
             }
         }
         
-        // Controlla se lo slot dopo è valido
-        if (!$next_appointment || isTimeSlotAvailable($zone_id, $after_slot->format('Y-m-d'), $after_slot->format('H:i:s'))) {
-            // Se non c'è un appuntamento successivo o lo slot è disponibile temporalmente
+        // Controlla se lo slot dopo è valido e non supera l'ultimo orario configurato
+        if ((!$next_appointment || isTimeSlotAvailable($zone_id, $after_slot->format('Y-m-d'), $after_slot->format('H:i:s')))
+            && !$after_slot_exceeds_limit) {  // <-- Questa condizione esclude slot dopo l'ultimo orario
             
-            // Verifica ora se lo slot rispetta anche i vincoli di distanza
+            // Verifica se lo slot rispetta anche i vincoli di distanza
             $distance_constraint_met = true;
             $debug_info = []; // Per raccogliere informazioni di debug
             
@@ -485,6 +530,8 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
                     'debug_info' => $debug_info
                 ];
             }
+        } else if ($after_slot_exceeds_limit) {
+            error_log("Slot dopo (" . $after_slot->format('H:i:s') . ") escluso perché supera l'ultimo orario configurato");
         }
     }
     
@@ -991,7 +1038,7 @@ if (!empty($nearby_appointments)) {
         
         
         
-// Codice esistente per la visualizzazione degli slot disponibili
+// Codice per la visualizzazione degli slot disponibili con le modifiche richieste
 if (!empty($available_slots_near_appointments)) {
     echo "<div class='container'><center>";
     echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
@@ -1034,7 +1081,7 @@ if (!empty($available_slots_near_appointments)) {
             echo "<p style='color:#FF0000; font-weight:bold; font-size:1.1em;'>Questo slot precede il primo appuntamento della giornata</p>";
         }
 
-        // Aggiungi il pulsante "Vedi agenda"
+        // Aggiungi il pulsante "Vedi agenda" 
         $date = $slot['date'];
         // Crea un ID univoco per il collapsible
         $collapseId = "collapse-slot-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $slot['related_appointment']['zone_id'];
