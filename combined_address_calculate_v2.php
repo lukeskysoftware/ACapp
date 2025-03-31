@@ -299,26 +299,35 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     $duration = 60; // Default duration for zone_id=0
     $last_slot_time = null; // Per memorizzare l'ultimo slot configurato per il giorno
     
-    // Ottieni il giorno della settimana dell'appuntamento
+    // Ottieni il giorno della settimana dell'appuntamento (1-7, 1=Lun, 7=Dom)
     $appointment_date = $appointmentData['appointment_date'];
-    $appointment_day_of_week = date('N', strtotime($appointment_date)); // 1-7 (Lun-Dom)
+    $appointment_day_of_week = date('N', strtotime($appointment_date));
+    
+    // Traduci il giorno della settimana in inglese per il confronto nel database
+    $day_names = [
+        1 => 'Monday',
+        2 => 'Tuesday',
+        3 => 'Wednesday',
+        4 => 'Thursday',
+        5 => 'Friday',
+        6 => 'Saturday',
+        7 => 'Sunday'
+    ];
+    $day_name = $day_names[$appointment_day_of_week];
     
     // MODIFICA: Ottieni l'ultimo slot configurato per questo giorno della settimana IN QUALSIASI ZONA
-    $last_slot_sql = "SELECT MAX(time) as last_time 
-                      FROM cp_slots 
-                      WHERE DATE_FORMAT(STR_TO_DATE(day, '%W'), '%w') = ?";
+    // Utilizziamo il confronto diretto con il nome del giorno
+    $last_slot_sql = "SELECT MAX(time) as last_time FROM cp_slots WHERE day = ?";
     $last_slot_stmt = $conn->prepare($last_slot_sql);
     
     if ($last_slot_stmt) {
-        // Converti da 1-7 (Lun-Dom) a 0-6 (Dom-Sab) per MySQL DATE_FORMAT
-        $mysql_day_of_week = ($appointment_day_of_week % 7); // 0=Dom, 1=Lun, ..., 6=Sab
-        $last_slot_stmt->bind_param("i", $mysql_day_of_week);
+        $last_slot_stmt->bind_param("s", $day_name);
         $last_slot_stmt->execute();
         $last_slot_result = $last_slot_stmt->get_result();
         
         if ($last_slot_row = $last_slot_result->fetch_assoc()) {
             $last_slot_time = $last_slot_row['last_time'];
-            error_log("Ultimo slot configurato per il giorno della settimana $appointment_day_of_week (in qualsiasi zona): $last_slot_time");
+            error_log("Ultimo slot configurato per il giorno $day_name (in qualsiasi zona): $last_slot_time");
         }
     }
     
@@ -378,7 +387,7 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
         $last_slot_datetime = new DateTime($appointmentData['appointment_date'] . ' ' . $last_slot_time);
         if ($after_slot > $last_slot_datetime) {
             $after_slot_exceeds_limit = true;
-            error_log("Lo slot dopo (" . $after_slot->format('H:i:s') . ") supera l'ultimo orario configurato ($last_slot_time) per il giorno");
+            error_log("Lo slot dopo (" . $after_slot->format('H:i:s') . ") supera l'ultimo orario configurato ($last_slot_time) per il giorno $day_name");
         }
     }
     
