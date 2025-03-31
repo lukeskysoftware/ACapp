@@ -337,10 +337,11 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     $after_slot = clone $appointment_datetime;
     $after_slot->modify('+' . $duration . ' minutes');
     
-    // Ottieni il primo e l'ultimo appuntamento del giorno per questa zona
-    $sql = "SELECT MIN(appointment_time) as first_time, MAX(appointment_time) as last_time 
+    // Ottieni tutti gli appuntamenti del giorno per questa zona
+    $sql = "SELECT id, appointment_time, address 
             FROM cp_appointments 
-            WHERE zone_id = ? AND appointment_date = ?";
+            WHERE zone_id = ? AND appointment_date = ?
+            ORDER BY appointment_time";
     $stmt = $conn->prepare($sql);
     $appointmentDate = $appointmentData['appointment_date'];
     
@@ -348,39 +349,125 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
         $stmt->bind_param("is", $zone_id, $appointmentDate);
         $stmt->execute();
         $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
+        $appointments = $result->fetch_all(MYSQLI_ASSOC);
         
-        $first_time = $row['first_time'] ? new DateTime($appointmentDate . ' ' . $row['first_time']) : null;
-        $last_time = $row['last_time'] ? new DateTime($appointmentDate . ' ' . $row['last_time']) : null;
-        
-        // Controlla se lo slot prima è valido (non prima del primo appuntamento)
-        if ($first_time && $before_slot < $first_time) {
-            // Lo slot è prima del primo appuntamento, non è valido
-        } else if (isTimeSlotAvailable($zone_id, $before_slot->format('Y-m-d'), $before_slot->format('H:i:s'))) {
-            $available_slots[] = [
-                'date' => $before_slot->format('Y-m-d'),
-                'time' => $before_slot->format('H:i:s'),
-                'type' => 'before',
-                'related_appointment' => $appointmentData
-            ];
+        // Trova l'indice dell'appuntamento corrente
+        $current_index = -1;
+        foreach ($appointments as $i => $app) {
+            if ($app['id'] == $appointmentData['id']) {
+                $current_index = $i;
+                break;
+            }
         }
         
-        // Controlla se lo slot dopo è valido (non dopo l'ultimo appuntamento)
-        if ($last_time && $after_slot > $last_time) {
-            // Lo slot è dopo l'ultimo appuntamento, non è valido
-        } else if (isTimeSlotAvailable($zone_id, $after_slot->format('Y-m-d'), $after_slot->format('H:i:s'))) {
-            $available_slots[] = [
-                'date' => $after_slot->format('Y-m-d'),
-                'time' => $after_slot->format('H:i:s'),
-                'type' => 'after',
-                'related_appointment' => $appointmentData
-            ];
+        if ($current_index === -1) {
+            error_log("Appuntamento non trovato nel set di appuntamenti del giorno");
+            return $available_slots;
+        }
+        
+        // Determina appuntamenti precedenti e successivi
+        $prev_appointment = ($current_index > 0) ? $appointments[$current_index - 1] : null;
+        $next_appointment = ($current_index < count($appointments) - 1) ? $appointments[$current_index + 1] : null;
+        
+        // Controlla se lo slot prima è valido
+        if (!$prev_appointment || isTimeSlotAvailable($zone_id, $before_slot->format('Y-m-d'), $before_slot->format('H:i:s'))) {
+            // Se non c'è un appuntamento precedente o lo slot è disponibile temporalmente
+            
+            // Verifica ora se lo slot rispetta anche i vincoli di distanza
+            $distance_constraint_met = true;
+            
+            if ($prev_appointment && !empty($prev_appointment['address'])) {
+                // Ottieni coordinate dell'appuntamento precedente
+                $prev_coordinates = getCoordinatesFromAddress($prev_appointment['address'], $prev_appointment['id']);
+                
+                if ($prev_coordinates) {
+                    // Ottieni coordinate dell'appuntamento corrente
+                    $current_coordinates = getCoordinatesFromAddress($appointmentData['address'], $appointmentData['id']);
+                    
+                    if ($current_coordinates) {
+                        // Calcola la distanza tra l'appuntamento precedente e quello corrente
+                        $distance = calculateDistance(
+                            [$prev_coordinates['lat'], $prev_coordinates['lng']],
+                            [$current_coordinates['lat'], $current_coordinates['lng']]
+                        );
+                        
+                        // Se la distanza è > 7 km, non rispetta il vincolo
+                        if ($distance > 7) {
+                            $distance_constraint_met = false;
+                            error_log("Slot prima non disponibile: distanza dall'appuntamento precedente ($distance km) > 7 km");
+                        }
+                    } else {
+                        $distance_constraint_met = false;
+                        error_log("Slot prima non disponibile: impossibile ottenere coordinate dell'appuntamento corrente");
+                    }
+                } else {
+                    $distance_constraint_met = false;
+                    error_log("Slot prima non disponibile: impossibile ottenere coordinate dell'appuntamento precedente");
+                }
+            }
+            
+            // Aggiungi lo slot solo se rispetta tutti i vincoli
+            if ($distance_constraint_met) {
+                $available_slots[] = [
+                    'date' => $before_slot->format('Y-m-d'),
+                    'time' => $before_slot->format('H:i:s'),
+                    'type' => 'before',
+                    'related_appointment' => $appointmentData
+                ];
+            }
+        }
+        
+        // Controlla se lo slot dopo è valido
+        if (!$next_appointment || isTimeSlotAvailable($zone_id, $after_slot->format('Y-m-d'), $after_slot->format('H:i:s'))) {
+            // Se non c'è un appuntamento successivo o lo slot è disponibile temporalmente
+            
+            // Verifica ora se lo slot rispetta anche i vincoli di distanza
+            $distance_constraint_met = true;
+            
+            if ($next_appointment && !empty($next_appointment['address'])) {
+                // Ottieni coordinate dell'appuntamento successivo
+                $next_coordinates = getCoordinatesFromAddress($next_appointment['address'], $next_appointment['id']);
+                
+                if ($next_coordinates) {
+                    // Ottieni coordinate dell'appuntamento corrente
+                    $current_coordinates = getCoordinatesFromAddress($appointmentData['address'], $appointmentData['id']);
+                    
+                    if ($current_coordinates) {
+                        // Calcola la distanza tra l'appuntamento corrente e quello successivo
+                        $distance = calculateDistance(
+                            [$current_coordinates['lat'], $current_coordinates['lng']],
+                            [$next_coordinates['lat'], $next_coordinates['lng']]
+                        );
+                        
+                        // Se la distanza è > 7 km, non rispetta il vincolo
+                        if ($distance > 7) {
+                            $distance_constraint_met = false;
+                            error_log("Slot dopo non disponibile: distanza dall'appuntamento successivo ($distance km) > 7 km");
+                        }
+                    } else {
+                        $distance_constraint_met = false;
+                        error_log("Slot dopo non disponibile: impossibile ottenere coordinate dell'appuntamento corrente");
+                    }
+                } else {
+                    $distance_constraint_met = false;
+                    error_log("Slot dopo non disponibile: impossibile ottenere coordinate dell'appuntamento successivo");
+                }
+            }
+            
+            // Aggiungi lo slot solo se rispetta tutti i vincoli
+            if ($distance_constraint_met) {
+                $available_slots[] = [
+                    'date' => $after_slot->format('Y-m-d'),
+                    'time' => $after_slot->format('H:i:s'),
+                    'type' => 'after',
+                    'related_appointment' => $appointmentData
+                ];
+            }
         }
     }
     
     return $available_slots;
 }
-
 // Function to get slots for a specific zone
 function getSlotsForZone($zoneId) {
     global $conn;
@@ -431,48 +518,176 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
     return ($count == 0);
 }
 
-// Check if appointment is available
-function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $buffer_minutes = 60) {
+/**
+ * Verifica se è possibile inserire un appuntamento in un dato orario
+ * Controlla sia la disponibilità temporale che la distanza dagli appuntamenti adiacenti
+ * 
+ * @param int $zoneId ID della zona
+ * @param string $appointmentDate Data dell'appuntamento (Y-m-d)
+ * @param string $appointmentTime Orario dell'appuntamento (H:i:s)
+ * @param string $address Indirizzo dell'appuntamento
+ * @param float $latitude Latitudine dell'indirizzo
+ * @param float $longitude Longitudine dell'indirizzo
+ * @param int $buffer_minutes Minuti di buffer (default 60)
+ * @return bool True se l'appuntamento può essere inserito, false altrimenti
+ */
+function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $address, $latitude, $longitude, $buffer_minutes = 60) {
     global $conn;
     
-    // Convertire l'orario dell'appuntamento in oggetto DateTime
+    // Converti data e orario in oggetto DateTime
     $appointmentDateTime = new DateTime($appointmentDate . ' ' . $appointmentTime);
     
-    // Calcolare l'inizio e la fine della finestra di buffer
-    $bufferStart = clone $appointmentDateTime;
-    $bufferStart->modify("-{$buffer_minutes} minutes");
+    // STEP 1: Calcola la durata dello slot in base alla configurazione della zona
+    $slotDuration = $buffer_minutes; // Default se non è possibile calcolare
     
-    $bufferEnd = clone $appointmentDateTime;
-    $bufferEnd->modify("+{$buffer_minutes} minutes");
+    // Ottieni gli slot configurati per questa zona
+    $slotsSql = "SELECT day, time FROM cp_slots WHERE zone_id = ? ORDER BY day, time";
+    $slotsStmt = $conn->prepare($slotsSql);
     
-    // Verificare se ci sono appuntamenti che si sovrappongono alla finestra di buffer
-    $sql = "SELECT appointment_time 
-            FROM cp_appointments 
-            WHERE zone_id = ? AND appointment_date = ? 
-            AND CONCAT(appointment_date, ' ', appointment_time) BETWEEN ? AND ?";
-    
-    $stmt = $conn->prepare($sql);
-    
-    if (!$stmt) {
-        error_log("Database prepare failed for checking appointment availability: " . mysqli_error($conn));
-        throw new Exception("Database prepare failed for checking appointment availability: " . mysqli_error($conn));
+    if ($slotsStmt) {
+        $slotsStmt->bind_param("i", $zoneId);
+        $slotsStmt->execute();
+        $slotsResult = $slotsStmt->get_result();
+        
+        // Raggruppa gli slot per giorno della settimana
+        $slotsByDay = [];
+        while ($row = $slotsResult->fetch_assoc()) {
+            $dayOfWeek = date('N', strtotime($row['day'])); // 1-7 (Lun-Dom)
+            if (!isset($slotsByDay[$dayOfWeek])) {
+                $slotsByDay[$dayOfWeek] = [];
+            }
+            $slotsByDay[$dayOfWeek][] = $row['time'];
+        }
+        
+        // Calcola la durata tra slot consecutivi
+        $appointmentDayOfWeek = date('N', strtotime($appointmentDate));
+        if (isset($slotsByDay[$appointmentDayOfWeek]) && count($slotsByDay[$appointmentDayOfWeek]) >= 2) {
+            $daySlots = $slotsByDay[$appointmentDayOfWeek];
+            sort($daySlots); // Assicurati che siano ordinati
+            
+            // Calcola la differenza tra i primi due slot
+            $firstSlot = strtotime("2000-01-01 " . $daySlots[0]);
+            $secondSlot = strtotime("2000-01-01 " . $daySlots[1]);
+            $slotDuration = ($secondSlot - $firstSlot) / 60; // Durata in minuti
+            
+            error_log("Durata calcolata dello slot per la zona $zoneId: $slotDuration minuti");
+        }
     }
     
-    $bufferStartStr = $bufferStart->format('Y-m-d H:i:s');
-    $bufferEndStr = $bufferEnd->format('Y-m-d H:i:s');
+    // STEP 2: Ottieni tutti gli appuntamenti per la data specificata
+    $sql = "SELECT id, appointment_time, address 
+            FROM cp_appointments 
+            WHERE zone_id = ? AND appointment_date = ? 
+            ORDER BY appointment_time";
     
-    $stmt->bind_param("isss", $zoneId, $appointmentDate, $bufferStartStr, $bufferEndStr);
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        error_log("Database prepare failed: " . mysqli_error($conn));
+        return false;
+    }
     
+    $stmt->bind_param("is", $zoneId, $appointmentDate);
     if (!$stmt->execute()) {
-        error_log("Database query failed for checking appointment availability: " . mysqli_error($conn));
-        throw new Exception("Database query failed for checking appointment availability: " . mysqli_error($conn));
+        error_log("Database query failed: " . mysqli_error($conn));
+        return false;
     }
     
     $result = $stmt->get_result();
-    $count = $result->num_rows;
+    $appointments = $result->fetch_all(MYSQLI_ASSOC);
     
-    // Lo slot è disponibile se non ci sono appuntamenti nella finestra di buffer
-    return $count === 0;
+    // Se non ci sono appuntamenti, lo slot è disponibile
+    if (empty($appointments)) {
+        return true;
+    }
+    
+    // STEP 3: Trova gli appuntamenti immediatamente precedenti e successivi all'orario richiesto
+    $prevAppointment = null;
+    $nextAppointment = null;
+    
+    foreach ($appointments as $appointment) {
+        $appTime = $appointmentDate . ' ' . $appointment['appointment_time'];
+        
+        if ($appTime < $appointmentDate . ' ' . $appointmentTime) {
+            $prevAppointment = $appointment;
+        } else {
+            $nextAppointment = $appointment;
+            break;
+        }
+    }
+    
+    // STEP 4: Verifica la disponibilità temporale
+    
+    // Verifica rispetto all'appuntamento precedente
+    if ($prevAppointment) {
+        $prevDateTime = new DateTime($appointmentDate . ' ' . $prevAppointment['appointment_time']);
+        $prevEndTime = clone $prevDateTime;
+        $prevEndTime->modify("+{$slotDuration} minutes");
+        
+        // Se l'appuntamento richiesto inizia prima della fine dell'appuntamento precedente + durata
+        if ($appointmentDateTime <= $prevEndTime) {
+            error_log("Appuntamento non disponibile: sovrapposizione temporale con appuntamento precedente");
+            return false;
+        }
+    }
+    
+    // Verifica rispetto all'appuntamento successivo
+    if ($nextAppointment) {
+        $nextDateTime = new DateTime($appointmentDate . ' ' . $nextAppointment['appointment_time']);
+        $requestedEndTime = clone $appointmentDateTime;
+        $requestedEndTime->modify("+{$slotDuration} minutes");
+        
+        // Se la fine dell'appuntamento richiesto è dopo l'inizio dell'appuntamento successivo
+        if ($requestedEndTime >= $nextDateTime) {
+            error_log("Appuntamento non disponibile: sovrapposizione temporale con appuntamento successivo");
+            return false;
+        }
+    }
+    
+    // STEP 5: Verifica la distanza geografica con gli appuntamenti adiacenti
+    
+    // Verifica distanza dall'appuntamento precedente
+    if ($prevAppointment && !empty($prevAppointment['address'])) {
+        $prevCoordinates = getCoordinatesFromAddress($prevAppointment['address'], $prevAppointment['id']);
+        
+        if ($prevCoordinates) {
+            $distance = calculateDistance(
+                [$latitude, $longitude],
+                [$prevCoordinates['lat'], $prevCoordinates['lng']]
+            );
+            
+            if ($distance > 7) {
+                error_log("Appuntamento non disponibile: distanza dall'appuntamento precedente ($distance km) > 7 km");
+                return false;
+            }
+        }
+    }
+    
+    // Verifica distanza dall'appuntamento successivo
+    if ($nextAppointment && !empty($nextAppointment['address'])) {
+        $nextCoordinates = getCoordinatesFromAddress($nextAppointment['address'], $nextAppointment['id']);
+        
+        if ($nextCoordinates) {
+            $distance = calculateDistance(
+                [$latitude, $longitude],
+                [$nextCoordinates['lat'], $nextCoordinates['lng']]
+            );
+            
+            if ($distance > 7) {
+                error_log("Appuntamento non disponibile: distanza dall'appuntamento successivo ($distance km) > 7 km");
+                return false;
+            }
+        }
+    }
+    
+    // Se tutti i controlli sono passati, l'appuntamento è disponibile
+    return true;
+}
+
+// Helper function to get coordinates from address
+function getAddressCoordinates($address, $appointment_id = null) {
+    // Questa funzione può utilizzare la cache o chiamare getCoordinatesFromAddress
+    // Qui riutilizziamo la funzione esistente
+    return getCoordinatesFromAddress($address, $appointment_id);
 }
 
 // Function to get the next 3 available appointment dates and times
@@ -955,11 +1170,11 @@ if (empty($next3Days)) {
 foreach ($next3Days as $date => $times) {
     $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
     
-    // Check if this date has existing appointments
+    // MODIFICA: Verifica tutti gli appuntamenti per questa data in TUTTE le zone, non solo in questa zona specifica
     $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
-                      WHERE zone_id = ? AND appointment_date = ?";
+                      WHERE appointment_date = ?"; // Rimosso il filtro per zone_id
     $existingStmt = $conn->prepare($existingAppsSql);
-    $existingStmt->bind_param("is", $zone['id'], $date);
+    $existingStmt->bind_param("s", $date); // Passato solo la data, non la zona
     $existingStmt->execute();
     $existingResult = $existingStmt->get_result();
     $existingRow = $existingResult->fetch_assoc();
@@ -971,6 +1186,7 @@ foreach ($next3Days as $date => $times) {
     if ($hasExistingAppointments) {
         echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
     }
+    
     
     // Add the "Vedi agenda" button with a data attribute instead of onclick
 
@@ -1120,7 +1336,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
     $address = isset($_POST['address']) ? $_POST['address'] : '';
 
     try {
-        if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime)) {
+        if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $address, $_POST['latitude'], $_POST['longitude'])) {
             $patientId = addPatient($name, $surname, $phone, $notes);
             addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime, $address);
 
