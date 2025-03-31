@@ -154,7 +154,7 @@ $patients = getWaitingPatients();
                         <td><?php echo htmlspecialchars($patient['phone']); ?></td>
                         <td><?php echo htmlspecialchars($patient['created_at']); ?></td>
                         <td>
-                            <a href="combined_address_calculate.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>" class="pure-button">Inserisci Appuntamento Zona</a>
+                            <a href="combined_address_calculate_v2.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>" class="pure-button">Inserisci Appuntamento Zona</a>
                             <a href="insert_appointment.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>" class="pure-button pure-button-primary">Inserisci Appuntamento</a>
                             <form id="confirm-delete-<?php echo $patient['id']; ?>" method="POST" style="display:inline;">
                                 <input type="hidden" name="delete_patient_id" value="<?php echo $patient['id']; ?>">
