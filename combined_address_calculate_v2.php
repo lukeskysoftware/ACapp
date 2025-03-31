@@ -845,7 +845,7 @@ foreach ($allZoneSlots as $slot) {
     echo "<li>{$slot['day']} {$slot['time']}</li>";
 }
 echo "</ul>";
-
+/*
 // Mostra tutti gli appuntamenti futuri per questa zona
 $futureAppsSql = "SELECT appointment_date, appointment_time FROM cp_appointments 
                  WHERE zone_id = ? AND appointment_date >= CURDATE() 
@@ -875,7 +875,7 @@ foreach ($allZoneSlots as $slot) {
     echo "<li>{$slot['day']} {$slot['time']}</li>";
 }
 echo "</ul>";
-
+*/
 // Mostra tutti gli appuntamenti futuri per questa zona
 $futureAppsSql = "SELECT appointment_date, appointment_time FROM cp_appointments 
                  WHERE zone_id = ? AND appointment_date >= CURDATE() 
