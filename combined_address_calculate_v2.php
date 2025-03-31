@@ -375,6 +375,7 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
             
             // Verifica ora se lo slot rispetta anche i vincoli di distanza
             $distance_constraint_met = true;
+            $debug_info = []; // Per raccogliere informazioni di debug
             
             if ($prev_appointment && !empty($prev_appointment['address'])) {
                 // Ottieni coordinate dell'appuntamento precedente
@@ -391,6 +392,13 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
                             [$current_coordinates['lat'], $current_coordinates['lng']]
                         );
                         
+                        // Salva le informazioni di debug
+                        $debug_info = [
+                            'prev_address' => $prev_appointment['address'],
+                            'prev_coords' => $prev_coordinates,
+                            'distance' => $distance
+                        ];
+                        
                         // Se la distanza è > 7 km, non rispetta il vincolo
                         if ($distance > 7) {
                             $distance_constraint_met = false;
@@ -406,13 +414,18 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
                 }
             }
             
+            // Se questo è il primo appuntamento della giornata, imposta un flag
+            $isFirstSlot = ($current_index === 0);
+            
             // Aggiungi lo slot solo se rispetta tutti i vincoli
             if ($distance_constraint_met) {
                 $available_slots[] = [
                     'date' => $before_slot->format('Y-m-d'),
                     'time' => $before_slot->format('H:i:s'),
                     'type' => 'before',
-                    'related_appointment' => $appointmentData
+                    'related_appointment' => $appointmentData,
+                    'debug_info' => $debug_info,
+                    'is_first_slot' => $isFirstSlot
                 ];
             }
         }
@@ -423,6 +436,7 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
             
             // Verifica ora se lo slot rispetta anche i vincoli di distanza
             $distance_constraint_met = true;
+            $debug_info = []; // Per raccogliere informazioni di debug
             
             if ($next_appointment && !empty($next_appointment['address'])) {
                 // Ottieni coordinate dell'appuntamento successivo
@@ -438,6 +452,13 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
                             [$current_coordinates['lat'], $current_coordinates['lng']],
                             [$next_coordinates['lat'], $next_coordinates['lng']]
                         );
+                        
+                        // Salva le informazioni di debug
+                        $debug_info = [
+                            'next_address' => $next_appointment['address'],
+                            'next_coords' => $next_coordinates,
+                            'distance' => $distance
+                        ];
                         
                         // Se la distanza è > 7 km, non rispetta il vincolo
                         if ($distance > 7) {
@@ -460,7 +481,8 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
                     'date' => $after_slot->format('Y-m-d'),
                     'time' => $after_slot->format('H:i:s'),
                     'type' => 'after',
-                    'related_appointment' => $appointmentData
+                    'related_appointment' => $appointmentData,
+                    'debug_info' => $debug_info
                 ];
             }
         }
@@ -995,10 +1017,81 @@ if (!empty($available_slots_near_appointments)) {
         echo "{$slot['related_appointment']['address']}<br>";
         echo "<small>Distanza: {$distance} km</small></p>";
         
+        // Aggiungi le informazioni di debug sull'indirizzo precedente/successivo
+        if (isset($slot['debug_info']) && !empty($slot['debug_info'])) {
+            $debug = $slot['debug_info'];
+            if ($slot['type'] == 'before' && isset($debug['prev_address'])) {
+                echo "<p><small>Rispetto all'indirizzo precedente: " . $debug['prev_address'] . "<br>";
+                echo "Distanza: " . number_format($debug['distance'], 1) . " km</small></p>";
+            } elseif ($slot['type'] == 'after' && isset($debug['next_address'])) {
+                echo "<p><small>Rispetto all'indirizzo successivo: " . $debug['next_address'] . "<br>";
+                echo "Distanza: " . number_format($debug['distance'], 1) . " km</small></p>";
+            }
+        }
+        
         // Add an indicator if this is before the first appointment
         if ($slot['type'] == 'before' && $isFirstSlot) {
-            echo "<p style='color:#ff9900;'><small>⚠️ Questo slot precede il primo appuntamento della giornata</small></p>";
+            echo "<p style='color:#FF0000; font-weight:bold; font-size:1.1em;'>Questo slot precede il primo appuntamento della giornata</p>";
         }
+
+        // Aggiungi il pulsante "Vedi agenda"
+        $date = $slot['date'];
+        // Crea un ID univoco per il collapsible
+        $collapseId = "collapse-slot-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $slot['related_appointment']['zone_id'];
+        $contentId = "agenda-content-slot-" . $collapseId;
+
+        echo "<button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
+            <i class='bi bi-calendar'></i> Vedi agenda
+        </button>";
+
+        // Aggiunta del div collassabile per i contenuti dell'agenda
+        echo "<div class='collapse mb-3 mt-2' id='$collapseId'>
+            <div class='card card-body agenda-details' id='$contentId'>
+                <div class='text-center'>
+                    <div class='spinner-border text-primary' role='status'>
+                        <span class='visually-hidden'>Caricamento appuntamenti...</span>
+                    </div>
+                    <p>Caricamento appuntamenti...</p>
+                </div>
+            </div>
+        </div>";
+
+        // Script inline per caricare i contenuti
+        echo "<script>
+            (function() {
+                var collapseEl = document.getElementById('$collapseId');
+                var contentEl = document.getElementById('$contentId');
+                var date = '$date';
+                var zoneId = {$slot['related_appointment']['zone_id']};
+                
+                if (collapseEl) {
+                    collapseEl.addEventListener('shown.bs.collapse', function() {
+                        fetch('get_appointments_modal.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                            },
+                            body: 'appointment_date=' + date
+                        })
+                            .then(function(response) {
+                                if (!response.ok) throw new Error('Errore di rete');
+                                return response.text();
+                            })
+                            .then(function(html) {
+                                contentEl.innerHTML = html;
+                            })
+                            .catch(function(error) {
+                                contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
+                                    '<p>Si è verificato un errore: ' + error.message + '</p>' +
+                                    '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
+                                    '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
+                                    '</button>' +
+                                '</div>';
+                            });
+                    });
+                }
+            })();
+        </script>";
 
         // Continue with the booking link...
         $nameEncoded = !empty($name) ? urlencode($name) : '';
@@ -1006,10 +1099,10 @@ if (!empty($available_slots_near_appointments)) {
         $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
         $addressEncoded = urlencode($address);
 
-        echo "<a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot_time}";
+        echo "<br><a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot_time}";
         echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
         echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-        echo "' class='pure-button pure-button-primary'>Seleziona</a>";
+        echo "' class='pure-button pure-button-primary mt-2'>Seleziona</a>";
 
         echo "</div>";
     }
