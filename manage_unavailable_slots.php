@@ -144,11 +144,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     
     // Validazione
     if (empty($date_start)) {
-        $error = "La data di inizio è obbligatoria!";
+        $_SESSION['error'] = "La data di inizio è obbligatoria!";
     } elseif (strtotime($date_end) < strtotime($date_start)) {
-        $error = "La data di fine non può essere precedente alla data di inizio!";
+        $_SESSION['error'] = "La data di fine non può essere precedente alla data di inizio!";
     } elseif (!$all_day && (empty($start_time) || empty($end_time))) {
-        $error = "Per blocchi parziali, specificare sia l'ora di inizio che di fine!";
+        $_SESSION['error'] = "Per blocchi parziali, specificare sia l'ora di inizio che di fine!";
     } else {
         // Se è selezionato un intervallo di date, impostiamo all_day = 1
         if ($date_start != $date_end) {
@@ -163,19 +163,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $stmt = $conn->prepare($sql);
         
         if (!$stmt) {
-            $error = "Errore nella preparazione della query: " . $conn->error;
+            $_SESSION['error'] = "Errore nella preparazione della query: " . $conn->error;
         } else {
             $stmt->bind_param("ssssiisi", $date_start, $date_end, $start_time, $end_time, $all_day, $zone_id, $reason, $created_by);
             
             if ($stmt->execute()) {
-                $success = "Blocco orario aggiunto con successo!";
+                $_SESSION['success'] = "Blocco orario aggiunto con successo!";
             } else {
-                $error = "Errore nell'aggiunta del blocco orario: " . $stmt->error;
+                $_SESSION['error'] = "Errore nell'aggiunta del blocco orario: " . $stmt->error;
             }
             
             $stmt->close();
         }
     }
+    
+    // Reindirizza per evitare reinvii del form
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
 }
 
 // Gestione dell'eliminazione di uno slot non disponibile
@@ -186,21 +190,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $stmt = $conn->prepare($sql);
     
     if (!$stmt) {
-        $error = "Errore nella preparazione della query di eliminazione: " . $conn->error;
+        $_SESSION['error'] = "Errore nella preparazione della query di eliminazione: " . $conn->error;
     } else {
         $stmt->bind_param("i", $id);
         
         if ($stmt->execute()) {
-            $success = "Blocco orario eliminato con successo!";
+            $_SESSION['success'] = "Blocco orario eliminato con successo!";
         } else {
-            $error = "Errore nell'eliminazione del blocco orario: " . $stmt->error;
+            $_SESSION['error'] = "Errore nell'eliminazione del blocco orario: " . $stmt->error;
         }
         
         $stmt->close();
     }
+    
+    // Reindirizza per evitare reinvii del form
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// Recupera le variabili di sessione per i messaggi
+if (isset($_SESSION['error'])) {
+    $error = $_SESSION['error'];
+    unset($_SESSION['error']);
+}
+
+if (isset($_SESSION['success'])) {
+    $success = $_SESSION['success'];
+    unset($_SESSION['success']);
 }
 
 $zones = getAllZones();
+$debug_table_info = checkTableStructure();
 $unavailable_slots_data = getUnavailableSlots();
 
 if (isset($unavailable_slots_data['error'])) {
