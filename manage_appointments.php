@@ -164,14 +164,22 @@ if (isset($_GET['highlight_appointment'])) {
     $check_stmt->execute();
     $check_result = $check_stmt->get_result();
     
-    if ($row = $check_result->fetch_assoc()) {
-        // Appuntamento trovato, impostiamo il filtro per data
-        $filter['date'] = $row['appointment_date'];
-        
-        $_SESSION['info_message'] = "Mostrando l'appuntamento richiesto per " . $row['name'] . " " . $row['surname'] . " del " . date('d/m/Y', strtotime($row['appointment_date']));
-    } else {
-        $_SESSION['error_message'] = "Appuntamento ID $highlight_id non trovato nel database.";
-    }
+if ($row = $check_result->fetch_assoc()) {
+    // Appuntamento trovato, impostiamo il filtro per data e forziamo la pagina a 1
+    $_GET['date'] = $row['appointment_date'];  // Aggiorna anche $_GET per mantenere il filtro nell'URL
+    $filter['date'] = $row['appointment_date'];
+    $page = 1; // Per assicurarsi di iniziare dalla prima pagina con questo filtro
+    
+    // Aggiorniamo i risultati con il nuovo filtro
+    $total_appointments = getTotalAppointments($filter, $search);
+    $total_pages = ceil($total_appointments / $results_per_page);
+    $appointments = getAppointments($filter, $search, $page, $results_per_page);
+    $showTable = !empty($appointments);
+    
+    $_SESSION['info_message'] = "Mostrando l'appuntamento richiesto per " . $row['name'] . " " . $row['surname'] . " del " . date('d/m/Y', strtotime($row['appointment_date']));
+} else {
+    $_SESSION['error_message'] = "Appuntamento ID $highlight_id non trovato nel database.";
+}
 }
 // FINE DEL NUOVO CODICE
 
