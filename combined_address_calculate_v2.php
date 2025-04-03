@@ -1067,10 +1067,12 @@ if ($existingAppointmentForAddress) {
     echo "<i class='bi bi-calendar'></i> Vedi Agenda";
     echo "</button>";
     
-// Pulsante Modifica Appuntamento
-echo "<a href='manage_appointments.php?highlight_appointment={$appId}&t=" . time() . "' class='btn btn-warning btn-lg'>";
+
+// Pulsante Modifica Appuntamento che reindirizza alla pagina corretta
+echo "<a href='manage_appointments.php?find_appointment={$appId}' class='btn btn-warning btn-lg'>";
 echo "<i class='bi bi-pencil-square'></i> Modifica Appuntamento";
 echo "</a>";
+    
     
     // Div collassabile per l'agenda
     echo "<div class='collapse mt-3' id='existingAppAgenda'>";
