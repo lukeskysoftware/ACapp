@@ -68,7 +68,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
     $notes = htmlspecialchars($_POST['notes']);
     
      // Prima verifica se il giorno/ora è disponibile (non è un unavailable slot)
-    $availability = isSlotAvailable($data, $ora, null, $zona);
+     // Calcola l'orario di fine (ad esempio, 1 ora dopo l'inizio)
+$end_time = date('H:i:s', strtotime($ora . ' +1 hour'));
+$availability = isSlotAvailable($data, $ora, $end_time, $zona);
+   // $availability = isSlotAvailable($data, $ora, null, $zona);
     if (!$availability['available']) {
         $error = "Impossibile prenotare l'appuntamento: " . $availability['reason'];
     } else {
