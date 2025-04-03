@@ -8,6 +8,37 @@ if (!isset($_SESSION['user_id'])) {
 
 include 'db.php';
 
+// Funzione per salvare o aggiornare le note del paziente
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_notes'])) {
+    $patient_id = $_POST['patient_id'];
+    $notes = $_POST['notes'];
+    
+    // Verifica se esiste già una nota per questo paziente
+    $check_sql = "SELECT id FROM cp_crm WHERE patient_id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $patient_id);
+    $check_stmt->execute();
+    $result = $check_stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        // Aggiorna la nota esistente
+        $row = $result->fetch_assoc();
+        $update_sql = "UPDATE cp_crm SET notes = ?, updated_at = NOW() WHERE id = ?";
+        $update_stmt = $conn->prepare($update_sql);
+        $update_stmt->bind_param("si", $notes, $row['id']);
+        $update_stmt->execute();
+    } else {
+        // Inserisci una nuova nota
+        $insert_sql = "INSERT INTO cp_crm (patient_id, notes) VALUES (?, ?)";
+        $insert_stmt = $conn->prepare($insert_sql);
+        $insert_stmt->bind_param("is", $patient_id, $notes);
+        $insert_stmt->execute();
+    }
+    
+    header("Location: waiting_list.php");
+    exit();
+}
+
 function getWaitingPatients() {
     global $conn;
     $today = date('Y-m-d');
@@ -37,6 +68,16 @@ function getWaitingPatients() {
             die('Error: ' . mysqli_error($conn));
         }
         $appointments = mysqli_fetch_all($appointment_result, MYSQLI_ASSOC);
+
+        // Query per ottenere le note CRM del paziente
+        $crm_sql = "SELECT notes FROM cp_crm WHERE patient_id = '$patient_id' ORDER BY updated_at DESC LIMIT 1";
+        $crm_result = mysqli_query($conn, $crm_sql);
+        if ($crm_result && mysqli_num_rows($crm_result) > 0) {
+            $crm_data = mysqli_fetch_assoc($crm_result);
+            $patient['notes'] = $crm_data['notes'];
+        } else {
+            $patient['notes'] = '';
+        }
 
         $has_future_appointment = false;
         foreach ($appointments as $appointment) {
@@ -89,7 +130,7 @@ $patients = getWaitingPatients();
     <link rel="stylesheet" href="styles.css">
     <style>
         .container {
-            max-width: 800px;
+            max-width: 1000px;
             margin: 0 auto;
             padding: 20px;
             text-align: center;
@@ -102,6 +143,7 @@ $patients = getWaitingPatients();
         }
         th, td {
             text-align: center;
+            vertical-align: middle;
         }
         .hidden {
             display: none;
@@ -114,15 +156,41 @@ $patients = getWaitingPatients();
             background-color: darkred;
             color: white;
         }
-         .prenota-zona {
-            background-color:#17a2b8;
+        .prenota-zona {
+            background-color: #17a2b8;
             color: #fff;
-            
         }
         .prenota-zona:hover {
-           
             color: #333;
-            
+        }
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        .note-textarea {
+            width: 100%;
+            min-height: 100px;
+            margin-bottom: 5px;
+        }
+        .note-form {
+            width: 100%;
+            text-align: left;
+        }
+        .save-note-btn {
+            background-color: #28a745;
+            color: white;
+        }
+        .note-content {
+            text-align: left;
+            background-color: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            white-space: pre-line;
+            max-height: 150px;
+            overflow-y: auto;
         }
     </style>
     <script>
@@ -134,6 +202,23 @@ $patients = getWaitingPatients();
                 deleteButton.onclick = function() {
                     document.getElementById(`confirm-delete-${patientId}`).submit();
                 };
+            }
+        }
+
+        // Mostra/nascondi form note
+        function toggleNoteForm(patientId) {
+            const noteForm = document.getElementById(`note-form-${patientId}`);
+            const noteContent = document.getElementById(`note-content-${patientId}`);
+            const toggleButton = document.getElementById(`toggle-note-${patientId}`);
+            
+            if (noteForm.style.display === "none" || noteForm.style.display === "") {
+                noteForm.style.display = "block";
+                if (noteContent) noteContent.style.display = "none";
+                toggleButton.style.display = "none"; // Nascondi il pulsante
+            } else {
+                noteForm.style.display = "none";
+                if (noteContent) noteContent.style.display = "block";
+                toggleButton.style.display = "block"; // Mostra il pulsante
             }
         }
     </script>
@@ -153,6 +238,7 @@ $patients = getWaitingPatients();
                         <th>Cognome</th>
                         <th>Telefono</th>
                         <th>Data di Registrazione</th>
+                        <th>Note</th>
                         <th>Azioni</th>
                     </tr>
                 </thead>
@@ -164,12 +250,39 @@ $patients = getWaitingPatients();
                         <td><?php echo htmlspecialchars($patient['phone']); ?></td>
                         <td><?php echo htmlspecialchars($patient['created_at']); ?></td>
                         <td>
-                            <a href="combined_address_calculate_v2.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>" class="pure-button prenota-zona">Inserisci Appuntamento Zona</a>
-                            <a href="insert_appointment.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>" class="pure-button pure-button-primary">Inserisci Appuntamento</a>
-                            <form id="confirm-delete-<?php echo $patient['id']; ?>" method="POST" style="display:inline;">
-                                <input type="hidden" name="delete_patient_id" value="<?php echo $patient['id']; ?>">
-                                <button type="button" id="delete-btn-<?php echo $patient['id']; ?>" class="pure-button btn-delete" onclick="confirmDelete('<?php echo $patient['id']; ?>', '<?php echo htmlspecialchars($patient['name']); ?>', '<?php echo htmlspecialchars($patient['surname']); ?>', '<?php echo htmlspecialchars($patient['phone']); ?>')">Cancella</button>
-                            </form>
+                            <!-- Note content display -->
+                            <?php if (!empty($patient['notes'])) { ?>
+                                <div id="note-content-<?php echo $patient['id']; ?>" class="note-content">
+                                    <?php echo nl2br(htmlspecialchars($patient['notes'])); ?>
+                                </div>
+                            <?php } ?>
+                            
+                            <!-- Note form -->
+                            <div id="note-form-<?php echo $patient['id']; ?>" style="display:none;">
+                                <form class="note-form" method="POST">
+                                    <input type="hidden" name="patient_id" value="<?php echo $patient['id']; ?>">
+                                    <textarea class="note-textarea" name="notes"><?php echo htmlspecialchars($patient['notes']); ?></textarea>
+                                    <div style="display:flex; justify-content:space-between; width:100%;">
+                                        <button type="submit" name="save_notes" class="pure-button save-note-btn">Salva Nota</button>
+                                        <button type="button" class="pure-button" onclick="toggleNoteForm('<?php echo $patient['id']; ?>')">Annulla</button>
+                                    </div>
+                                </form>
+                            </div>
+
+                            <!-- Toggle button -->
+                            <button id="toggle-note-<?php echo $patient['id']; ?>" class="pure-button pure-button-primary" onclick="toggleNoteForm('<?php echo $patient['id']; ?>')">
+                                <?php echo empty($patient['notes']) ? 'Aggiungi Nota' : 'Modifica Nota'; ?>
+                            </button>
+                        </td>
+                        <td>
+                            <div class="action-buttons">
+                                <a class="pure-button prenota-zona" href="combined_address_calculate_v2.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>">Prenota nella zona</a>
+                                <a class="pure-button pure-button-primary" href="insert_appointment.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>">Prenota manualmente</a>
+                                <form id="confirm-delete-<?php echo $patient['id']; ?>" method="POST" style="display:inline;">
+                                    <input type="hidden" name="delete_patient_id" value="<?php echo $patient['id']; ?>">
+                                    <button type="button" id="delete-btn-<?php echo $patient['id']; ?>" class="pure-button btn-delete" onclick="confirmDelete('<?php echo $patient['id']; ?>', '<?php echo addslashes($patient['name']); ?>', '<?php echo addslashes($patient['surname']); ?>', '<?php echo addslashes($patient['phone']); ?>')">Elimina</button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     <?php } ?>
@@ -186,6 +299,7 @@ $patients = getWaitingPatients();
                             <th>Cognome</th>
                             <th>Telefono</th>
                             <th>Data di Registrazione</th>
+                            <th>Note</th>
                             <th>Dettagli Appuntamento</th>
                             <th>Azioni</th>
                         </tr>
@@ -197,10 +311,37 @@ $patients = getWaitingPatients();
                             <td><?php echo htmlspecialchars($patient['surname']); ?></td>
                             <td><?php echo htmlspecialchars($patient['phone']); ?></td>
                             <td><?php echo htmlspecialchars($patient['created_at']); ?></td>
+                            <td>
+                                <!-- Note content display -->
+                                <?php if (!empty($patient['notes'])) { ?>
+                                    <div id="note-content-<?php echo $patient['id']; ?>" class="note-content">
+                                        <?php echo nl2br(htmlspecialchars($patient['notes'])); ?>
+                                    </div>
+                                <?php } ?>
+                                
+                                <!-- Note form -->
+                                <div id="note-form-<?php echo $patient['id']; ?>" style="display:none;">
+                                    <form class="note-form" method="POST">
+                                        <input type="hidden" name="patient_id" value="<?php echo $patient['id']; ?>">
+                                        <textarea class="note-textarea" name="notes"><?php echo htmlspecialchars($patient['notes']); ?></textarea>
+                                        <div style="display:flex; justify-content:space-between; width:100%;">
+                                            <button type="submit" name="save_notes" class="pure-button save-note-btn">Salva Nota</button>
+                                            <button type="button" class="pure-button" onclick="toggleNoteForm('<?php echo $patient['id']; ?>')">Annulla</button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <!-- Toggle button -->
+                                <button id="toggle-note-<?php echo $patient['id']; ?>" class="pure-button pure-button-primary" onclick="toggleNoteForm('<?php echo $patient['id']; ?>')">
+                                    <?php echo empty($patient['notes']) ? 'Aggiungi Nota' : 'Modifica Nota'; ?>
+                                </button>
+                            </td>
                             <td><?php echo $patient['appointment_info']; ?></td>
                             <td>
-                                <a href="combined_address_calculate_v2.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>" class="pure-button prenota-zona">Inserisci Appuntamento Zona</a>
-                                <a href="insert_appointment.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>" class="pure-button pure-button-primary">Inserisci Appuntamento</a>
+                                <div class="action-buttons">
+                                    <a class="pure-button prenota-zona" href="combined_address_calculate_v2.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>">Prenota nella zona</a>
+                                    <a class="pure-button pure-button-primary" href="insert_appointment.php?name=<?php echo urlencode($patient['name']); ?>&surname=<?php echo urlencode($patient['surname']); ?>&phone=<?php echo urlencode($patient['phone']); ?>">Prenota manualmente</a>
+                                </div>
                             </td>
                         </tr>
                         <?php } ?>
