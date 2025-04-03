@@ -113,26 +113,34 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
                     'lat' => $cache_row['latitude'], 
                     'lng' => $cache_row['longitude']
                 ];
+                /* DEBUG
                 $debug_item['status'] = 'In cache';
                 $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
+                */
             } else {
                 // 2. Nessuna cache, geocodifica l'indirizzo e salvalo
                 $coordinates = getCoordinatesFromAddress($address, $appointment_id);
                 
                 if ($coordinates) {
+                    /* DEBUG
                     $debug_item['status'] = 'Geocodificato';
                     $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
+                */
                 } else {
+                  /* DEBUG
                     $debug_item['status'] = 'Geocodifica fallita';
                     $debug_item['error'] = 'Impossibile ottenere coordinate';
                     $debug_info[] = $debug_item;
+                    */
                     continue; // Passa al prossimo appuntamento
                 }
             }
         } else {
+            /* DEBUG
             $debug_item['status'] = 'Errore SQL cache';
             $debug_item['error'] = mysqli_error($conn);
             $debug_info[] = $debug_item;
+            */
             continue;
         }
                 // 3. Calcola la distanza
@@ -140,20 +148,26 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
         $destination = [$coordinates['lat'], $coordinates['lng']];
         
         $distance = calculateDistance($origin, $destination);
+        /* DEBUG
         $debug_item['distance'] = number_format($distance, 2) . " km";
-        
+        */
         // 4. Se la distanza è entro il raggio, aggiungi all'elenco
         if ($distance <= $radius_km) {
             $row['distance'] = $distance;
             $row['latitude'] = $coordinates['lat'];
             $row['longitude'] = $coordinates['lng'];
             $nearby_appointments[] = $row;
+            /* DEBUG
             $debug_item['status'] .= ' - Entro raggio';
+            */
         } else {
+            /* DEBUG
             $debug_item['status'] .= ' - Fuori raggio';
+            */
         }
-        
+        /* DEBUG
         $debug_info[] = $debug_item;
+    */
     }
     
     // Ordina gli appuntamenti per distanza
@@ -162,9 +176,10 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
     });
     
     // Salva le informazioni di debug in una variabile globale
-    global $address_comparison_debug;
+  /* DEBUG
+  global $address_comparison_debug;
     $address_comparison_debug = $debug_info;
-    
+    */
     return $nearby_appointments;
 }
 
@@ -1037,10 +1052,11 @@ function displayAppointmentDetails($appointments) {
 }
 
         // Mostra i dettagli degli appuntamenti considerati
+        /* DEBUG
 if (!empty($nearby_appointments)) {
     displayAppointmentDetails($nearby_appointments);
 }
-        
+        */
     
         
 // Codice per la visualizzazione degli slot disponibili con le modifiche richieste
@@ -1194,6 +1210,7 @@ if (!empty($available_slots_near_appointments)) {
                     echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
                     
 // Aggiungi questo codice per il debug prima di chiamare getNext3AppointmentDates()
+/* DEBUG
 echo "<div class='container'><center>";
 echo "<h4>Debug - Slots e appuntamenti per la zona {$zone['name']}:</h4>";
 
@@ -1205,7 +1222,7 @@ foreach ($allZoneSlots as $slot) {
     echo "<li>{$slot['day']} {$slot['time']}</li>";
 }
 echo "</ul>";
-/*
+
 // Mostra tutti gli appuntamenti futuri per questa zona
 $futureAppsSql = "SELECT appointment_date, appointment_time FROM cp_appointments 
                  WHERE zone_id = ? AND appointment_date >= CURDATE() 
@@ -1222,20 +1239,22 @@ while ($app = $appsResult->fetch_assoc()) {
 }
 echo "</ul>";
 echo "</center></div>";
-
-// Aggiungi questo codice per il debug prima di chiamare getNext3AppointmentDates()
-echo "<div class='container'><center>";
-echo "<h4>Debug - Slots e appuntamenti per la zona {$zone['name']}:</h4>";
-
-// Mostra tutti gli slot configurati per questa zona
-$allZoneSlots = getSlotsForZone($zone['id']);
-echo "<p><strong>Slot configurati:</strong> " . count($allZoneSlots) . "</p>";
-echo "<ul style='list-style-type:none; padding:0;'>";
-foreach ($allZoneSlots as $slot) {
-    echo "<li>{$slot['day']} {$slot['time']}</li>";
-}
-echo "</ul>";
 */
+// Aggiungi questo codice per il debug prima di chiamare getNext3AppointmentDates()
+/* DEBUG
+echo "<div class='container'><center>";
+echo "<h4>Debug - Slots e appuntamenti per la zona {$zone['name']}:</h4>";
+
+
+// Mostra tutti gli slot configurati per questa zona
+$allZoneSlots = getSlotsForZone($zone['id']);
+echo "<p><strong>Slot configurati:</strong> " . count($allZoneSlots) . "</p>";
+echo "<ul style='list-style-type:none; padding:0;'>";
+foreach ($allZoneSlots as $slot) {
+    echo "<li>{$slot['day']} {$slot['time']}</li>";
+}
+echo "</ul>";
+
 // Mostra tutti gli appuntamenti futuri per questa zona
 $futureAppsSql = "SELECT appointment_date, appointment_time FROM cp_appointments 
                  WHERE zone_id = ? AND appointment_date >= CURDATE() 
@@ -1252,10 +1271,12 @@ while ($app = $appsResult->fetch_assoc()) {
 }
 echo "</ul>";
 echo "</center></div>";
+*/
 
 $next3Days = getNext3AppointmentDates($slots, $zone['id']);
 
 // Aggiungi debug visibile per verificare gli slot
+/* DEBUG
 echo "<div class='container' style='border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; background-color: #f9f9f9;'>";
 echo "<h5>Debug - Dettagli slot per zona {$zone['name']} (ID: {$zone['id']}):</h5>";
 
@@ -1303,6 +1324,7 @@ foreach ($next3Days as $date => $times) {
 echo "</ul>";
 
 echo "</div>";
+*/
 
 // Diamo feedback all'utente se non ci sono date disponibili
 if (empty($next3Days)) {
