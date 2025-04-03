@@ -163,6 +163,32 @@ $total_pages = ceil($total_appointments / $results_per_page);
 $appointments = getAppointments($filter, $search, $page, $results_per_page);
 $zones = getZones();
 $showTable = !empty($appointments);
+
+// Gestione del parametro find_appointment
+if (isset($_GET['find_appointment'])) {
+    $appointment_id = (int)$_GET['find_appointment'];
+    
+    // Troviamo in quale pagina si trova l'appuntamento
+    $sql = "SELECT COUNT(*) AS position FROM cp_appointments a 
+            WHERE a.id <= ? ORDER BY a.appointment_date ASC, a.appointment_time ASC";
+    $stmt = $conn->prepare($sql);
+    if ($stmt) {
+        $stmt->bind_param("i", $appointment_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($row = $result->fetch_assoc()) {
+            $position = $row['position'];
+            $page_number = ceil($position / $results_per_page);
+            
+            // Redirect alla pagina corretta con il parametro highlight_appointment
+            header("Location: manage_appointments.php?page={$page_number}&highlight_appointment={$appointment_id}");
+            exit();
+        }
+    }
+}
+
+
+
 ?>
 
 <!DOCTYPE html>
