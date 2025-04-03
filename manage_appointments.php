@@ -164,6 +164,35 @@ $appointments = getAppointments($filter, $search, $page, $results_per_page);
 $zones = getZones();
 $showTable = !empty($appointments);
 
+// Verifica se è stato richiesto di evidenziare un appuntamento specifico
+if (isset($_GET['highlight_appointment'])) {
+    $highlight_id = (int)$_GET['highlight_appointment'];
+    // Verifica se l'appuntamento esiste
+    $check_sql = "SELECT id, appointment_date FROM cp_appointments WHERE id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $highlight_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+    
+    if ($row = $check_result->fetch_assoc()) {
+        // L'appuntamento esiste, applichiamo filtri per portarlo nella pagina corrente
+        $filter['date'] = $row['appointment_date']; // Filtriamo per la data dell'appuntamento
+        
+        // Aggiorniamo anche la query di selezione
+        $total_appointments = getTotalAppointments($filter, $search);
+        $total_pages = ceil($total_appointments / $results_per_page);
+        $appointments = getAppointments($filter, $search, 1, $results_per_page);
+        $page = 1; // Impostiamo la pagina a 1
+        $showTable = !empty($appointments);
+        
+        // Salviamo un messaggio per indicare che i filtri sono stati applicati automaticamente
+        $_SESSION['info_message'] = "Filtri applicati automaticamente per mostrare l'appuntamento richiesto.";
+    } else {
+        // L'appuntamento non esiste
+        $_SESSION['error_message'] = "Appuntamento ID {$highlight_id} non trovato nel database.";
+    }
+}
+
 // Gestione del parametro find_appointment
 if (isset($_GET['find_appointment'])) {
     $appointment_id = (int)$_GET['find_appointment'];
@@ -359,6 +388,12 @@ if (isset($_GET['find_appointment'])) {
             filterAppointments();
         }
 
+<?php if (isset($_SESSION['info_message'])): ?>
+    <div class="alert alert-info">
+        <?php echo $_SESSION['info_message']; unset($_SESSION['info_message']); ?>
+    </div>
+<?php endif; ?>
+
         function showActions(id) {
             const actionRow = document.getElementById(`action-${id}`);
             const editForm = document.getElementById(`edit-form-${id}`);
@@ -539,6 +574,56 @@ if (isset($_GET['find_appointment'])) {
 // Aggiungi questo codice alla fine del file manage_appointments.php, prima della chiusura </body>
 if (isset($_GET['highlight_appointment'])): 
 ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Recupera l'ID dell'appuntamento da evidenziare
+    const appointmentId = <?php echo (int)$_GET['highlight_appointment']; ?>;
+    
+    console.log('Cercando appuntamento ID:', appointmentId);
+    
+    let found = false;
+    
+    // Prima verifica se esiste un pulsante con onclick che contiene l'ID dell'appuntamento
+    document.querySelectorAll('button[onclick*="showActions"]').forEach(button => {
+        // Estrai l'ID dal codice onclick
+        const onclickText = button.getAttribute('onclick');
+        const match = onclickText && onclickText.match(/showActions\((\d+)\)/);
+        
+        if (match && parseInt(match[1]) === appointmentId) {
+            found = true;
+            
+            // Evidenzia la riga
+            const row = button.closest('tr');
+            if (row) {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const originalBackground = row.style.backgroundColor;
+                row.style.backgroundColor = '#fff3cd';
+                
+                setTimeout(() => {
+                    // Clicca il pulsante per aprire il modulo
+                    button.click();
+                    
+                    // Usa un secondo timeout per mantenere l'evidenziazione per qualche secondo
+                    setTimeout(() => {
+                        row.style.backgroundColor = originalBackground;
+                    }, 5000);
+                }, 800);
+            }
+        }
+    });
+    
+    if (!found) {
+        console.error('Appuntamento ID', appointmentId, 'non trovato nella tabella visualizzata.');
+        // Aggiungiamo un messaggio visibile all'utente
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'alert alert-warning';
+        messageDiv.style.marginTop = '20px';
+        messageDiv.textContent = `Appuntamento ID ${appointmentId} non è visibile nella pagina corrente. Utilizzare i filtri per trovarlo.`;
+        
+        document.querySelector('.pure-g.aria').insertAdjacentElement('afterend', messageDiv);
+    }
+});
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Recupera l'ID dell'appuntamento da evidenziare
