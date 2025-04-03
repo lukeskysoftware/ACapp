@@ -1067,8 +1067,8 @@ if ($existingAppointmentForAddress) {
     echo "<i class='bi bi-calendar'></i> Vedi Agenda";
     echo "</button>";
     
-    // Pulsante Modifica Appuntamento
-echo "<a href='manage_appointments.php?highlight_appointment={$appId}' class='btn btn-warning btn-lg'>";
+// Pulsante Modifica Appuntamento
+echo "<a href='manage_appointments.php?highlight_appointment={$appId}&t=" . time() . "' class='btn btn-warning btn-lg'>";
 echo "<i class='bi bi-pencil-square'></i> Modifica Appuntamento";
 echo "</a>";
     
@@ -1087,10 +1087,12 @@ echo "</a>";
     echo "</div></div>";
     
     // Script per caricare dinamicamente l'agenda e aprire la finestra di modifica
-    echo "<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Funzione per caricare l'agenda quando si clicca su 'Vedi Agenda'
-        document.querySelector('#existingAppAgenda').addEventListener('shown.bs.collapse', function() {
+  echo "<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Funzione per caricare l'agenda quando si clicca su 'Vedi Agenda'
+    const agendaElement = document.querySelector('#existingAppAgenda');
+    if (agendaElement) {
+        agendaElement.addEventListener('shown.bs.collapse', function() {
             fetch('get_appointments_modal.php', {
                 method: 'POST',
                 headers: {
@@ -1109,7 +1111,9 @@ echo "</a>";
                 document.getElementById('existingAppAgendaContent').innerHTML = '<div class=\"alert alert-danger\"><p>Si è verificato un errore: ' + error.message + '</p></div>';
             });
         });
-    });
+    }
+});
+
     
     // Funzione per aprire la pagina di modifica dell'appuntamento
     function openModifyAppointment(appointmentId) {
