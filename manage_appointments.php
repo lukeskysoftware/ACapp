@@ -507,30 +507,54 @@ $showTable = !empty($appointments);
             <a href="manage_appointments.php?page=<?php echo $page + 1; ?>" class="pure-button button-small">Successivo</a>
         <?php } ?>
     </div>
-    <?php if (isset($_POST['open_edit_appointment'])): ?>
+    
+    
+    <?php if (isset($_GET['highlight_appointment'])): ?>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Recupera l'ID dell'appuntamento da aprire
-    const appointmentId = <?php echo (int)$_POST['open_edit_appointment']; ?>;
+    const appointmentId = <?php echo (int)$_GET['highlight_appointment']; ?>;
     
-    // Simula un click sul pulsante di modifica
+    console.log('Apertura automatica appuntamento ID:', appointmentId); // Debug
+    
+    // Scorre fino all'appuntamento con quell'ID
     setTimeout(function() {
-        const modifyButton = document.querySelector(`button[onclick="showActions(${appointmentId})"]`);
-        if (modifyButton) {
-            modifyButton.click();
-            
-            // Scroll verso l'elemento aperto
-            const actionRow = document.getElementById(`action-${appointmentId}`);
-            if (actionRow) {
-                actionRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Trova la riga dell'appuntamento che contiene il pulsante di modifica per questo ID
+        const modifyButtons = document.querySelectorAll('button.modifica-btn');
+        let appointmentRow = null;
+        
+        for (let button of modifyButtons) {
+            if (button.onclick && button.onclick.toString().includes(`showActions(${appointmentId})`)) {
+                appointmentRow = button.closest('tr');
+                break;
             }
-        } else {
-            console.error('Pulsante di modifica non trovato per ID:', appointmentId);
         }
-    }, 500); // Attendiamo mezzo secondo per garantire che la pagina sia caricata
+        
+        if (appointmentRow) {
+            // Scorre fino alla riga
+            appointmentRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Evidenzia temporaneamente la riga
+            appointmentRow.style.backgroundColor = '#ffffcc';
+            setTimeout(() => { appointmentRow.style.backgroundColor = ''; }, 3000);
+            
+            // Simula il click sul pulsante di modifica
+            setTimeout(function() {
+                const modifyButton = appointmentRow.querySelector(`.modifica-btn`);
+                if (modifyButton) {
+                    modifyButton.click();
+                }
+            }, 800);
+        } else {
+            console.error('Riga appuntamento non trovata per ID:', appointmentId);
+        }
+    }, 500);
 });
 </script>
 <?php endif; ?>
+    
+    
+    
 </body>
 </html>
 
