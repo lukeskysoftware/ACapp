@@ -1,5 +1,9 @@
 <?php
+// Start output buffering to prevent any output before headers are sent
+ob_start();
+
 include 'db.php';
+include 'utils_appointment.php';
 
 // Fetch Google Maps API key from the config table
 $apiKey = '';
@@ -51,6 +55,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     exit;
 }
 
+
 // Function to insert a new appointment
 if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
     $nome = htmlspecialchars($_POST['nome']);
@@ -61,19 +66,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
     $ora = htmlspecialchars($_POST['ora']);   // Campo ora
     $zona = isset($_POST['zone_id']) ? htmlspecialchars($_POST['zone_id']) : 0; // Imposta a 0 se non esiste
     $notes = htmlspecialchars($_POST['notes']);
-
-    // Check if an appointment already exists at the same date and time
-    $stmt = $conn->prepare("SELECT COUNT(*) AS count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?");
-    if ($stmt === false) {
-        $error = 'Errore nella preparazione della query: ' . $conn->error;
+    
+     // Prima verifica se il giorno/ora è disponibile (non è un unavailable slot)
+    $availability = isSlotAvailable($data, $ora, null, $zona);
+    if (!$availability['available']) {
+        $error = "Impossibile prenotare l'appuntamento: " . $availability['reason'];
     } else {
-        $stmt->bind_param("ss", $data, $ora);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        if ($row['count'] > 0) {
-            $error = "Esiste già un appuntamento nella stessa data e ora.";
+        // Check if an appointment already exists at the same date and time
+        $stmt = $conn->prepare("SELECT COUNT(*) AS count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?");
+        if ($stmt === false) {
+            $error = 'Errore nella preparazione della query: ' . $conn->error;
         } else {
+            $stmt->bind_param("ss", $data, $ora);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $row = $result->fetch_assoc();
+            if ($row['count'] > 0) {
+                $error = "Esiste già un appuntamento nella stessa data e ora.";
+            } else {
             // Check if the patient already exists
             $stmt = $conn->prepare("SELECT id FROM cp_patients WHERE name = ? AND surname = ? AND phone = ?");
             if ($stmt === false) {
@@ -118,7 +128,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
             }
         }
     }
-
+}
     $conn->close();
 }
 ?>
@@ -163,17 +173,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
         window.addEventListener('load', loadAPIKey);
 
         function initAutocomplete() {
-            const input = document.getElementById('indirizzo');
-            const options = {
-                componentRestrictions: { country: 'it' },
-                types: ['address']
+            var input = document.getElementById('indirizzo');
+            var options = {
+                types: ['geocode'],
+                strictBounds: true,
+                bounds: {
+                    north: 42.1,
+                    south: 40.8,
+                    west: 11.5,
+                    east: 13.0
+                }
             };
-            const autocomplete = new google.maps.places.Autocomplete(input, options);
-            autocomplete.setFields(['address_component', 'geometry', 'formatted_address']);
-            autocomplete.addListener('place_changed', function () {
-                const place = autocomplete.getPlace();
-                const address = place.formatted_address;
-                input.value = address;
+            var autocomplete = new google.maps.places.Autocomplete(input, options);
+
+            autocomplete.addListener('place_changed', function() {
+                var place = autocomplete.getPlace();
+                if (place.geometry) {
+                    document.getElementById('latitude').value = place.geometry.location.lat();
+                    document.getElementById('longitude').value = place.geometry.location.lng();
+                    displayCoordinates(place.geometry.location.lat(), place.geometry.location.lng());
+                }
             });
         }
 
@@ -251,7 +270,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
                                 </div>
                                 <div id="patientsList"></div>
                             </form>
-                            <button onclick="skipResults()" class="btn btn-secondary">Salta i risultati e crea nuovo appuntamento</button>
+                            <button onclick="skipResults()" class="btn btn-secondary">Salta la ricerca e crea nuovo appuntamento</button>
                             <form method="POST" action="insert_appointment.php" id="appointmentForm" style="display:none;">
                                 <input type="hidden" name="zone_id" value="0">
                                 <div class="mb-3">
