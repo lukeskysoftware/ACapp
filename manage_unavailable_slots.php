@@ -46,6 +46,7 @@ function getUnavailableSlots() {
     }
     
     // Seconda query: recuperare i dati con cp_users invece di users
+    // Modifica: ordinamento per data crescente (ASC) invece che decrescente (DESC)
     $sql = "SELECT 
                 u.id, 
                 u.date_start, 
@@ -62,7 +63,7 @@ function getUnavailableSlots() {
             FROM cp_unavailable_slots u
             LEFT JOIN cp_zones z ON u.zone_id = z.id 
             LEFT JOIN cp_users cu ON u.created_by = cu.id
-            ORDER BY u.date_start DESC, u.start_time ASC";
+            ORDER BY u.date_start ASC, u.start_time ASC";
     
     $result = mysqli_query($conn, $sql);
     
