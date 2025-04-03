@@ -59,41 +59,23 @@ function getWaitingPatients() {
 
     foreach ($patients as $patient) {
         $patient_id = $patient['id'];
-        // Query per verificare se il paziente ha un appuntamento da 20 giorni fa fino al futuro
+        $patient_phone = $patient['phone'];
+        
+        // Query per verificare se il numero di telefono del paziente ha un appuntamento da 20 giorni fa fino al futuro
         $appointment_sql = "SELECT a.appointment_date, a.appointment_time, a.address 
                             FROM cp_appointments a 
-                            WHERE a.patient_id = '$patient_id' AND a.appointment_date >= '$date_20_days_ago'";
+                            INNER JOIN cp_patients p ON a.patient_id = p.id
+                            WHERE p.phone = '$patient_phone' AND a.appointment_date >= '$date_20_days_ago'";
         $appointment_result = mysqli_query($conn, $appointment_sql);
         if (!$appointment_result) {
             die('Error: ' . mysqli_error($conn));
         }
         $appointments = mysqli_fetch_all($appointment_result, MYSQLI_ASSOC);
 
-        // Query per ottenere le note CRM del paziente
-        $crm_sql = "SELECT notes FROM cp_crm WHERE patient_id = '$patient_id' ORDER BY updated_at DESC LIMIT 1";
-        $crm_result = mysqli_query($conn, $crm_sql);
-        if ($crm_result && mysqli_num_rows($crm_result) > 0) {
-            $crm_data = mysqli_fetch_assoc($crm_result);
-            $patient['notes'] = $crm_data['notes'];
-        } else {
-            $patient['notes'] = '';
-        }
-
-        $has_future_appointment = false;
-        foreach ($appointments as $appointment) {
-            if ($patient['phone'] == $appointment['patient_phone']) {
-                $has_future_appointment = true;
-                break;
-            }
-        }
-
-        if ($has_future_appointment) {
-            // Escludere i pazienti con lo stesso telefono
-            continue;
-        } elseif (!empty($appointments)) {
+        if (!empty($appointments)) {
             // Se il paziente ha un appuntamento futuro, includere con dettagli
             foreach ($appointments as $appointment) {
-                $patient['appointment_info'] = "Questo paziente potrebbe avere un appuntamento già registrato.<br>" .
+                $patient['appointment_info'] = "Questo numero di telefono risulta avere un prossimo appuntamento.<br>" .
                                                "Giorno: {$appointment['appointment_date']}<br>" .
                                                "Ora: {$appointment['appointment_time']}<br>" .
                                                "Indirizzo: {$appointment['address']}<br>";
