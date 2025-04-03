@@ -30,8 +30,12 @@ $_SESSION['last_activity'] = time();
 // Check if the user has admin privileges (ID 6 or 9)
 $isAdmin = ($_SESSION['user_id'] == 6 || $_SESSION['user_id'] == 9);
 ?>
+
+<!-- Includi CSS e JS di Bootstrap direttamente -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
 
 <nav class="navbar navbar-expand-lg navbar-light bg-light">
     <div class="container-fluid">
@@ -50,28 +54,28 @@ $isAdmin = ($_SESSION['user_id'] == 6 || $_SESSION['user_id'] == 9);
                 </li>
                 <?php endif; ?>
                  <li class="nav-item">
-                    <a class="nav-link" href="manage_unavailable_slots.php">Date Non Disponibili</a>
+                    <a class="nav-link text-dark" href="manage_unavailable_slots.php"><i class="bi bi-calendar-x-fill" style="color: crimson;"></i></span> Date Non Disponibili</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="waiting_room.php">Richiesta App.to</a>
+                    <a class="nav-link text-dark" href="waiting_room.php"><i class="bi bi-person-raised-hand" style="color: DarkSeaGreen"></i>Richiesta App.to</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="waiting_list.php">Attesa App.to</a>
+                    <a class="nav-link text-dark" href="waiting_list.php"><i class="bi bi-alarm" style="color: MediumVioletRed"></i>Attesa App.to</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="combined_address_calculate_v2.php">Prenota per Zona</a>
+                    <a class="nav-link text-dark" href="combined_address_calculate_v2.php"><i class="bi bi-geo-alt-fill" style="color: darkorange"></i>Prenota per Zona</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="insert_appointment.php">Inserisci Appuntamento</a>
+                    <a class="nav-link text-dark" href="insert_appointment.php"><i class="bi bi-calendar-plus-fill"  style="color: teal"></i>Inserisci Appuntamento</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="manage_appointments.php">Gestisci Appuntamenti</a>
+                    <a class="nav-link text-dark" href="manage_appointments.php"><i class="bi bi-table" style="color: LightCoral"></i>Gestisci Appuntamenti</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="view_appointments.php">Vedi Appuntamenti</a>
+                    <a class="nav-link text-dark" href="view_appointments.php"><i class="bi bi-journal-text" style="color: DodgerBlue"></i>Vedi Appuntamenti</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="logout.php">Logout</a>
+                    <a class="nav-link text-dark" href="logout.php"><i class="bi bi-x"></i>Logout</a>
                 </li>
             </ul>
         </div>
