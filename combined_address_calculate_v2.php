@@ -1323,7 +1323,7 @@ if (!empty($available_slots_near_appointments)) {
         echo "<br><a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot_time}";
         echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
         echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-        echo "' class='pure-button pure-button-primary mt-2'>Seleziona</a>";
+        echo "' class='btn btn-success mt-2 fw-bold'>Seleziona</a>";
 
         echo "</div>";
     }
@@ -1590,7 +1590,7 @@ echo "<script>
             echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
             echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
             echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-            echo "' class='pure-button pure-button-primary' style='margin:0.2rem;'>{$formattedTime}</a>";
+           echo "' class='btn btn-success m-1 fw-bold'>{$formattedTime}</a>";
         }
         echo "</p>";
     }
@@ -1717,6 +1717,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             max-width: 300px;
             margin-bottom: 10px;
         }
+    
+    .pure-button-primary {
+    background-color: #4CAF50 !important;
+    color: white !important;
+    font-weight: bold !important;
+}
+
     </style>
         <script>
         async function loadAPIKey() {
