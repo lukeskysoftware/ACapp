@@ -507,6 +507,30 @@ $showTable = !empty($appointments);
             <a href="manage_appointments.php?page=<?php echo $page + 1; ?>" class="pure-button button-small">Successivo</a>
         <?php } ?>
     </div>
+    <?php if (isset($_POST['open_edit_appointment'])): ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Recupera l'ID dell'appuntamento da aprire
+    const appointmentId = <?php echo (int)$_POST['open_edit_appointment']; ?>;
+    
+    // Simula un click sul pulsante di modifica
+    setTimeout(function() {
+        const modifyButton = document.querySelector(`button[onclick="showActions(${appointmentId})"]`);
+        if (modifyButton) {
+            modifyButton.click();
+            
+            // Scroll verso l'elemento aperto
+            const actionRow = document.getElementById(`action-${appointmentId}`);
+            if (actionRow) {
+                actionRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        } else {
+            console.error('Pulsante di modifica non trovato per ID:', appointmentId);
+        }
+    }, 500); // Attendiamo mezzo secondo per garantire che la pagina sia caricata
+});
+</script>
+<?php endif; ?>
 </body>
 </html>
 
