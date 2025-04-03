@@ -45,7 +45,7 @@ function getUnavailableSlots() {
         return ["message" => "Nessun dato trovato nella tabella cp_unavailable_slots", "count" => 0];
     }
     
-    // Seconda query: recuperare i dati con LEFT JOIN per assicurarsi che tutti gli slot vengano recuperati
+    // Seconda query: recuperare i dati con cp_users invece di users
     $sql = "SELECT 
                 u.id, 
                 u.date_start, 
@@ -57,11 +57,11 @@ function getUnavailableSlots() {
                 u.reason, 
                 u.created_at,
                 u.created_by,
-                z.name as zone_name, 
-                CONCAT(IFNULL(us.firstname, ''), ' ', IFNULL(us.lastname, '')) as created_by_name
+                z.name as zone_name,
+                cu.username as created_by_name
             FROM cp_unavailable_slots u
             LEFT JOIN cp_zones z ON u.zone_id = z.id 
-            LEFT JOIN users us ON u.created_by = us.id
+            LEFT JOIN cp_users cu ON u.created_by = cu.id
             ORDER BY u.date_start DESC, u.start_time ASC";
     
     $result = mysqli_query($conn, $sql);
@@ -77,6 +77,7 @@ function getUnavailableSlots() {
             $row['zone_name'] = 'Tutte le zone';
         }
         
+        // Se l'username non è disponibile, usa l'ID
         if (!isset($row['created_by_name']) || empty(trim($row['created_by_name']))) {
             $row['created_by_name'] = 'Utente ID: ' . $row['created_by'];
         }
@@ -400,53 +401,36 @@ if (isset($unavailable_slots_data['error'])) {
         </div>
         
         <div class="table-container">
-    <h2>Blocchi Esistenti</h2>
-    <?php if (empty($unavailable_slots)): ?>
-        <p>Non ci sono blocchi orari impostati.</p>
-        
-        <?php if (isset($unavailable_slots_data['message'])): ?>
-            <p><em><?php echo $unavailable_slots_data['message']; ?></em></p>
-        <?php endif; ?>
-        
-        <?php if (isset($unavailable_slots_data['count'])): ?>
-            <p>Conteggio record nel database: <?php echo $unavailable_slots_data['count']; ?></p>
-        <?php endif; ?>
-        
-    <?php else: ?>
-        <p>Totale blocchi: <?php echo count($unavailable_slots); ?></p>
-        
-        
-       <div class="table-container">
-    <h2>Blocchi Esistenti</h2>
-    <?php if (empty($unavailable_slots)): ?>
-        <p>Non ci sono blocchi orari impostati.</p>
-        
-        <!-- Sezione di debug per l'amministratore -->
-        <?php if ($_SESSION['user_id'] == 1): ?>
-        <div class="debug-info">
-            <h3>Informazioni di Debug</h3>
-            <p>Informazioni sulla struttura della tabella cp_unavailable_slots:</p>
-            <?php if (isset($debug_table_info['error'])): ?>
-                <div class="error"><?php echo $debug_table_info['error']; ?></div>
-            <?php else: ?>
-                <details>
-                    <summary>Struttura della tabella</summary>
-                    <pre><?php print_r($debug_table_info['columns']); ?></pre>
-                </details>
-                <p>Numero di record nella tabella: <strong><?php echo $debug_table_info['row_count']; ?></strong></p>
+            <h2>Blocchi Esistenti</h2>
+            <?php if (empty($unavailable_slots)): ?>
+                <p>Non ci sono blocchi orari impostati.</p>
                 
-                <?php if (isset($unavailable_slots_data['message'])): ?>
-                    <p><em><?php echo $unavailable_slots_data['message']; ?></em></p>
-                <?php endif; ?>
-                
-                <?php if (isset($unavailable_slots_data) && isset($unavailable_slots_data['count'])): ?>
-                    <p>Conteggio record dalla query: <strong><?php echo $unavailable_slots_data['count']; ?></strong></p>
-                    
-                    <!-- Se ci sono record ma non vengono visualizzati, mostra di più informazioni -->
-                    <?php if ($unavailable_slots_data['count'] > 0 && empty($unavailable_slots)): ?>
+                <!-- Sezione di debug per l'amministratore -->
+                <?php if ($_SESSION['user_id'] == 1): ?>
+                <div class="debug-info">
+                    <h3>Informazioni di Debug</h3>
+                    <p>Informazioni sulla struttura della tabella cp_unavailable_slots:</p>
+                    <?php if (isset($debug_table_info['error'])): ?>
+                        <div class="error"><?php echo $debug_table_info['error']; ?></div>
+                    <?php else: ?>
                         <details>
-                            <summary>Dettagli della query</summary>
-                            <pre>
+                            <summary>Struttura della tabella</summary>
+                            <pre><?php print_r($debug_table_info['columns']); ?></pre>
+                        </details>
+                        <p>Numero di record nella tabella: <strong><?php echo $debug_table_info['row_count']; ?></strong></p>
+                        
+                        <?php if (isset($unavailable_slots_data['message'])): ?>
+                            <p><em><?php echo $unavailable_slots_data['message']; ?></em></p>
+                        <?php endif; ?>
+                        
+                        <?php if (isset($unavailable_slots_data) && isset($unavailable_slots_data['count'])): ?>
+                            <p>Conteggio record dalla query: <strong><?php echo $unavailable_slots_data['count']; ?></strong></p>
+                            
+                            <!-- Se ci sono record ma non vengono visualizzati, mostra di più informazioni -->
+                            <?php if ($unavailable_slots_data['count'] > 0 && empty($unavailable_slots)): ?>
+                                <details>
+                                    <summary>Dettagli della query</summary>
+                                    <pre>
 SELECT 
     u.id, 
     u.date_start, 
@@ -462,65 +446,67 @@ SELECT
     CONCAT(IFNULL(us.firstname, ''), ' ', IFNULL(us.lastname, '')) as created_by_name
 FROM cp_unavailable_slots u
 LEFT JOIN cp_zones z ON u.zone_id = z.id 
-LEFT JOIN users us ON u.created_by = us.id
+LEFT JOIN cp_users us ON u.created_by = us.id
 ORDER BY u.date_start DESC, u.start_time ASC
-                            </pre>
-                        </details>
+                                    </pre>
+                                </details>
+                            <?php endif; ?>
+                        <?php endif; ?>
                     <?php endif; ?>
+                </div>
                 <?php endif; ?>
+                
+            <?php else: ?>
+                <p>Totale blocchi: <?php echo count($unavailable_slots); ?></p>
+                <table class="pure-table pure-table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Periodo</th>
+                            <th>Orario</th>
+                            <th>Zona</th>
+                            <th>Motivo</th>
+                            <th>Creato da</th>
+                            <th>Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($unavailable_slots as $slot): ?>
+                            <tr>
+                                <td>
+                                    <?php 
+                                    echo date('d/m/Y', strtotime($slot['date_start']));
+                                    if ($slot['date_start'] != $slot['date_end']) {
+                                        echo ' - ' . date('d/m/Y', strtotime($slot['date_end']));
+                                    }
+                                    ?>
+                                </td>
+                                <td>
+                                    <?php if ($slot['all_day']): ?>
+                                        <span class="all-day">Intero giorno</span>
+                                    <?php else: ?>
+                                        <span class="partial-day">
+                                            <?php echo date('H:i', strtotime($slot['start_time'])); ?> - 
+                                            <?php echo date('H:i', strtotime($slot['end_time'])); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo $slot['zone_id'] ? htmlspecialchars($slot['zone_name']) : 'Tutte le zone'; ?></td>
+                                <td><?php echo htmlspecialchars($slot['reason']); ?></td>
+                                <td><?php echo htmlspecialchars($slot['created_by_name']); ?></td>
+                                <td>
+                                    <form method="POST" action="" onsubmit="return confirm('Sei sicuro di voler eliminare questo blocco?');">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="id" value="<?php echo $slot['id']; ?>">
+                                        <button type="submit" class="pure-button btn-delete">Elimina</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             <?php endif; ?>
         </div>
-        <?php endif; ?>
-        
-    <?php else: ?>
-        <table class="pure-table pure-table-bordered">
-            <thead>
-                <tr>
-                    <th>Periodo</th>
-                    <th>Orario</th>
-                    <th>Zona</th>
-                    <th>Motivo</th>
-                    <th>Creato da</th>
-                    <th>Azioni</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($unavailable_slots as $slot): ?>
-                    <tr>
-                        <td>
-                            <?php 
-                            echo date('d/m/Y', strtotime($slot['date_start']));
-                            if ($slot['date_start'] != $slot['date_end']) {
-                                echo ' - ' . date('d/m/Y', strtotime($slot['date_end']));
-                            }
-                            ?>
-                        </td>
-                        <td>
-                            <?php if ($slot['all_day']): ?>
-                                <span class="all-day">Intero giorno</span>
-                            <?php else: ?>
-                                <span class="partial-day">
-                                    <?php echo date('H:i', strtotime($slot['start_time'])); ?> - 
-                                    <?php echo date('H:i', strtotime($slot['end_time'])); ?>
-                                </span>
-                            <?php endif; ?>
-                        </td>
-                        <td><?php echo $slot['zone_id'] ? htmlspecialchars($slot['zone_name']) : 'Tutte le zone'; ?></td>
-                        <td><?php echo htmlspecialchars($slot['reason']); ?></td>
-                        <td><?php echo htmlspecialchars($slot['created_by_name']); ?></td>
-                        <td>
-                            <form method="POST" action="" onsubmit="return confirm('Sei sicuro di voler eliminare questo blocco?');">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="id" value="<?php echo $slot['id']; ?>">
-                                <button type="submit" class="pure-button btn-delete">Elimina</button>
-                            </form>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php endif; ?>
-</div>
+    </div>
     
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/it.js"></script>
@@ -593,15 +579,3 @@ ORDER BY u.date_start DESC, u.start_time ASC
     </script>
 </body>
 </html>
-<?php
-$zones = getAllZones();
-$debug_table_info = checkTableStructure();
-$unavailable_slots_data = getUnavailableSlots();
-
-if (isset($unavailable_slots_data['error'])) {
-    $error = $unavailable_slots_data['error'];
-    $unavailable_slots = [];
-} else {
-    $unavailable_slots = isset($unavailable_slots_data['slots']) ? $unavailable_slots_data['slots'] : [];
-}
-?>
