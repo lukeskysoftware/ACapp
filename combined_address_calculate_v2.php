@@ -1030,6 +1030,112 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         echo "</div><hr>";
         */
         //////FINE STAMPA A SCHERMO BLOCCO INDIRIZZI CONFRONTATI////////
+        
+        
+        // Verifica se l'indirizzo corrente ha già un appuntamento
+$existingAppointmentForAddress = null;
+$checkAddressSql = "SELECT a.id, a.appointment_date, a.appointment_time, p.name, p.surname 
+                  FROM cp_appointments a
+                  JOIN cp_patients p ON a.patient_id = p.id
+                  WHERE a.address = ? AND a.appointment_date >= CURDATE()
+                  ORDER BY a.appointment_date, a.appointment_time
+                  LIMIT 1";
+$checkAddressStmt = $conn->prepare($checkAddressSql);
+$checkAddressStmt->bind_param("s", $address);
+$checkAddressStmt->execute();
+$existingResult = $checkAddressStmt->get_result();
+
+if ($existingResult->num_rows > 0) {
+    $existingAppointmentForAddress = $existingResult->fetch_assoc();
+}
+
+// Mostra l'avviso se esiste già un appuntamento per questo indirizzo
+if ($existingAppointmentForAddress) {
+    $appDate = date('d/m/Y', strtotime($existingAppointmentForAddress['appointment_date']));
+    $appTime = date('H:i', strtotime($existingAppointmentForAddress['appointment_time']));
+    $appId = $existingAppointmentForAddress['id'];
+    $patientName = $existingAppointmentForAddress['name'] . ' ' . $existingAppointmentForAddress['surname'];
+    
+    echo "<div class='container' style='margin-bottom: 30px;'>";
+    echo "<div class='alert alert-danger' style='font-size: 1.2em; padding: 20px; text-align: center;'>";
+    echo "<h3 style='color: #721c24;'><i class='bi bi-exclamation-triangle-fill'></i> ATTENZIONE: Per questo indirizzo esiste già un appuntamento!</h3>";
+    echo "<p>Paziente: <strong>{$patientName}</strong></p>";
+    echo "<p>Data: <strong>{$appDate}</strong> alle <strong>{$appTime}</strong></p>";
+    
+    // Pulsante Vedi Agenda
+    echo "<button class='btn btn-info btn-lg' type='button' data-bs-toggle='collapse' data-bs-target='#existingAppAgenda' aria-expanded='false' aria-controls='existingAppAgenda' style='margin-right: 10px;'>";
+    echo "<i class='bi bi-calendar'></i> Vedi Agenda";
+    echo "</button>";
+    
+    // Pulsante Modifica Appuntamento
+echo "<a href='manage_appointments.php?highlight_appointment={$appId}' class='btn btn-warning btn-lg'>";
+echo "<i class='bi bi-pencil-square'></i> Modifica Appuntamento";
+echo "</a>";
+    
+    // Div collassabile per l'agenda
+    echo "<div class='collapse mt-3' id='existingAppAgenda'>";
+    echo "<div class='card card-body' id='existingAppAgendaContent'>";
+    echo "<div class='text-center'>";
+    echo "<div class='spinner-border text-primary' role='status'>";
+    echo "<span class='visually-hidden'>Caricamento appuntamenti...</span>";
+    echo "</div>";
+    echo "<p>Caricamento appuntamenti...</p>";
+    echo "</div>";
+    echo "</div>";
+    echo "</div>";
+    
+    echo "</div></div>";
+    
+    // Script per caricare dinamicamente l'agenda e aprire la finestra di modifica
+    echo "<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Funzione per caricare l'agenda quando si clicca su 'Vedi Agenda'
+        document.querySelector('#existingAppAgenda').addEventListener('shown.bs.collapse', function() {
+            fetch('get_appointments_modal.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'appointment_date=" . $existingAppointmentForAddress['appointment_date'] . "'
+            })
+            .then(function(response) {
+                if (!response.ok) throw new Error('Errore di rete');
+                return response.text();
+            })
+            .then(function(html) {
+                document.getElementById('existingAppAgendaContent').innerHTML = html;
+            })
+            .catch(function(error) {
+                document.getElementById('existingAppAgendaContent').innerHTML = '<div class=\"alert alert-danger\"><p>Si è verificato un errore: ' + error.message + '</p></div>';
+            });
+        });
+    });
+    
+    // Funzione per aprire la pagina di modifica dell'appuntamento
+    function openModifyAppointment(appointmentId) {
+        // Prima creiamo un form nascosto
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'manage_appointments.php';
+        form.style.display = 'none';
+        
+        // Aggiungiamo un campo nascosto con l'ID dell'appuntamento
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'open_edit_appointment';
+        input.value = appointmentId;
+        form.appendChild(input);
+        
+        // Aggiungiamo il form al body e lo inviamo
+        document.body.appendChild(form);
+        form.submit();
+    }
+    </script>";
+}
+        
+        
+        
+        
 
         $available_slots_near_appointments = [];
         
