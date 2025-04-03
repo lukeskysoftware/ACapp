@@ -49,8 +49,8 @@ $isAdmin = ($_SESSION['user_id'] == 6 || $_SESSION['user_id'] == 9);
                     <a class="nav-link" href="list_zones.php">Gestisci Zone</a> <!-- Updated to point to list_zones.php -->
                 </li>
                 <?php endif; ?>
-                <li class="nav-item">
-                    <a class="nav-link" href="manage_unavailable_slots.php">Gestisci Giorni OFF</a>
+                 <li class="nav-item">
+                    <a class="nav-link" href="manage_unavailable_slots.php">Date Non Disponibili</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link text-dark" href="waiting_room.php">Richiesta App.to</a>
