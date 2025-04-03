@@ -7,6 +7,7 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 include 'db.php';
 include 'menu.php';
+include 'utils_appointment.php';
 
 // Fetch Google Maps API key from the config table
 $apiKey = '';
@@ -612,6 +613,13 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
 function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $address, $latitude, $longitude, $buffer_minutes = 60) {
     global $conn;
     
+    // Verifica innanzitutto la disponibilità dello slot rispetto agli unavailable slots
+    $endTime = date('H:i:s', strtotime($appointmentTime . " +1 hour"));
+    $availability = isSlotAvailable($appointmentDate, $appointmentTime, $endTime, $zoneId);
+    if (!$availability['available']) {
+        error_log("Appuntamento non disponibile: " . $availability['reason']);
+        return false;
+    }
     // Converti data e orario in oggetto DateTime
     $appointmentDateTime = new DateTime($appointmentDate . ' ' . $appointmentTime);
     
@@ -768,7 +776,7 @@ function getAddressCoordinates($address, $appointment_id = null) {
     return getCoordinatesFromAddress($address, $appointment_id);
 }
 
-// Function to get the next 3 available appointment dates and times
+// Modifica la funzione getNext3AppointmentDates per utilizzare le nuove funzioni (circa linea 772)
 function getNext3AppointmentDates($slots, $zoneId) {
     global $conn;
     $next3Days = [];
@@ -788,6 +796,13 @@ function getNext3AppointmentDates($slots, $zoneId) {
             
             error_log("Controllo data: " . $formattedDate . " (giorno della settimana: " . $checkDayOfWeek . ")");
             
+            // Verifica se questa data è disponibile negli unavailable slots
+            $dateAvailability = isSlotAvailable($formattedDate, null, null, $zoneId);
+            if (!$dateAvailability['available']) {
+                error_log("Data " . $formattedDate . " saltata: " . $dateAvailability['reason']);
+                continue;
+            }
+            
             // Filtra gli slot configurati per questo giorno della settimana per la zona specifica
             $daySlots = array_filter($slots, function($slot) use ($checkDayOfWeek) {
                 $slotDayOfWeek = date('N', strtotime($slot['day']));
@@ -804,78 +819,64 @@ function getNext3AppointmentDates($slots, $zoneId) {
             foreach ($daySlots as $slot) {
                 $configuredTimes[] = $slot['time'];
             }
-            error_log("Slot configurati per il giorno " . $checkDayOfWeek . ": " . implode(", ", $configuredTimes));
             
-            // MODIFICA IMPORTANTE: Ottieni TUTTI gli appuntamenti per questa data, indipendentemente dalla zona
-            // In questo modo evitiamo sovrapposizioni tra zone
-            $sql = "SELECT appointment_time, zone_id FROM cp_appointments 
-                   WHERE appointment_date = ?
-                   ORDER BY appointment_time";
-            $stmt = $conn->prepare($sql);
-            $stmt->bind_param("s", $formattedDate);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            
-            $bookedTimes = [];
-            $bookedTimesDetails = []; // Per debug dettagliato
-            while ($row = $result->fetch_assoc()) {
-                $bookedTimes[] = $row['appointment_time'];
-                $bookedTimesDetails[] = "{$row['appointment_time']} (zona {$row['zone_id']})";
-            }
-            
-            if (!empty($bookedTimes)) {
-                error_log("Appuntamenti già prenotati per " . $formattedDate . " in TUTTE LE ZONE: " . implode(", ", $bookedTimesDetails));
-            } else {
-                error_log("Nessun appuntamento prenotato per " . $formattedDate . " in nessuna zona");
-            }
-            
-            // CONTROLLO PER OGNI SLOT CONFIGURATO, SE È DISPONIBILE O TROPPO VICINO A SLOT OCCUPATI
+            // Verificare ogni orario configurato
             $availableSlots = [];
-            
             foreach ($configuredTimes as $slotTime) {
                 // Se la data è oggi e l'ora è passata, salta
                 if ($formattedDate == date('Y-m-d') && $slotTime <= date('H:i:s')) {
-                    error_log("Slot " . $slotTime . " saltato perché è nel passato");
                     continue;
                 }
                 
-                // Controlla se questo slot è già prenotato in qualsiasi zona
-                if (in_array($slotTime, $bookedTimes)) {
-                    error_log("Slot " . $slotTime . " saltato perché già prenotato in qualche zona");
-                    continue;
-                }
-                
-                // Controlla se lo slot è troppo vicino a uno prenotato (entro 60 minuti)
-                $slotTimestamp = strtotime($formattedDate . ' ' . $slotTime);
-                $tooClose = false;
-                
-                foreach ($bookedTimes as $bookedTime) {
-                    $bookedTimestamp = strtotime($formattedDate . ' ' . $bookedTime);
-                    $diffMinutes = abs(($slotTimestamp - $bookedTimestamp) / 60);
+                // Verifica se questo slot è disponibile negli unavailable slots
+                $slotAvailability = isSlotAvailable($formattedDate, $slotTime, null, $zoneId);
+                if ($slotAvailability['available']) {
+                    // Continua con il resto delle verifiche esistenti...
                     
-                    if ($diffMinutes < 60) {
-                        $tooClose = true;
-                        error_log("Slot " . $slotTime . " saltato perché troppo vicino all'appuntamento delle " . $bookedTime . " (diff: " . $diffMinutes . " minuti)");
-                        break;
+                    // MODIFICA: Ottieni TUTTI gli appuntamenti per questa data, indipendentemente dalla zona
+                    $sql = "SELECT appointment_time, zone_id FROM cp_appointments 
+                           WHERE appointment_date = ?
+                           ORDER BY appointment_time";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->bind_param("s", $formattedDate);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    
+                    $bookedTimes = [];
+                    while ($row = $result->fetch_assoc()) {
+                        $bookedTimes[] = $row['appointment_time'];
                     }
-                }
-                
-                if (!$tooClose) {
-                    $availableSlots[] = $slotTime;
-                    error_log("Slot " . $slotTime . " DISPONIBILE");
+                    
+                    // Controlla se questo slot è già prenotato in qualsiasi zona
+                    if (!in_array($slotTime, $bookedTimes)) {
+                        // Controlla se lo slot è troppo vicino a uno prenotato (entro 60 minuti)
+                        $slotTimestamp = strtotime($formattedDate . ' ' . $slotTime);
+                        $tooClose = false;
+                        
+                        foreach ($bookedTimes as $bookedTime) {
+                            $bookedTimestamp = strtotime($formattedDate . ' ' . $bookedTime);
+                            $diffMinutes = abs(($slotTimestamp - $bookedTimestamp) / 60);
+                            
+                            if ($diffMinutes < 60) {
+                                $tooClose = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!$tooClose) {
+                            $availableSlots[] = $slotTime;
+                        }
+                    }
                 }
             }
             
             // Se ci sono almeno 2 slot disponibili, aggiungi questa data
             if (count($availableSlots) >= 2) {
-                error_log("Data " . $formattedDate . " aggiunta con " . count($availableSlots) . " slot disponibili");
                 $next3Days[$formattedDate] = $availableSlots;
                 
                 if (count($next3Days) >= 3) {
                     break; // Abbiamo raggiunto le 3 date
                 }
-            } else {
-                error_log("Data " . $formattedDate . " saltata: solo " . count($availableSlots) . " slot disponibili (minimo 2 richiesti)");
             }
         }
         
@@ -885,14 +886,8 @@ function getNext3AppointmentDates($slots, $zoneId) {
     // Ordina per data
     ksort($next3Days);
     
-    error_log("FINE getNext3AppointmentDates: trovate " . count($next3Days) . " date disponibili");
-    foreach ($next3Days as $date => $times) {
-        error_log("Data " . $date . " con slot: " . implode(", ", $times));
-    }
-    
     return array_slice($next3Days, 0, 3, true);
 }
-
 // Function to add patient information to the cp_patients table
 function addPatient($name, $surname, $phone, $notes) {
     global $conn;
@@ -952,7 +947,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         //////STAMPA A SCHERMO BLOCCO INDIRIZZI CONFRONTATI////////
 
         // Visualizza informazioni di debug
-        global $address_comparison_debug;
+    /*    global $address_comparison_debug;
         echo "<div class='container'>";
         echo "<h3>Confronto indirizzi (Debug):</h3>";
         echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
@@ -977,6 +972,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
 
         echo "</tbody></table>";
         echo "</div><hr>";
+        */
         //////FINE STAMPA A SCHERMO BLOCCO INDIRIZZI CONFRONTATI////////
 
         $available_slots_near_appointments = [];
@@ -990,7 +986,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         // Mostra i risultati
         echo "<div class='container'><center><h2>Indirizzo: <span style='color:green; font-weight:700;'>{$address}</span></h2>";
         echo "<p>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</p></center></div><hr>";
-        
+       
         // Mostra appuntamenti trovati nel raggio (opzionale, per debug)
         if (!empty($nearby_appointments)) {
             echo "<div class='container'><center>";
@@ -1045,7 +1041,7 @@ if (!empty($nearby_appointments)) {
     displayAppointmentDetails($nearby_appointments);
 }
         
-        
+    
         
 // Codice per la visualizzazione degli slot disponibili con le modifiche richieste
 if (!empty($available_slots_near_appointments)) {
