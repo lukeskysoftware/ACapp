@@ -114,13 +114,12 @@ if (isset($_POST['update'])) {
             header('Location: manage_appointments.php');
             exit();
         }
-        
-        // Continua con l'aggiornamento dell'appuntamento
+                // Continua con l'aggiornamento dell'appuntamento
         $stmt = $conn->prepare("UPDATE cp_appointments a 
-                              JOIN cp_patients p ON a.patient_id = p.id 
-                              SET p.name=?, p.surname=?, p.phone=?, a.notes=?, 
-                                  a.appointment_date=?, a.appointment_time=?, a.address=? 
-                              WHERE a.id = ?");
+                               JOIN cp_patients p ON a.patient_id = p.id 
+                               SET p.name=?, p.surname=?, p.phone=?, a.notes=?, 
+                                   a.appointment_date=?, a.appointment_time=?, a.address=? 
+                               WHERE a.id = ?");
         if ($stmt === false) {
             throw new Exception('Errore nella preparazione della query: ' . $conn->error);
         }
@@ -151,6 +150,31 @@ if (isset($_POST['delete_confirm'])) {
     exit(); // Ensure the script stops executing after the redirect
 }
 
+// AGGIUNGI QUESTO NUOVO CODICE QUI:
+// Gestione del parametro highlight_appointment
+if (isset($_GET['highlight_appointment'])) {
+    $highlight_id = (int)$_GET['highlight_appointment'];
+    
+    // Controlla se l'appuntamento esiste
+    $check_sql = "SELECT a.*, p.name, p.surname FROM cp_appointments a 
+                  JOIN cp_patients p ON a.patient_id = p.id 
+                  WHERE a.id = ?";
+    $check_stmt = $conn->prepare($check_sql);
+    $check_stmt->bind_param("i", $highlight_id);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+    
+    if ($row = $check_result->fetch_assoc()) {
+        // Appuntamento trovato, impostiamo il filtro per data
+        $filter['date'] = $row['appointment_date'];
+        
+        $_SESSION['info_message'] = "Mostrando l'appuntamento richiesto per " . $row['name'] . " " . $row['surname'] . " del " . date('d/m/Y', strtotime($row['appointment_date']));
+    } else {
+        $_SESSION['error_message'] = "Appuntamento ID $highlight_id non trovato nel database.";
+    }
+}
+// FINE DEL NUOVO CODICE
+
 $filter = [
     'date' => isset($_GET['date']) ? $_GET['date'] : '',
     'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
@@ -163,61 +187,6 @@ $total_pages = ceil($total_appointments / $results_per_page);
 $appointments = getAppointments($filter, $search, $page, $results_per_page);
 $zones = getZones();
 $showTable = !empty($appointments);
-
-// Verifica se è stato richiesto di evidenziare un appuntamento specifico
-if (isset($_GET['highlight_appointment'])) {
-    $highlight_id = (int)$_GET['highlight_appointment'];
-    // Verifica se l'appuntamento esiste
-    $check_sql = "SELECT id, appointment_date FROM cp_appointments WHERE id = ?";
-    $check_stmt = $conn->prepare($check_sql);
-    $check_stmt->bind_param("i", $highlight_id);
-    $check_stmt->execute();
-    $check_result = $check_stmt->get_result();
-    
-    if ($row = $check_result->fetch_assoc()) {
-        // L'appuntamento esiste, applichiamo filtri per portarlo nella pagina corrente
-        $filter['date'] = $row['appointment_date']; // Filtriamo per la data dell'appuntamento
-        
-        // Aggiorniamo anche la query di selezione
-        $total_appointments = getTotalAppointments($filter, $search);
-        $total_pages = ceil($total_appointments / $results_per_page);
-        $appointments = getAppointments($filter, $search, 1, $results_per_page);
-        $page = 1; // Impostiamo la pagina a 1
-        $showTable = !empty($appointments);
-        
-        // Salviamo un messaggio per indicare che i filtri sono stati applicati automaticamente
-        $_SESSION['info_message'] = "Filtri applicati automaticamente per mostrare l'appuntamento richiesto.";
-    } else {
-        // L'appuntamento non esiste
-        $_SESSION['error_message'] = "Appuntamento ID {$highlight_id} non trovato nel database.";
-    }
-}
-
-// Gestione del parametro find_appointment
-if (isset($_GET['find_appointment'])) {
-    $appointment_id = (int)$_GET['find_appointment'];
-    
-    // Troviamo in quale pagina si trova l'appuntamento
-    $sql = "SELECT COUNT(*) AS position FROM cp_appointments a 
-            WHERE a.id <= ? ORDER BY a.appointment_date ASC, a.appointment_time ASC";
-    $stmt = $conn->prepare($sql);
-    if ($stmt) {
-        $stmt->bind_param("i", $appointment_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        if ($row = $result->fetch_assoc()) {
-            $position = $row['position'];
-            $page_number = ceil($position / $results_per_page);
-            
-            // Redirect alla pagina corretta con il parametro highlight_appointment
-            header("Location: manage_appointments.php?page={$page_number}&highlight_appointment={$appointment_id}");
-            exit();
-        }
-    }
-}
-
-
-
 ?>
 
 <!DOCTYPE html>
@@ -321,7 +290,13 @@ if (isset($_GET['find_appointment'])) {
     background-color: #d4edda;
     border-color: #c3e6cb;
 }
-/* Per schermi pi첫 piccoli */
+/* AGGIUNGI QUESTO PER IL MESSAGGIO INFO */
+.alert-info {
+    color: #0c5460;
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+}
+/* Per schermi più piccoli */
 @media (max-width: 992px) {
     .notes-column {
         flex: 1 1 100%;
@@ -330,7 +305,64 @@ if (isset($_GET['find_appointment'])) {
 }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    
+    <!-- AGGIUNGI QUESTO NUOVO BLOCCO DI SCRIPT QUI -->
     <script>
+        // Funzioni globali per gestire azioni sugli appuntamenti
+        function showActions(id) {
+            const actionRow = document.getElementById(`action-${id}`);
+            const editForm = document.getElementById(`edit-form-${id}`);
+            const displayStatus = actionRow.style.display === 'none' || actionRow.style.display === '';
+    
+            // Hide all other action rows
+            document.querySelectorAll('.action-row').forEach(row => row.style.display = 'none');
+    
+            // Hide all other edit forms
+            document.querySelectorAll('.edit-form').forEach(form => form.style.display = 'none');
+    
+            if (displayStatus) {
+                actionRow.style.display = 'table-row';
+                editForm.style.display = 'inline';
+            } else {
+                actionRow.style.display = 'none';
+                editForm.style.display = 'none';
+            }
+        }
+    
+        function confirmDelete(appointment) {
+            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.appointment_date} ${appointment.appointment_time}?`)) {
+                document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
+                document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
+            }
+        }
+    
+        function hideActions(id) {
+            const actionRow = document.getElementById(`action-${id}`);
+            const editForm = document.getElementById(`edit-form-${id}`);
+            actionRow.style.display = 'none';
+            editForm.style.display = 'none';
+        }
+    
+        // Funzione per riaplicare gli event listener dopo un filtro
+        function reapplyEventHandlers() {
+            document.querySelectorAll(".flatpickr").forEach(elem => {
+                flatpickr(elem, {
+                    dateFormat: "Y-m-d",
+                    allowInput: true
+                });
+            });
+    
+            document.querySelectorAll(".flatpickr-time").forEach(elem => {
+                flatpickr(elem, {
+                    enableTime: true,
+                    noCalendar: true,
+                    dateFormat: "H:i",
+                    time_24hr: true,
+                    allowInput: true
+                });
+            });
+        }
+        
         document.addEventListener('DOMContentLoaded', function() {
             flatpickr("#date", {
                 dateFormat: "Y-m-d",
@@ -352,12 +384,12 @@ if (isset($_GET['find_appointment'])) {
             document.getElementById('search').addEventListener('input', filterAppointments);
             document.getElementById('clear-filters').addEventListener('click', clearFilters);
         });
-
+    
         function filterAppointments() {
             const date = document.getElementById('date').value;
             const zone = document.getElementById('zone').value;
             const search = document.getElementById('search').value;
-
+    
             const xhr = new XMLHttpRequest();
             xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}`, true);
             xhr.onreadystatechange = function() {
@@ -365,69 +397,32 @@ if (isset($_GET['find_appointment'])) {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(xhr.responseText, 'text/html');
                     const newTable = doc.querySelector('table');
-                    const appointmentsMessage = doc.querySelector('#no-appointments-message');
+                    const appointmentsMessage = doc.getElementById('no-appointments-message');
                     
                     const tableElement = document.querySelector('table');
                     if (newTable && newTable.querySelector('tbody').children.length > 0) {
                         tableElement.innerHTML = newTable.innerHTML;
                         tableElement.classList.remove('hidden');
-                        appointmentsMessage.classList.add('hidden');
+                        document.getElementById('no-appointments-message').classList.add('hidden');
+                        
+                        // Riapplica i gestori di eventi dopo l'aggiornamento della tabella
+                        reapplyEventHandlers();
                     } else {
                         tableElement.classList.add('hidden');
-                        appointmentsMessage.classList.remove('hidden');
+                        document.getElementById('no-appointments-message').classList.remove('hidden');
                     }
                 }
             };
             xhr.send();
         }
-
-        function clearFilters() {
+                function clearFilters() {
             document.getElementById('date').value = '';
             document.getElementById('zone').value = '';
             document.getElementById('search').value = '';
             filterAppointments();
         }
-
-<?php if (isset($_SESSION['info_message'])): ?>
-    <div class="alert alert-info">
-        <?php echo $_SESSION['info_message']; unset($_SESSION['info_message']); ?>
-    </div>
-<?php endif; ?>
-
-        function showActions(id) {
-            const actionRow = document.getElementById(`action-${id}`);
-            const editForm = document.getElementById(`edit-form-${id}`);
-            const displayStatus = actionRow.style.display === 'none' || actionRow.style.display === '';
-
-            // Hide all other action rows
-            document.querySelectorAll('.action-row').forEach(row => row.style.display = 'none');
-
-            // Hide all other edit forms
-            document.querySelectorAll('.edit-form').forEach(form => form.style.display = 'none');
-
-            if (displayStatus) {
-                actionRow.style.display = 'table-row';
-                editForm.style.display = 'inline';
-            } else {
-                actionRow.style.display = 'none';
-                editForm.style.display = 'none';
-            }
-        }
-
-        function confirmDelete(appointment) {
-            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.notes}?`)) {
-                document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
-                document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
-            }
-        }
-
-        function hideActions(id) {
-            const actionRow = document.getElementById(`action-${id}`);
-            const editForm = document.getElementById(`edit-form-${id}`);
-            actionRow.style.display = 'none';
-            editForm.style.display = 'none';
-        }
     </script>
+    <!-- FINE DEL NUOVO BLOCCO DI SCRIPT -->
 </head>
 <body>
     <?php include 'menu.php'; ?>
@@ -451,6 +446,14 @@ if (isset($_GET['find_appointment'])) {
                 <?php echo $_SESSION['success_message']; unset($_SESSION['success_message']); ?>
             </div>
         <?php endif; ?>
+        
+        <!-- AGGIUNGI QUESTO BLOCCO PER I MESSAGGI INFO -->
+        <?php if (isset($_SESSION['info_message'])): ?>
+            <div class="alert alert-info">
+                <?php echo $_SESSION['info_message']; unset($_SESSION['info_message']); ?>
+            </div>
+        <?php endif; ?>
+        <!-- FINE DEL NUOVO BLOCCO -->
     </div>
 </div>
 </div>
@@ -464,7 +467,7 @@ if (isset($_GET['find_appointment'])) {
         <select id="zone" name="zone">
             <option value="">Seleziona Zona</option>
             <?php foreach ($zones as $zone) { ?>
-                <option value="<?php echo htmlspecialchars($zone); ?>"><?php echo htmlspecialchars($zone); ?></option>
+                <option value="<?php echo htmlspecialchars($zone); ?>"<?php echo ($filter['zone'] === $zone) ? ' selected' : ''; ?>><?php echo htmlspecialchars($zone); ?></option>
             <?php } ?>
         </select>
         <label for="search">Cerca per Nome:</label>
@@ -528,7 +531,7 @@ if (isset($_GET['find_appointment'])) {
                     <label for="surname-<?php echo $appointment['id']; ?>">Cognome</label>
                     <input type="text" id="surname-<?php echo $appointment['id']; ?>" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>" required>
                 </div>
-                <div class="edit-column">
+                                <div class="edit-column">
                     <label for="phone-<?php echo $appointment['id']; ?>">Telefono</label>
                     <input type="text" id="phone-<?php echo $appointment['id']; ?>" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
                 </div>
@@ -538,11 +541,11 @@ if (isset($_GET['find_appointment'])) {
                 </div>
                 <div class="edit-column">
                     <label for="appointment_date-<?php echo $appointment['id']; ?>">Data</label>
-                    <input type="date" id="appointment_date-<?php echo $appointment['id']; ?>" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
+                    <input type="date" id="appointment_date-<?php echo $appointment['id']; ?>" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required class="flatpickr">
                 </div>
                 <div class="edit-column">
                     <label for="appointment_time-<?php echo $appointment['id']; ?>">Ora</label>
-                    <input type="time" id="appointment_time-<?php echo $appointment['id']; ?>" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
+                    <input type="time" id="appointment_time-<?php echo $appointment['id']; ?>" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required class="flatpickr-time">
                 </div>
                 <div class="edit-column">
                     <label for="address-<?php echo $appointment['id']; ?>">Indirizzo</label>
@@ -562,18 +565,16 @@ if (isset($_GET['find_appointment'])) {
     </div>
     <div class="pure-g aria centrato pagination">
         <?php if ($page > 1) { ?>
-            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>" class="pure-button button-small">Precedente</a>
+            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>" class="pure-button button-small">Precedente</a>
         <?php } ?>
         <?php if ($page < $total_pages) { ?>
-            <a href="manage_appointments.php?page=<?php echo $page + 1; ?>" class="pure-button button-small">Successivo</a>
+            <a href="manage_appointments.php?page=<?php echo $page + 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>" class="pure-button button-small">Successivo</a>
         <?php } ?>
     </div>
     
     
-<?php
-// Aggiungi questo codice alla fine del file manage_appointments.php, prima della chiusura </body>
-if (isset($_GET['highlight_appointment'])): 
-?>
+<!-- SOSTITUISCI TUTTO IL BLOCCO DI CODICE DI HIGHLIGHT_APPOINTMENT CON QUESTO NUOVO BLOCCO -->
+<?php if (isset($_GET['highlight_appointment'])): ?>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Recupera l'ID dell'appuntamento da evidenziare
@@ -581,99 +582,49 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('Cercando appuntamento ID:', appointmentId);
     
-    let found = false;
-    
-    // Prima verifica se esiste un pulsante con onclick che contiene l'ID dell'appuntamento
-    document.querySelectorAll('button[onclick*="showActions"]').forEach(button => {
-        // Estrai l'ID dal codice onclick
-        const onclickText = button.getAttribute('onclick');
-        const match = onclickText && onclickText.match(/showActions\((\d+)\)/);
-        
-        if (match && parseInt(match[1]) === appointmentId) {
-            found = true;
-            
-            // Evidenzia la riga
-            const row = button.closest('tr');
-            if (row) {
-                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                const originalBackground = row.style.backgroundColor;
-                row.style.backgroundColor = '#fff3cd';
-                
-                setTimeout(() => {
-                    // Clicca il pulsante per aprire il modulo
-                    button.click();
-                    
-                    // Usa un secondo timeout per mantenere l'evidenziazione per qualche secondo
-                    setTimeout(() => {
-                        row.style.backgroundColor = originalBackground;
-                    }, 5000);
-                }, 800);
-            }
-        }
-    });
-    
-    if (!found) {
-        console.error('Appuntamento ID', appointmentId, 'non trovato nella tabella visualizzata.');
-        // Aggiungiamo un messaggio visibile all'utente
-        const messageDiv = document.createElement('div');
-        messageDiv.className = 'alert alert-warning';
-        messageDiv.style.marginTop = '20px';
-        messageDiv.textContent = `Appuntamento ID ${appointmentId} non è visibile nella pagina corrente. Utilizzare i filtri per trovarlo.`;
-        
-        document.querySelector('.pure-g.aria').insertAdjacentElement('afterend', messageDiv);
-    }
-});
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Recupera l'ID dell'appuntamento da evidenziare
-    const appointmentId = <?php echo (int)$_GET['highlight_appointment']; ?>;
-    
-    console.log('Evidenziazione appuntamento ID:', appointmentId);
-    
-    // Trova la riga dell'appuntamento
+    // Usiamo un timeout per assicurarci che tutti gli elementi siano caricati
     setTimeout(function() {
-        // Cerca attraverso tutte le righe della tabella per trovare l'ID dell'appuntamento
-        const rows = document.querySelectorAll('table tr');
-        let found = false;
+        // Trova il pulsante di modifica con l'ID dell'appuntamento
+        const modifyButtons = document.querySelectorAll('button.modifica-btn');
+        let targetButton = null;
         
-        rows.forEach(row => {
-            // Cerca un elemento nella riga che contiene l'ID dell'appuntamento
-            if (!found && row.innerHTML.includes(`data-appointment-id="${appointmentId}"`) || 
-                row.innerHTML.includes(`showActions(${appointmentId})`)) {
-                
-                found = true;
-                // Scorre alla riga
-                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                
-                // Evidenzia la riga
-                const originalBackground = row.style.backgroundColor;
-                row.style.backgroundColor = '#ffffcc';
-                setTimeout(() => { 
-                    row.style.backgroundColor = originalBackground; 
-                }, 3000);
-                
-                // Trova e clicca sul pulsante di modifica dopo un breve ritardo
-                setTimeout(() => {
-                    // Cerca un pulsante nella riga che apre l'azione di modifica
-                    const modifyButton = row.querySelector('button[onclick*="showActions"]');
-                    if (modifyButton) {
-                        modifyButton.click();
-                    } else {
-                        console.error('Pulsante di modifica non trovato nella riga');
-                    }
-                }, 800);
+        modifyButtons.forEach(button => {
+            const onclickAttr = button.getAttribute('onclick');
+            if (onclickAttr && onclickAttr.includes(`showActions(${appointmentId})`)) {
+                targetButton = button;
             }
         });
         
-        if (!found) {
-            console.error('Appuntamento ID', appointmentId, 'non trovato nella tabella');
+        if (targetButton) {
+            // Trova la riga che contiene il pulsante
+            const row = targetButton.closest('tr');
+            
+            // Scorri fino alla riga
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Evidenzia temporaneamente la riga
+            const originalColor = row.style.backgroundColor;
+            row.style.backgroundColor = '#fff3cd';
+            
+            setTimeout(() => {
+                // Simula il click sul pulsante modifica
+                targetButton.click();
+                
+                // Ripristina il colore originale dopo un po'
+                setTimeout(() => {
+                    row.style.backgroundColor = originalColor;
+                }, 5000);
+            }, 1000);
+            
+            console.log("Appuntamento trovato e evidenziato");
+        } else {
+            console.error("Appuntamento ID", appointmentId, "non trovato nella tabella");
         }
     }, 500);
 });
 </script>
 <?php endif; ?>
-    
+<!-- FINE DEL NUOVO BLOCCO -->
     
     
 </body>
