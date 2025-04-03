@@ -1207,7 +1207,9 @@ if (!empty($available_slots_near_appointments)) {
                 $zoneNames[] = $zone['name'];
                 $slots = getSlotsForZone($zone['id']);
                 if (!empty($slots)) {
+                    /* DEBUG
                     echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
+                    */
                     
 // Aggiungi questo codice per il debug prima di chiamare getNext3AppointmentDates()
 /* DEBUG
@@ -1471,7 +1473,10 @@ echo "<script>
 }
                     echo "</center></div><hr>";
                 } else {
+                    
+                    /*
                     echo "<div class='container'><p>Nessun appuntamento disponibile per i prossimi 3 giorni per la zona {$zone['name']}.</p></div>";
+                    */
                 }
             }
         }
