@@ -791,8 +791,8 @@ function getAddressCoordinates($address, $appointment_id = null) {
     return getCoordinatesFromAddress($address, $appointment_id);
 }
 
-// Modifica la funzione getNext3AppointmentDates per utilizzare le nuove funzioni (circa linea 772)
-function getNext3AppointmentDates($slots, $zoneId) {
+// Modifica la funzione getNext3AppointmentDates per utilizzare le nuove funzioni
+function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLongitude = null) {
     global $conn;
     $next3Days = [];
     $currentDate = new DateTime();
@@ -816,6 +816,45 @@ function getNext3AppointmentDates($slots, $zoneId) {
             if (!$dateAvailability['available']) {
                 error_log("Data " . $formattedDate . " saltata: " . $dateAvailability['reason']);
                 continue;
+            }
+            
+            // NUOVA FUNZIONALITÀ: Verifica se esistono appuntamenti per questa data in qualsiasi zona
+            $existingAppsSql = "SELECT a.id, a.address FROM cp_appointments a WHERE a.appointment_date = ?";
+            $existingStmt = $conn->prepare($existingAppsSql);
+            $existingStmt->bind_param("s", $formattedDate);
+            $existingStmt->execute();
+            $existingResult = $existingStmt->get_result();
+            
+            // Se esistono appuntamenti e abbiamo coordinate dell'utente, verifica la distanza
+            if ($existingResult->num_rows > 0 && $userLatitude !== null && $userLongitude !== null) {
+                $tooFar = false;
+                
+                while ($app = $existingResult->fetch_assoc()) {
+                    // Ottieni le coordinate dell'appuntamento
+                    $appCoords = getCoordinatesFromAddress($app['address'], $app['id']);
+                    
+                    if ($appCoords) {
+                        // Calcola la distanza
+                        $distance = calculateDistance(
+                            [$userLatitude, $userLongitude],
+                            [$appCoords['lat'], $appCoords['lng']]
+                        );
+                        
+                        error_log("Data " . $formattedDate . " - Appuntamento ID " . $app['id'] . " - Distanza: " . $distance . " km");
+                        
+                        // Se l'appuntamento è a più di 7km, segna la data come "troppo lontana"
+                        if ($distance > 7) {
+                            $tooFar = true;
+                            error_log("Data " . $formattedDate . " saltata: appuntamento esistente a più di 7km");
+                            break;
+                        }
+                    }
+                }
+                
+                // Se la data è stata segnata come "troppo lontana", passa alla prossima
+                if ($tooFar) {
+                    continue;
+                }
             }
             
             // Filtra gli slot configurati per questo giorno della settimana per la zona specifica
@@ -903,6 +942,8 @@ function getNext3AppointmentDates($slots, $zoneId) {
     
     return array_slice($next3Days, 0, 3, true);
 }
+
+
 // Function to add patient information to the cp_patients table
 function addPatient($name, $surname, $phone, $notes) {
     global $conn;
@@ -1274,8 +1315,8 @@ while ($app = $appsResult->fetch_assoc()) {
 echo "</ul>";
 echo "</center></div>";
 */
-
-$next3Days = getNext3AppointmentDates($slots, $zone['id']);
+$next3Days = getNext3AppointmentDates($slots, $zone['id'], $latitude, $longitude);
+//$next3Days = getNext3AppointmentDates($slots, $zone['id']);
 
 // Aggiungi debug visibile per verificare gli slot
 /* DEBUG
