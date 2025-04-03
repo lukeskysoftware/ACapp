@@ -29,7 +29,36 @@ function getUnavailableSlots() {
     global $conn;
     $slots = [];
     
-    $sql = "SELECT u.*, z.name as zone_name, CONCAT(us.firstname, ' ', us.lastname) as created_by_name
+    // Prima query: contare quanti record ci sono nella tabella
+    $count_sql = "SELECT COUNT(*) as total FROM cp_unavailable_slots";
+    $count_result = mysqli_query($conn, $count_sql);
+    
+    if (!$count_result) {
+        error_log("Errore SQL nel conteggio: " . mysqli_error($conn));
+        return ["error" => "Errore SQL nel conteggio: " . mysqli_error($conn)];
+    }
+    
+    $count_row = mysqli_fetch_assoc($count_result);
+    $total_rows = $count_row['total'];
+    
+    if ($total_rows == 0) {
+        return ["message" => "Nessun dato trovato nella tabella cp_unavailable_slots", "count" => 0];
+    }
+    
+    // Seconda query: recuperare i dati con LEFT JOIN per assicurarsi che tutti gli slot vengano recuperati
+    $sql = "SELECT 
+                u.id, 
+                u.date_start, 
+                u.date_end, 
+                u.start_time, 
+                u.end_time, 
+                u.all_day, 
+                u.zone_id, 
+                u.reason, 
+                u.created_at,
+                u.created_by,
+                z.name as zone_name, 
+                CONCAT(IFNULL(us.firstname, ''), ' ', IFNULL(us.lastname, '')) as created_by_name
             FROM cp_unavailable_slots u
             LEFT JOIN cp_zones z ON u.zone_id = z.id 
             LEFT JOIN users us ON u.created_by = us.id
@@ -37,14 +66,68 @@ function getUnavailableSlots() {
     
     $result = mysqli_query($conn, $sql);
     
-    if ($result) {
-        while ($row = mysqli_fetch_assoc($result)) {
-            $slots[] = $row;
+    if (!$result) {
+        error_log("Errore SQL: " . mysqli_error($conn));
+        return ["error" => "Errore SQL: " . mysqli_error($conn), "count" => 0];
+    }
+    
+    while ($row = mysqli_fetch_assoc($result)) {
+        // Assicuriamoci che i campi essenziali siano inizializzati correttamente
+        if (!isset($row['zone_name']) || empty($row['zone_name'])) {
+            $row['zone_name'] = 'Tutte le zone';
+        }
+        
+        if (!isset($row['created_by_name']) || empty(trim($row['created_by_name']))) {
+            $row['created_by_name'] = 'Utente ID: ' . $row['created_by'];
+        }
+        
+        $slots[] = $row;
+    }
+    
+    return ["slots" => $slots, "count" => count($slots)];
+}
+
+// Funzione di debug per verificare la struttura della tabella
+function checkTableStructure() {
+    global $conn;
+    $debug_info = [];
+    
+    // Verifica se la tabella esiste
+    $check_table = mysqli_query($conn, "SHOW TABLES LIKE 'cp_unavailable_slots'");
+    if (mysqli_num_rows($check_table) == 0) {
+        return ["error" => "La tabella cp_unavailable_slots non esiste"];
+    }
+    
+    // Ottieni la struttura della tabella
+    $structure = mysqli_query($conn, "DESCRIBE cp_unavailable_slots");
+    if (!$structure) {
+        return ["error" => "Impossibile leggere la struttura della tabella: " . mysqli_error($conn)];
+    }
+    
+    $columns = [];
+    while ($row = mysqli_fetch_assoc($structure)) {
+        $columns[] = $row;
+    }
+    
+    // Verifica il numero di righe nella tabella
+    $count = mysqli_query($conn, "SELECT COUNT(*) as total FROM cp_unavailable_slots");
+    $count_result = mysqli_fetch_assoc($count);
+    
+    $debug_info["columns"] = $columns;
+    $debug_info["row_count"] = $count_result["total"];
+    
+    // Recupera un esempio di record se ce ne sono
+    if ($count_result["total"] > 0) {
+        $sample = mysqli_query($conn, "SELECT * FROM cp_unavailable_slots LIMIT 1");
+        if ($sample && mysqli_num_rows($sample) > 0) {
+            $debug_info["sample_record"] = mysqli_fetch_assoc($sample);
         }
     }
     
-    return $slots;
+    return $debug_info;
 }
+// Recupera le informazioni di debug
+$debug_table_info = checkTableStructure();
 
 // Gestione dell'aggiunta di un nuovo slot non disponibile
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add') {
@@ -76,15 +159,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $sql = "INSERT INTO cp_unavailable_slots (date_start, date_end, start_time, end_time, all_day, zone_id, reason, created_by) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssssiisi", $date_start, $date_end, $start_time, $end_time, $all_day, $zone_id, $reason, $created_by);
         
-        if ($stmt->execute()) {
-            $success = "Blocco orario aggiunto con successo!";
+        if (!$stmt) {
+            $error = "Errore nella preparazione della query: " . $conn->error;
         } else {
-            $error = "Errore nell'aggiunta del blocco orario: " . $stmt->error;
+            $stmt->bind_param("ssssiisi", $date_start, $date_end, $start_time, $end_time, $all_day, $zone_id, $reason, $created_by);
+            
+            if ($stmt->execute()) {
+                $success = "Blocco orario aggiunto con successo!";
+            } else {
+                $error = "Errore nell'aggiunta del blocco orario: " . $stmt->error;
+            }
+            
+            $stmt->close();
         }
-        
-        $stmt->close();
     }
 }
 
@@ -94,19 +182,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     
     $sql = "DELETE FROM cp_unavailable_slots WHERE id = ?";
     $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $id);
     
-    if ($stmt->execute()) {
-        $success = "Blocco orario eliminato con successo!";
+    if (!$stmt) {
+        $error = "Errore nella preparazione della query di eliminazione: " . $conn->error;
     } else {
-        $error = "Errore nell'eliminazione del blocco orario: " . $stmt->error;
+        $stmt->bind_param("i", $id);
+        
+        if ($stmt->execute()) {
+            $success = "Blocco orario eliminato con successo!";
+        } else {
+            $error = "Errore nell'eliminazione del blocco orario: " . $stmt->error;
+        }
+        
+        $stmt->close();
     }
-    
-    $stmt->close();
 }
 
 $zones = getAllZones();
-$unavailable_slots = getUnavailableSlots();
+$unavailable_slots_data = getUnavailableSlots();
+
+if (isset($unavailable_slots_data['error'])) {
+    $error = $unavailable_slots_data['error'];
+    $unavailable_slots = [];
+} else {
+    $unavailable_slots = isset($unavailable_slots_data['slots']) ? $unavailable_slots_data['slots'] : [];
+}
 ?>
 
 <!DOCTYPE html>
@@ -196,6 +296,26 @@ $unavailable_slots = getUnavailableSlots();
             font-weight: bold;
             font-size: 18px;
         }
+        .debug-info {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .debug-info details {
+            margin-bottom: 10px;
+        }
+        .debug-info summary {
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .debug-info pre {
+            white-space: pre-wrap;
+            background-color: #eee;
+            padding: 10px;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -223,7 +343,7 @@ $unavailable_slots = getUnavailableSlots();
                     <div class="form-input date-range-container">
                         <input type="text" id="date_start" name="date_start" class="date-picker pure-input-1" placeholder="Data inizio" required>
                         <span class="date-range-separator">-</span>
-                        <input type="text" id="date_end" name="date_end" class="date-picker pure-input-1" placeholder="Data fine (opzionale)">
+                        <input type="text" id="date_end" name="date_end" class="date-picker pure-input-1" placeholder="Data fine">
                     </div>
                 </div>
                 
@@ -280,69 +400,162 @@ $unavailable_slots = getUnavailableSlots();
         </div>
         
         <div class="table-container">
-            <h2>Blocchi Esistenti</h2>
-            <?php if (empty($unavailable_slots)): ?>
-                <p>Non ci sono blocchi orari impostati.</p>
+    <h2>Blocchi Esistenti</h2>
+    <?php if (empty($unavailable_slots)): ?>
+        <p>Non ci sono blocchi orari impostati.</p>
+        
+        <?php if (isset($unavailable_slots_data['message'])): ?>
+            <p><em><?php echo $unavailable_slots_data['message']; ?></em></p>
+        <?php endif; ?>
+        
+        <?php if (isset($unavailable_slots_data['count'])): ?>
+            <p>Conteggio record nel database: <?php echo $unavailable_slots_data['count']; ?></p>
+        <?php endif; ?>
+        
+    <?php else: ?>
+        <p>Totale blocchi: <?php echo count($unavailable_slots); ?></p>
+        
+        
+       <div class="table-container">
+    <h2>Blocchi Esistenti</h2>
+    <?php if (empty($unavailable_slots)): ?>
+        <p>Non ci sono blocchi orari impostati.</p>
+        
+        <!-- Sezione di debug per l'amministratore -->
+        <?php if ($_SESSION['user_id'] == 1): ?>
+        <div class="debug-info">
+            <h3>Informazioni di Debug</h3>
+            <p>Informazioni sulla struttura della tabella cp_unavailable_slots:</p>
+            <?php if (isset($debug_table_info['error'])): ?>
+                <div class="error"><?php echo $debug_table_info['error']; ?></div>
             <?php else: ?>
-                <table class="pure-table pure-table-bordered">
-                    <thead>
-                        <tr>
-                            <th>Periodo</th>
-                            <th>Orario</th>
-                            <th>Zona</th>
-                            <th>Motivo</th>
-                            <th>Creato da</th>
-                            <th>Azioni</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($unavailable_slots as $slot): ?>
-                            <tr>
-                                <td>
-                                    <?php 
-                                    echo date('d/m/Y', strtotime($slot['date_start']));
-                                    if ($slot['date_start'] != $slot['date_end']) {
-                                        echo ' - ' . date('d/m/Y', strtotime($slot['date_end']));
-                                    }
-                                    ?>
-                                </td>
-                                <td>
-                                    <?php if ($slot['all_day']): ?>
-                                        <span class="all-day">Intero giorno</span>
-                                    <?php else: ?>
-                                        <span class="partial-day">
-                                            <?php echo date('H:i', strtotime($slot['start_time'])); ?> - 
-                                            <?php echo date('H:i', strtotime($slot['end_time'])); ?>
-                                        </span>
-                                    <?php endif; ?>
-                                </td>
-                                <td><?php echo $slot['zone_id'] ? htmlspecialchars($slot['zone_name']) : 'Tutte le zone'; ?></td>
-                                <td><?php echo htmlspecialchars($slot['reason']); ?></td>
-                                <td><?php echo htmlspecialchars($slot['created_by_name']); ?></td>
-                                <td>
-                                    <form method="POST" action="" onsubmit="return confirm('Sei sicuro di voler eliminare questo blocco?');">
-                                        <input type="hidden" name="action" value="delete">
-                                        <input type="hidden" name="id" value="<?php echo $slot['id']; ?>">
-                                        <button type="submit" class="pure-button btn-delete">Elimina</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <details>
+                    <summary>Struttura della tabella</summary>
+                    <pre><?php print_r($debug_table_info['columns']); ?></pre>
+                </details>
+                <p>Numero di record nella tabella: <strong><?php echo $debug_table_info['row_count']; ?></strong></p>
+                
+                <?php if (isset($unavailable_slots_data['message'])): ?>
+                    <p><em><?php echo $unavailable_slots_data['message']; ?></em></p>
+                <?php endif; ?>
+                
+                <?php if (isset($unavailable_slots_data) && isset($unavailable_slots_data['count'])): ?>
+                    <p>Conteggio record dalla query: <strong><?php echo $unavailable_slots_data['count']; ?></strong></p>
+                    
+                    <!-- Se ci sono record ma non vengono visualizzati, mostra di più informazioni -->
+                    <?php if ($unavailable_slots_data['count'] > 0 && empty($unavailable_slots)): ?>
+                        <details>
+                            <summary>Dettagli della query</summary>
+                            <pre>
+SELECT 
+    u.id, 
+    u.date_start, 
+    u.date_end, 
+    u.start_time, 
+    u.end_time, 
+    u.all_day, 
+    u.zone_id, 
+    u.reason, 
+    u.created_at,
+    u.created_by,
+    z.name as zone_name, 
+    CONCAT(IFNULL(us.firstname, ''), ' ', IFNULL(us.lastname, '')) as created_by_name
+FROM cp_unavailable_slots u
+LEFT JOIN cp_zones z ON u.zone_id = z.id 
+LEFT JOIN users us ON u.created_by = us.id
+ORDER BY u.date_start DESC, u.start_time ASC
+                            </pre>
+                        </details>
+                    <?php endif; ?>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
-    </div>
+        <?php endif; ?>
+        
+    <?php else: ?>
+        <table class="pure-table pure-table-bordered">
+            <thead>
+                <tr>
+                    <th>Periodo</th>
+                    <th>Orario</th>
+                    <th>Zona</th>
+                    <th>Motivo</th>
+                    <th>Creato da</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($unavailable_slots as $slot): ?>
+                    <tr>
+                        <td>
+                            <?php 
+                            echo date('d/m/Y', strtotime($slot['date_start']));
+                            if ($slot['date_start'] != $slot['date_end']) {
+                                echo ' - ' . date('d/m/Y', strtotime($slot['date_end']));
+                            }
+                            ?>
+                        </td>
+                        <td>
+                            <?php if ($slot['all_day']): ?>
+                                <span class="all-day">Intero giorno</span>
+                            <?php else: ?>
+                                <span class="partial-day">
+                                    <?php echo date('H:i', strtotime($slot['start_time'])); ?> - 
+                                    <?php echo date('H:i', strtotime($slot['end_time'])); ?>
+                                </span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo $slot['zone_id'] ? htmlspecialchars($slot['zone_name']) : 'Tutte le zone'; ?></td>
+                        <td><?php echo htmlspecialchars($slot['reason']); ?></td>
+                        <td><?php echo htmlspecialchars($slot['created_by_name']); ?></td>
+                        <td>
+                            <form method="POST" action="" onsubmit="return confirm('Sei sicuro di voler eliminare questo blocco?');">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="id" value="<?php echo $slot['id']; ?>">
+                                <button type="submit" class="pure-button btn-delete">Elimina</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+</div>
     
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/it.js"></script>
     <script>
         // Inizializza i selettori di data e ora
-        flatpickr(".date-picker", {
+        const dateStartPicker = flatpickr("#date_start", {
             dateFormat: "Y-m-d",
             locale: "it",
             minDate: "today",
-            allowInput: true
+            allowInput: true,
+            onChange: function(selectedDates, dateStr) {
+                // Quando la data di inizio viene modificata, aggiorna la data di fine per essere uguale
+                if (selectedDates.length > 0) {
+                    document.getElementById('date_end').value = dateStr;
+                    dateEndPicker.setDate(dateStr);
+                }
+            }
+        });
+        
+        const dateEndPicker = flatpickr("#date_end", {
+            dateFormat: "Y-m-d",
+            locale: "it",
+            minDate: "today",
+            allowInput: true,
+            onChange: function(selectedDates, dateStr) {
+                // Se l'utente seleziona una data finale diversa dalla iniziale, imposta automaticamente intero giorno
+                const dateStartValue = document.getElementById('date_start').value;
+                if (dateStartValue && dateStr && dateStartValue !== dateStr) {
+                    document.getElementById('all_day').checked = true;
+                    document.getElementById('all_day_row').style.display = 'none';
+                    toggleTimeFields();
+                } else {
+                    document.getElementById('all_day_row').style.display = 'flex';
+                }
+            }
         });
         
         flatpickr(".time-picker", {
@@ -365,25 +578,30 @@ $unavailable_slots = getUnavailableSlots();
             }
         }
         
-        // Funzione per gestire il selezione di intervalli di date
-        document.getElementById('date_end').addEventListener('change', function() {
-            const dateStart = document.getElementById('date_start').value;
-            const dateEnd = this.value;
-            
-            // Se c'è un intervallo di date (date diverse), nascondi l'opzione "Intero giorno" e imposta tutto il giorno automaticamente
-            if (dateStart && dateEnd && dateStart !== dateEnd) {
-                document.getElementById('all_day').checked = true;
-                document.getElementById('all_day_row').style.display = 'none';
-                toggleTimeFields();
-            } else {
-                document.getElementById('all_day_row').style.display = 'flex';
-            }
-        });
-        
         // Inizializzazione
         document.addEventListener('DOMContentLoaded', function() {
             toggleTimeFields();
+            
+            // Assicurati che data_end sia inizialmente uguale a date_start
+            const dateStart = document.getElementById('date_start');
+            const dateEnd = document.getElementById('date_end');
+            
+            if (dateStart.value && !dateEnd.value) {
+                dateEnd.value = dateStart.value;
+            }
         });
     </script>
 </body>
 </html>
+<?php
+$zones = getAllZones();
+$debug_table_info = checkTableStructure();
+$unavailable_slots_data = getUnavailableSlots();
+
+if (isset($unavailable_slots_data['error'])) {
+    $error = $unavailable_slots_data['error'];
+    $unavailable_slots = [];
+} else {
+    $unavailable_slots = isset($unavailable_slots_data['slots']) ? $unavailable_slots_data['slots'] : [];
+}
+?>
