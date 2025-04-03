@@ -50,6 +50,9 @@ $isAdmin = ($_SESSION['user_id'] == 6 || $_SESSION['user_id'] == 9);
                 </li>
                 <?php endif; ?>
                 <li class="nav-item">
+                    <a class="nav-link" href="manage_unavailable_slots.php">Gestisci Giorni OFF</a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link text-dark" href="waiting_room.php">Richiesta App.to</a>
                 </li>
                 <li class="nav-item">
