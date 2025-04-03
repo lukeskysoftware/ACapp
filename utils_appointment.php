@@ -15,66 +15,77 @@
 function isSlotAvailable($date, $start_time = null, $end_time = null, $zone_id = null) {
     global $conn;
     
-    // Preparazione della risposta
-    $response = ['available' => true, 'reason' => ''];
-    
-    // Query di base per controllare gli unavailable slots
-    $sql = "SELECT * FROM cp_unavailable_slots WHERE 
-            ((date_start <= ? AND date_end >= ?) OR date_start = ?)";
-    
-    // Parametri di base
-    $types = "sss";
-    $params = [$date, $date, $date];
-    
-    // Se è specificato un orario, aggiungiamo le condizioni per verificare la sovrapposizione oraria
-    if ($start_time && $end_time) {
-        $sql .= " AND (
-                   (all_day = 1) OR 
-                   (start_time <= ? AND end_time >= ?) OR 
-                   (start_time >= ? AND start_time < ?) OR
-                   (end_time > ? AND end_time <= ?)
-                 )";
-        $types .= "sssss";
-        $params[] = $end_time;   // Se l'inizio del blocco è prima della fine appuntamento
-        $params[] = $start_time; // Se la fine del blocco è dopo dell'inizio appuntamento
-        $params[] = $start_time; // Se l'inizio del blocco è durante l'appuntamento
-        $params[] = $end_time;   // Se l'inizio del blocco è durante l'appuntamento
-        $params[] = $start_time; // Se la fine del blocco è durante l'appuntamento
-        $params[] = $end_time;   // Se la fine del blocco è durante l'appuntamento
-    } else {
-        // Se non è specificato un orario, cerchiamo i blocchi per l'intero giorno
-        $sql .= " AND all_day = 1";
+    try {
+        // Preparazione della risposta
+        $response = ['available' => true, 'reason' => ''];
+        
+        // Query di base per controllare gli unavailable slots
+        $sql = "SELECT * FROM cp_unavailable_slots WHERE 
+                ((date_start <= ? AND date_end >= ?) OR date_start = ?)";
+        
+        // Parametri di base
+        $types = "sss";
+        $params = [$date, $date, $date];
+        
+        // Se è specificato un orario, aggiungiamo le condizioni per verificare la sovrapposizione oraria
+        if ($start_time && $end_time) {
+            $sql .= " AND (
+                       (all_day = 1) OR 
+                       (start_time <= ? AND end_time >= ?) OR 
+                       (start_time >= ? AND start_time < ?) OR
+                       (end_time > ? AND end_time <= ?)
+                     )";
+            $types .= "ssssss"; // CORRETTO: 6 tipi per 6 parametri
+            $params[] = $end_time;   // Se l'inizio del blocco è prima della fine appuntamento
+            $params[] = $start_time; // Se la fine del blocco è dopo dell'inizio appuntamento
+            $params[] = $start_time; // Se l'inizio del blocco è durante l'appuntamento
+            $params[] = $end_time;   // Se l'inizio del blocco è durante l'appuntamento
+            $params[] = $start_time; // Se la fine del blocco è durante l'appuntamento
+            $params[] = $end_time;   // Se la fine del blocco è durante l'appuntamento
+        } else {
+            // Se non è specificato un orario, cerchiamo i blocchi per l'intero giorno
+            $sql .= " AND all_day = 1";
+        }
+        
+        // Se è specificata una zona, filtriamo per zona o per "tutte le zone" (zone_id IS NULL)
+        if ($zone_id) {
+            $sql .= " AND (zone_id = ? OR zone_id IS NULL)";
+            $types .= "i";
+            $params[] = $zone_id;
+        }
+        
+        // Debug info
+        error_log("SQL Query: $sql");
+        error_log("Param types: $types");
+        error_log("Params count: " . count($params));
+        error_log("Params: " . implode(", ", array_map(function($p) { return (string)$p; }, $params)));
+        
+        // Preparazione e esecuzione della query
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            error_log("Errore nella preparazione della query: " . $conn->error);
+            return ['available' => false, 'reason' => 'Errore di sistema nella verifica disponibilità'];
+        }
+        
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        // Se troviamo almeno un record, lo slot non è disponibile
+        if ($result->num_rows > 0) {
+            $unavailable = $result->fetch_assoc();
+            $response = [
+                'available' => false, 
+                'reason' => $unavailable['reason'] ?: 'Data/ora non disponibile'
+            ];
+        }
+        
+        $stmt->close();
+        return $response;
+    } catch (Exception $e) {
+        error_log("Errore in isSlotAvailable: " . $e->getMessage());
+        return ['available' => false, 'reason' => 'Errore di sistema nella verifica disponibilità: ' . $e->getMessage()];
     }
-    
-    // Se è specificata una zona, filtriamo per zona o per "tutte le zone" (zone_id IS NULL)
-    if ($zone_id) {
-        $sql .= " AND (zone_id = ? OR zone_id IS NULL)";
-        $types .= "i";
-        $params[] = $zone_id;
-    }
-    
-    // Preparazione e esecuzione della query
-    $stmt = $conn->prepare($sql);
-    if (!$stmt) {
-        error_log("Errore nella preparazione della query: " . $conn->error);
-        return ['available' => false, 'reason' => 'Errore di sistema nella verifica disponibilità'];
-    }
-    
-    $stmt->bind_param($types, ...$params);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    // Se troviamo almeno un record, lo slot non è disponibile
-    if ($result->num_rows > 0) {
-        $unavailable = $result->fetch_assoc();
-        $response = [
-            'available' => false, 
-            'reason' => $unavailable['reason'] ?: 'Data/ora non disponibile'
-        ];
-    }
-    
-    $stmt->close();
-    return $response;
 }
 
 /**
