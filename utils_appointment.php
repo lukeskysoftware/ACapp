@@ -12,6 +12,7 @@
  * @param int $zone_id ID della zona (opzionale)
  * @return array ['available' => bool, 'reason' => string]
  */
+// Modifica nella funzione isSlotAvailable() in utils_appointment.php
 function isSlotAvailable($date, $start_time = null, $end_time = null, $zone_id = null) {
     global $conn;
     
@@ -27,21 +28,33 @@ function isSlotAvailable($date, $start_time = null, $end_time = null, $zone_id =
         $types = "sss";
         $params = [$date, $date, $date];
         
-        // Se è specificato un orario, aggiungiamo le condizioni per verificare la sovrapposizione oraria
+        // Se è specificato un orario, utilizziamo una logica più stringente per verificare le sovrapposizioni
         if ($start_time && $end_time) {
             $sql .= " AND (
-                       (all_day = 1) OR 
+                       all_day = 1 OR 
                        (start_time <= ? AND end_time >= ?) OR 
                        (start_time >= ? AND start_time < ?) OR
                        (end_time > ? AND end_time <= ?)
                      )";
-            $types .= "ssssss"; // CORRETTO: 6 tipi per 6 parametri
+            $types .= "ssssss";
             $params[] = $end_time;   // Se l'inizio del blocco è prima della fine appuntamento
             $params[] = $start_time; // Se la fine del blocco è dopo dell'inizio appuntamento
             $params[] = $start_time; // Se l'inizio del blocco è durante l'appuntamento
             $params[] = $end_time;   // Se l'inizio del blocco è durante l'appuntamento
             $params[] = $start_time; // Se la fine del blocco è durante l'appuntamento
             $params[] = $end_time;   // Se la fine del blocco è durante l'appuntamento
+        } else if ($start_time) {
+            // Se è specificato solo l'orario di inizio (senza fine)
+            $sql .= " AND (
+                       all_day = 1 OR
+                       (start_time <= ? AND end_time > ?) OR
+                       (start_time >= ? AND start_time < ADDTIME(?, '01:00:00'))
+                     )";
+            $types .= "ssss";
+            $params[] = $start_time; // Inizio blocco prima dell'inizio appuntamento
+            $params[] = $start_time; // Fine blocco dopo dell'inizio appuntamento
+            $params[] = $start_time; // Inizio blocco durante l'appuntamento (prima ora)
+            $params[] = $start_time; // Per calcolare un'ora dopo l'inizio
         } else {
             // Se non è specificato un orario, cerchiamo i blocchi per l'intero giorno
             $sql .= " AND all_day = 1";
@@ -55,10 +68,10 @@ function isSlotAvailable($date, $start_time = null, $end_time = null, $zone_id =
         }
         
         // Debug info
+        error_log("isSlotAvailable - Date: $date, Start: " . ($start_time ?? 'NULL') . ", End: " . ($end_time ?? 'NULL') . ", Zone: " . ($zone_id ?? 'NULL'));
         error_log("SQL Query: $sql");
         error_log("Param types: $types");
         error_log("Params count: " . count($params));
-        error_log("Params: " . implode(", ", array_map(function($p) { return (string)$p; }, $params)));
         
         // Preparazione e esecuzione della query
         $stmt = $conn->prepare($sql);
@@ -78,6 +91,7 @@ function isSlotAvailable($date, $start_time = null, $end_time = null, $zone_id =
                 'available' => false, 
                 'reason' => $unavailable['reason'] ?: 'Data/ora non disponibile'
             ];
+            error_log("Data non disponibile: " . $date . ($start_time ? " " . $start_time : "") . " - Motivo: " . $response['reason']);
         }
         
         $stmt->close();
