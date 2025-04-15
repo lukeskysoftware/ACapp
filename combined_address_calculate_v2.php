@@ -28,7 +28,74 @@ $phone = isset($_GET['phone']) ? $_GET['phone'] : '';
 // Set locale to Italian
 setlocale(LC_TIME, 'it_IT.UTF-8');
 
-// Function to calculate distance between two coordinates
+// Funzione per calcolare la distanza stradale tramite Google Maps API
+function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
+    global $conn, $apiKey;
+    
+    // Prima verificare se questa distanza è in cache
+    $cacheSql = "SELECT distance FROM distance_cache 
+                 WHERE (origin_lat = ? AND origin_lng = ? AND dest_lat = ? AND dest_lng = ?) OR
+                       (origin_lat = ? AND origin_lng = ? AND dest_lat = ? AND dest_lng = ?)";
+    $cacheStmt = $conn->prepare($cacheSql);
+    
+    if ($cacheStmt) {
+        $cacheStmt->bind_param("dddddddd", 
+            $origin_lat, $origin_lng, $dest_lat, $dest_lng,
+            $dest_lat, $dest_lng, $origin_lat, $origin_lng
+        );
+        $cacheStmt->execute();
+        $cacheResult = $cacheStmt->get_result();
+        
+        if ($cacheResult->num_rows > 0) {
+            $cacheRow = $cacheResult->fetch_assoc();
+            return $cacheRow['distance'];
+        }
+    }
+    
+    // Se non è in cache, calcola con l'API Distance Matrix
+    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins={$origin_lat},{$origin_lng}&destinations={$dest_lat},{$dest_lng}&key={$apiKey}";
+    
+    // Usa cURL per la richiesta
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'PHP Distance Matrix Application');
+    $response = curl_exec($ch);
+    
+    if ($response === false) {
+        error_log("Errore cURL durante la chiamata all'API Distance Matrix: " . curl_error($ch));
+        curl_close($ch);
+        // Se fallisce, ritorna la distanza euclidea come fallback
+        return calculateDistance([$origin_lat, $origin_lng], [$dest_lat, $dest_lng]);
+    }
+    
+    curl_close($ch);
+    $data = json_decode($response, true);
+    
+    if ($data['status'] == 'OK' && isset($data['rows'][0]['elements'][0]['status']) && $data['rows'][0]['elements'][0]['status'] == 'OK') {
+        // Distanza in metri, convertiamo in km
+        $distance_km = $data['rows'][0]['elements'][0]['distance']['value'] / 1000;
+        
+        // Salviamo in cache
+        $saveSql = "INSERT INTO distance_cache (origin_lat, origin_lng, dest_lat, dest_lng, distance) 
+                    VALUES (?, ?, ?, ?, ?)";
+        $saveStmt = $conn->prepare($saveSql);
+        
+        if ($saveStmt) {
+            $saveStmt->bind_param("ddddd", $origin_lat, $origin_lng, $dest_lat, $dest_lng, $distance_km);
+            $saveStmt->execute();
+        }
+        
+        return $distance_km;
+    } else {
+        error_log("Errore nell'API Distance Matrix: " . ($data['status'] ?? 'Unknown error'));
+        // Fallback alla distanza euclidea
+        return calculateDistance([$origin_lat, $origin_lng], [$dest_lat, $dest_lng]);
+    }
+}
+
+// Function to calculate distance between two coordinates (distanza euclidea, usata come fallback)
 function calculateDistance($origin, $destination) {
     $earthRadiusKm = 6371;
 
@@ -43,7 +110,6 @@ function calculateDistance($origin, $destination) {
 
     return $earthRadiusKm * $c;
 }
-
 // Funzione per trovare appuntamenti vicini entro il raggio specificato
 function findNearbyAppointments($user_address, $user_latitude, $user_longitude, $radius_km = 7) {
     global $conn;
@@ -56,7 +122,7 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
             FROM cp_appointments 
             WHERE appointment_date >= ? 
             ORDER BY appointment_date, appointment_time";
-                $stmt = $conn->prepare($sql);
+    $stmt = $conn->prepare($sql);
     if (!$stmt) {
         error_log("Database prepare failed: " . mysqli_error($conn));
         return $nearby_appointments;
@@ -143,14 +209,17 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
             */
             continue;
         }
-                // 3. Calcola la distanza
-        $origin = [$user_latitude, $user_longitude];
-        $destination = [$coordinates['lat'], $coordinates['lng']];
         
-        $distance = calculateDistance($origin, $destination);
+        // 3. Calcola la distanza stradale
+        $distance = calculateRoadDistance(
+            $user_latitude, $user_longitude,
+            $coordinates['lat'], $coordinates['lng']
+        );
+        
         /* DEBUG
         $debug_item['distance'] = number_format($distance, 2) . " km";
         */
+        
         // 4. Se la distanza è entro il raggio, aggiungi all'elenco
         if ($distance <= $radius_km) {
             $row['distance'] = $distance;
@@ -167,7 +236,7 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
         }
         /* DEBUG
         $debug_info[] = $debug_item;
-    */
+        */
     }
     
     // Ordina gli appuntamenti per distanza
@@ -176,13 +245,12 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
     });
     
     // Salva le informazioni di debug in una variabile globale
-  /* DEBUG
-  global $address_comparison_debug;
+    /* DEBUG
+    global $address_comparison_debug;
     $address_comparison_debug = $debug_info;
     */
     return $nearby_appointments;
 }
-
 // Funzione per ottenere coordinate da un indirizzo
 function getCoordinatesFromAddress($address, $appointment_id = null) {
     global $conn;
@@ -201,8 +269,8 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
             // Se abbiamo l'ID appuntamento, aggiorniamo la cache
             if ($appointment_id) {
                 $insertSql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
-             VALUES (?, ?, ?, ?) 
-             ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
+                             VALUES (?, ?, ?, ?) 
+                             ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
                 $insertStmt = $conn->prepare($insertSql);
                 if ($insertStmt) {
                     $insertStmt->bind_param("isdd", $appointment_id, $address, $row['latitude'], $row['longitude']);
@@ -230,7 +298,8 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
         error_log("API key non trovata per la geocodifica");
         return null;
     }
-        $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
+    
+    $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
     
     // Usa cURL invece di file_get_contents
     $ch = curl_init();
@@ -256,9 +325,9 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
         
         // Salva nella cache
         if ($appointment_id) {
-           $sql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
-       VALUES (?, ?, ?, ?) 
-       ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
+            $sql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
+                   VALUES (?, ?, ?, ?) 
+                   ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
             $stmt = $conn->prepare($sql);
             if ($stmt) {
                 $stmt->bind_param("isdd", $appointment_id, $address, $lat, $lng);
@@ -434,135 +503,134 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
             error_log("Appuntamento non trovato nel set di appuntamenti del giorno");
             return $available_slots;
         }
-        
-        // Determina appuntamenti precedenti e successivi
-        $prev_appointment = ($current_index > 0) ? $appointments[$current_index - 1] : null;
-        $next_appointment = ($current_index < count($appointments) - 1) ? $appointments[$current_index + 1] : null;
-        
-        // Controlla se lo slot prima è valido
-        if (!$prev_appointment || isTimeSlotAvailable($zone_id, $before_slot->format('Y-m-d'), $before_slot->format('H:i:s'))) {
-            // Se non c'è un appuntamento precedente o lo slot è disponibile temporalmente
-            
-            // Verifica ora se lo slot rispetta anche i vincoli di distanza
-            $distance_constraint_met = true;
-            $debug_info = []; // Per raccogliere informazioni di debug
-            
-            if ($prev_appointment && !empty($prev_appointment['address'])) {
-                // Ottieni coordinate dell'appuntamento precedente
-                $prev_coordinates = getCoordinatesFromAddress($prev_appointment['address'], $prev_appointment['id']);
+                // Determina appuntamenti precedenti e successivi
+                $prev_appointment = ($current_index > 0) ? $appointments[$current_index - 1] : null;
+                $next_appointment = ($current_index < count($appointments) - 1) ? $appointments[$current_index + 1] : null;
                 
-                if ($prev_coordinates) {
-                    // Ottieni coordinate dell'appuntamento corrente
-                    $current_coordinates = getCoordinatesFromAddress($appointmentData['address'], $appointmentData['id']);
+                // Controlla se lo slot prima è valido
+                if (!$prev_appointment || isTimeSlotAvailable($zone_id, $before_slot->format('Y-m-d'), $before_slot->format('H:i:s'))) {
+                    // Se non c'è un appuntamento precedente o lo slot è disponibile temporalmente
                     
-                    if ($current_coordinates) {
-                        // Calcola la distanza tra l'appuntamento precedente e quello corrente
-                        $distance = calculateDistance(
-                            [$prev_coordinates['lat'], $prev_coordinates['lng']],
-                            [$current_coordinates['lat'], $current_coordinates['lng']]
-                        );
+                    // Verifica ora se lo slot rispetta anche i vincoli di distanza
+                    $distance_constraint_met = true;
+                    $debug_info = []; // Per raccogliere informazioni di debug
+                    
+                    if ($prev_appointment && !empty($prev_appointment['address'])) {
+                        // Ottieni coordinate dell'appuntamento precedente
+                        $prev_coordinates = getCoordinatesFromAddress($prev_appointment['address'], $prev_appointment['id']);
                         
-                        // Salva le informazioni di debug
-                        $debug_info = [
-                            'prev_address' => $prev_appointment['address'],
-                            'prev_coords' => $prev_coordinates,
-                            'distance' => $distance
-                        ];
-                        
-                        // Se la distanza è > 7 km, non rispetta il vincolo
-                        if ($distance > 7) {
+                        if ($prev_coordinates) {
+                            // Ottieni coordinate dell'appuntamento corrente
+                            $current_coordinates = getCoordinatesFromAddress($appointmentData['address'], $appointmentData['id']);
+                            
+                            if ($current_coordinates) {
+                                // Calcola la distanza stradale tra l'appuntamento precedente e quello corrente
+                                $distance = calculateRoadDistance(
+                                    $prev_coordinates['lat'], $prev_coordinates['lng'],
+                                    $current_coordinates['lat'], $current_coordinates['lng']
+                                );
+                                
+                                // Salva le informazioni di debug
+                                $debug_info = [
+                                    'prev_address' => $prev_appointment['address'],
+                                    'prev_coords' => $prev_coordinates,
+                                    'distance' => $distance
+                                ];
+                                
+                                // Se la distanza è > 7 km, non rispetta il vincolo
+                                if ($distance > 7) {
+                                    $distance_constraint_met = false;
+                                    error_log("Slot prima non disponibile: distanza dall'appuntamento precedente ($distance km) > 7 km");
+                                }
+                            } else {
+                                $distance_constraint_met = false;
+                                error_log("Slot prima non disponibile: impossibile ottenere coordinate dell'appuntamento corrente");
+                            }
+                        } else {
                             $distance_constraint_met = false;
-                            error_log("Slot prima non disponibile: distanza dall'appuntamento precedente ($distance km) > 7 km");
+                            error_log("Slot prima non disponibile: impossibile ottenere coordinate dell'appuntamento precedente");
                         }
-                    } else {
-                        $distance_constraint_met = false;
-                        error_log("Slot prima non disponibile: impossibile ottenere coordinate dell'appuntamento corrente");
                     }
-                } else {
-                    $distance_constraint_met = false;
-                    error_log("Slot prima non disponibile: impossibile ottenere coordinate dell'appuntamento precedente");
+                    
+                    // Se questo è il primo appuntamento della giornata, imposta un flag
+                    $isFirstSlot = ($current_index === 0);
+                    
+                    // Aggiungi lo slot solo se rispetta tutti i vincoli
+                    if ($distance_constraint_met) {
+                        $available_slots[] = [
+                            'date' => $before_slot->format('Y-m-d'),
+                            'time' => $before_slot->format('H:i:s'),
+                            'type' => 'before',
+                            'related_appointment' => $appointmentData,
+                            'debug_info' => $debug_info,
+                            'is_first_slot' => $isFirstSlot
+                        ];
+                    }
+                }
+                
+                // Controlla se lo slot dopo è valido e non supera l'ultimo orario configurato
+                if ((!$next_appointment || isTimeSlotAvailable($zone_id, $after_slot->format('Y-m-d'), $after_slot->format('H:i:s')))
+                    && !$after_slot_exceeds_limit) {  // <-- Questa condizione esclude slot dopo l'ultimo orario
+                    
+                    // Verifica se lo slot rispetta anche i vincoli di distanza
+                    $distance_constraint_met = true;
+                    $debug_info = []; // Per raccogliere informazioni di debug
+                    
+                    if ($next_appointment && !empty($next_appointment['address'])) {
+                        // Ottieni coordinate dell'appuntamento successivo
+                        $next_coordinates = getCoordinatesFromAddress($next_appointment['address'], $next_appointment['id']);
+                        
+                        if ($next_coordinates) {
+                            // Ottieni coordinate dell'appuntamento corrente
+                            $current_coordinates = getCoordinatesFromAddress($appointmentData['address'], $appointmentData['id']);
+                            
+                            if ($current_coordinates) {
+                                // Calcola la distanza stradale tra l'appuntamento corrente e quello successivo
+                                $distance = calculateRoadDistance(
+                                    $current_coordinates['lat'], $current_coordinates['lng'],
+                                    $next_coordinates['lat'], $next_coordinates['lng']
+                                );
+                                
+                                // Salva le informazioni di debug
+                                $debug_info = [
+                                    'next_address' => $next_appointment['address'],
+                                    'next_coords' => $next_coordinates,
+                                    'distance' => $distance
+                                ];
+                                
+                                // Se la distanza è > 7 km, non rispetta il vincolo
+                                if ($distance > 7) {
+                                    $distance_constraint_met = false;
+                                    error_log("Slot dopo non disponibile: distanza dall'appuntamento successivo ($distance km) > 7 km");
+                                }
+                            } else {
+                                $distance_constraint_met = false;
+                                error_log("Slot dopo non disponibile: impossibile ottenere coordinate dell'appuntamento corrente");
+                            }
+                        } else {
+                            $distance_constraint_met = false;
+                            error_log("Slot dopo non disponibile: impossibile ottenere coordinate dell'appuntamento successivo");
+                        }
+                    }
+                    
+                    // Aggiungi lo slot solo se rispetta tutti i vincoli
+                    if ($distance_constraint_met) {
+                        $available_slots[] = [
+                            'date' => $after_slot->format('Y-m-d'),
+                            'time' => $after_slot->format('H:i:s'),
+                            'type' => 'after',
+                            'related_appointment' => $appointmentData,
+                            'debug_info' => $debug_info
+                        ];
+                    }
+                } else if ($after_slot_exceeds_limit) {
+                    error_log("Slot dopo (" . $after_slot->format('H:i:s') . ") escluso perché supera l'ultimo orario configurato");
                 }
             }
             
-            // Se questo è il primo appuntamento della giornata, imposta un flag
-            $isFirstSlot = ($current_index === 0);
-            
-            // Aggiungi lo slot solo se rispetta tutti i vincoli
-            if ($distance_constraint_met) {
-                $available_slots[] = [
-                    'date' => $before_slot->format('Y-m-d'),
-                    'time' => $before_slot->format('H:i:s'),
-                    'type' => 'before',
-                    'related_appointment' => $appointmentData,
-                    'debug_info' => $debug_info,
-                    'is_first_slot' => $isFirstSlot
-                ];
-            }
+            return $available_slots;
         }
-        
-        // Controlla se lo slot dopo è valido e non supera l'ultimo orario configurato
-        if ((!$next_appointment || isTimeSlotAvailable($zone_id, $after_slot->format('Y-m-d'), $after_slot->format('H:i:s')))
-            && !$after_slot_exceeds_limit) {  // <-- Questa condizione esclude slot dopo l'ultimo orario
-            
-            // Verifica se lo slot rispetta anche i vincoli di distanza
-            $distance_constraint_met = true;
-            $debug_info = []; // Per raccogliere informazioni di debug
-            
-            if ($next_appointment && !empty($next_appointment['address'])) {
-                // Ottieni coordinate dell'appuntamento successivo
-                $next_coordinates = getCoordinatesFromAddress($next_appointment['address'], $next_appointment['id']);
-                
-                if ($next_coordinates) {
-                    // Ottieni coordinate dell'appuntamento corrente
-                    $current_coordinates = getCoordinatesFromAddress($appointmentData['address'], $appointmentData['id']);
-                    
-                    if ($current_coordinates) {
-                        // Calcola la distanza tra l'appuntamento corrente e quello successivo
-                        $distance = calculateDistance(
-                            [$current_coordinates['lat'], $current_coordinates['lng']],
-                            [$next_coordinates['lat'], $next_coordinates['lng']]
-                        );
-                        
-                        // Salva le informazioni di debug
-                        $debug_info = [
-                            'next_address' => $next_appointment['address'],
-                            'next_coords' => $next_coordinates,
-                            'distance' => $distance
-                        ];
-                        
-                        // Se la distanza è > 7 km, non rispetta il vincolo
-                        if ($distance > 7) {
-                            $distance_constraint_met = false;
-                            error_log("Slot dopo non disponibile: distanza dall'appuntamento successivo ($distance km) > 7 km");
-                        }
-                    } else {
-                        $distance_constraint_met = false;
-                        error_log("Slot dopo non disponibile: impossibile ottenere coordinate dell'appuntamento corrente");
-                    }
-                } else {
-                    $distance_constraint_met = false;
-                    error_log("Slot dopo non disponibile: impossibile ottenere coordinate dell'appuntamento successivo");
-                }
-            }
-            
-            // Aggiungi lo slot solo se rispetta tutti i vincoli
-            if ($distance_constraint_met) {
-                $available_slots[] = [
-                    'date' => $after_slot->format('Y-m-d'),
-                    'time' => $after_slot->format('H:i:s'),
-                    'type' => 'after',
-                    'related_appointment' => $appointmentData,
-                    'debug_info' => $debug_info
-                ];
-            }
-        } else if ($after_slot_exceeds_limit) {
-            error_log("Slot dopo (" . $after_slot->format('H:i:s') . ") escluso perché supera l'ultimo orario configurato");
-        }
-    }
-    
-    return $available_slots;
-}
-// Function to get slots for a specific zone
+        // Function to get slots for a specific zone
 function getSlotsForZone($zoneId) {
     global $conn;
     $sql = "SELECT day, time FROM cp_slots WHERE zone_id = ?";
@@ -585,25 +653,42 @@ function getSlotsForZone($zoneId) {
     return $slots;
 }
 
-// Funzione per verificare se un orario è disponibile
+// Funzione aggiornata per verificare se un orario è disponibile
 function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
     global $conn;
     $start_datetime = $date . ' ' . $time;
     $end_datetime = date('Y-m-d H:i:s', strtotime($start_datetime . ' +' . $duration . ' minutes'));
     
+    // Verifica prima se lo slot rientra negli unavailable slots
+    $endTime = date('H:i:s', strtotime($time . " +{$duration} minutes"));
+    $availability = isSlotAvailable($date, $time, $endTime, $zone_id);
+    if (!$availability['available']) {
+        return false;
+    }
+    
     // Verifica se ci sono appuntamenti sovrapposti nella stessa zona
     $sql = "SELECT COUNT(*) FROM cp_appointments 
-            WHERE zone_id = ? AND 
-            ((appointment_date = ? AND appointment_time <= ? AND 
-              DATE_ADD(CONCAT(appointment_date, ' ', appointment_time), INTERVAL 60 MINUTE) > ?) OR 
-             (appointment_date = ? AND appointment_time >= ? AND 
-              appointment_time < ?))";
+            WHERE zone_id = ? AND appointment_date = ? AND 
+            (
+                (appointment_time <= ? AND DATE_ADD(CONCAT(appointment_date, ' ', appointment_time), INTERVAL {$duration} MINUTE) > ?) OR 
+                (appointment_time >= ? AND appointment_time < ?)
+            )";
+    
     $stmt = $conn->prepare($sql);
     if (!$stmt) {
         return false;
     }
     
-    $stmt->bind_param("issssss", $zone_id, $date, $time, $start_datetime, $date, $time, $end_datetime);
+    // Corretto il numero di parametri per corrispondere alla query SQL
+    $stmt->bind_param("isssss", 
+        $zone_id,           // 1. ?
+        $date,              // 2. ?
+        $time,              // 3. ?
+        $start_datetime,    // 4. ?
+        $time,              // 5. ?
+        $end_datetime       // 6. ?
+    );
+    
     $stmt->execute();
     $stmt->bind_result($count);
     $stmt->fetch();
@@ -635,6 +720,7 @@ function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $ad
         error_log("Appuntamento non disponibile: " . $availability['reason']);
         return false;
     }
+    
     // Converti data e orario in oggetto DateTime
     $appointmentDateTime = new DateTime($appointmentDate . ' ' . $appointmentTime);
     
@@ -674,123 +760,123 @@ function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $ad
             error_log("Durata calcolata dello slot per la zona $zoneId: $slotDuration minuti");
         }
     }
-    
-    // STEP 2: Ottieni tutti gli appuntamenti per la data specificata
-    $sql = "SELECT id, appointment_time, address 
-            FROM cp_appointments 
-            WHERE zone_id = ? AND appointment_date = ? 
-            ORDER BY appointment_time";
-    
-    $stmt = $conn->prepare($sql);
-    if (!$stmt) {
-        error_log("Database prepare failed: " . mysqli_error($conn));
-        return false;
-    }
-    
-    $stmt->bind_param("is", $zoneId, $appointmentDate);
-    if (!$stmt->execute()) {
-        error_log("Database query failed: " . mysqli_error($conn));
-        return false;
-    }
-    
-    $result = $stmt->get_result();
-    $appointments = $result->fetch_all(MYSQLI_ASSOC);
-    
-    // Se non ci sono appuntamenti, lo slot è disponibile
-    if (empty($appointments)) {
-        return true;
-    }
-    
-    // STEP 3: Trova gli appuntamenti immediatamente precedenti e successivi all'orario richiesto
-    $prevAppointment = null;
-    $nextAppointment = null;
-    
-    foreach ($appointments as $appointment) {
-        $appTime = $appointmentDate . ' ' . $appointment['appointment_time'];
-        
-        if ($appTime < $appointmentDate . ' ' . $appointmentTime) {
-            $prevAppointment = $appointment;
-        } else {
-            $nextAppointment = $appointment;
-            break;
-        }
-    }
-    
-    // STEP 4: Verifica la disponibilità temporale
-    
-    // Verifica rispetto all'appuntamento precedente
-    if ($prevAppointment) {
-        $prevDateTime = new DateTime($appointmentDate . ' ' . $prevAppointment['appointment_time']);
-        $prevEndTime = clone $prevDateTime;
-        $prevEndTime->modify("+{$slotDuration} minutes");
-        
-        // Se l'appuntamento richiesto inizia prima della fine dell'appuntamento precedente + durata
-        if ($appointmentDateTime <= $prevEndTime) {
-            error_log("Appuntamento non disponibile: sovrapposizione temporale con appuntamento precedente");
-            return false;
-        }
-    }
-    
-    // Verifica rispetto all'appuntamento successivo
-    if ($nextAppointment) {
-        $nextDateTime = new DateTime($appointmentDate . ' ' . $nextAppointment['appointment_time']);
-        $requestedEndTime = clone $appointmentDateTime;
-        $requestedEndTime->modify("+{$slotDuration} minutes");
-        
-        // Se la fine dell'appuntamento richiesto è dopo l'inizio dell'appuntamento successivo
-        if ($requestedEndTime >= $nextDateTime) {
-            error_log("Appuntamento non disponibile: sovrapposizione temporale con appuntamento successivo");
-            return false;
-        }
-    }
-    
-    // STEP 5: Verifica la distanza geografica con gli appuntamenti adiacenti
-    
-    // Verifica distanza dall'appuntamento precedente
-    if ($prevAppointment && !empty($prevAppointment['address'])) {
-        $prevCoordinates = getCoordinatesFromAddress($prevAppointment['address'], $prevAppointment['id']);
-        
-        if ($prevCoordinates) {
-            $distance = calculateDistance(
-                [$latitude, $longitude],
-                [$prevCoordinates['lat'], $prevCoordinates['lng']]
-            );
-            
-            if ($distance > 7) {
-                error_log("Appuntamento non disponibile: distanza dall'appuntamento precedente ($distance km) > 7 km");
-                return false;
-            }
-        }
-    }
-    
-    // Verifica distanza dall'appuntamento successivo
-    if ($nextAppointment && !empty($nextAppointment['address'])) {
-        $nextCoordinates = getCoordinatesFromAddress($nextAppointment['address'], $nextAppointment['id']);
-        
-        if ($nextCoordinates) {
-            $distance = calculateDistance(
-                [$latitude, $longitude],
-                [$nextCoordinates['lat'], $nextCoordinates['lng']]
-            );
-            
-            if ($distance > 7) {
-                error_log("Appuntamento non disponibile: distanza dall'appuntamento successivo ($distance km) > 7 km");
-                return false;
-            }
-        }
-    }
-    
-    // Se tutti i controlli sono passati, l'appuntamento è disponibile
+        // STEP 2: Ottieni tutti gli appuntamenti per la data specificata
+        $sql = "SELECT id, appointment_time, address 
+        FROM cp_appointments 
+        WHERE zone_id = ? AND appointment_date = ? 
+        ORDER BY appointment_time";
+
+$stmt = $conn->prepare($sql);
+if (!$stmt) {
+    error_log("Database prepare failed: " . mysqli_error($conn));
+    return false;
+}
+
+$stmt->bind_param("is", $zoneId, $appointmentDate);
+if (!$stmt->execute()) {
+    error_log("Database query failed: " . mysqli_error($conn));
+    return false;
+}
+
+$result = $stmt->get_result();
+$appointments = $result->fetch_all(MYSQLI_ASSOC);
+
+// Se non ci sono appuntamenti, lo slot è disponibile
+if (empty($appointments)) {
     return true;
+}
+
+// STEP 3: Trova gli appuntamenti immediatamente precedenti e successivi all'orario richiesto
+$prevAppointment = null;
+$nextAppointment = null;
+
+foreach ($appointments as $appointment) {
+    $appTime = $appointmentDate . ' ' . $appointment['appointment_time'];
+    
+    if ($appTime < $appointmentDate . ' ' . $appointmentTime) {
+        $prevAppointment = $appointment;
+    } else {
+        $nextAppointment = $appointment;
+        break;
+    }
+}
+
+// STEP 4: Verifica la disponibilità temporale
+
+// Verifica rispetto all'appuntamento precedente
+if ($prevAppointment) {
+    $prevDateTime = new DateTime($appointmentDate . ' ' . $prevAppointment['appointment_time']);
+    $prevEndTime = clone $prevDateTime;
+    $prevEndTime->modify("+{$slotDuration} minutes");
+    
+    // Se l'appuntamento richiesto inizia prima della fine dell'appuntamento precedente + durata
+    if ($appointmentDateTime <= $prevEndTime) {
+        error_log("Appuntamento non disponibile: sovrapposizione temporale con appuntamento precedente");
+        return false;
+    }
+}
+
+// Verifica rispetto all'appuntamento successivo
+if ($nextAppointment) {
+    $nextDateTime = new DateTime($appointmentDate . ' ' . $nextAppointment['appointment_time']);
+    $requestedEndTime = clone $appointmentDateTime;
+    $requestedEndTime->modify("+{$slotDuration} minutes");
+    
+    // Se la fine dell'appuntamento richiesto è dopo l'inizio dell'appuntamento successivo
+    if ($requestedEndTime >= $nextDateTime) {
+        error_log("Appuntamento non disponibile: sovrapposizione temporale con appuntamento successivo");
+        return false;
+    }
+}
+
+// STEP 5: Verifica la distanza geografica con gli appuntamenti adiacenti
+
+// Verifica distanza dall'appuntamento precedente
+if ($prevAppointment && !empty($prevAppointment['address'])) {
+    $prevCoordinates = getCoordinatesFromAddress($prevAppointment['address'], $prevAppointment['id']);
+    
+    if ($prevCoordinates) {
+        // Usa la distanza stradale invece di quella in linea d'aria
+        $distance = calculateRoadDistance(
+            $latitude, $longitude,
+            $prevCoordinates['lat'], $prevCoordinates['lng']
+        );
+        
+        if ($distance > 7) {
+            error_log("Appuntamento non disponibile: distanza stradale dall'appuntamento precedente ($distance km) > 7 km");
+            return false;
+        }
+    }
+}
+
+// Verifica distanza dall'appuntamento successivo
+if ($nextAppointment && !empty($nextAppointment['address'])) {
+    $nextCoordinates = getCoordinatesFromAddress($nextAppointment['address'], $nextAppointment['id']);
+    
+    if ($nextCoordinates) {
+        // Usa la distanza stradale invece di quella in linea d'aria
+        $distance = calculateRoadDistance(
+            $latitude, $longitude,
+            $nextCoordinates['lat'], $nextCoordinates['lng']
+        );
+        
+        if ($distance > 7) {
+            error_log("Appuntamento non disponibile: distanza stradale dall'appuntamento successivo ($distance km) > 7 km");
+            return false;
+        }
+    }
+}
+
+// Se tutti i controlli sono passati, l'appuntamento è disponibile
+return true;
 }
 
 // Helper function to get coordinates from address
 function getAddressCoordinates($address, $appointment_id = null) {
-    // Questa funzione può utilizzare la cache o chiamare getCoordinatesFromAddress
-    // Qui riutilizziamo la funzione esistente
-    return getCoordinatesFromAddress($address, $appointment_id);
+// Questa funzione può utilizzare la cache o chiamare getCoordinatesFromAddress
+// Qui riutilizziamo la funzione esistente
+return getCoordinatesFromAddress($address, $appointment_id);
 }
-
 // Modifica la funzione getNext3AppointmentDates per utilizzare le nuove funzioni
 function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLongitude = null) {
     global $conn;
@@ -834,10 +920,10 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                     $appCoords = getCoordinatesFromAddress($app['address'], $app['id']);
                     
                     if ($appCoords) {
-                        // Calcola la distanza
-                        $distance = calculateDistance(
-                            [$userLatitude, $userLongitude],
-                            [$appCoords['lat'], $appCoords['lng']]
+                        // Calcola la distanza stradale
+                        $distance = calculateRoadDistance(
+                            $userLatitude, $userLongitude,
+                            $appCoords['lat'], $appCoords['lng']
                         );
                         
                         error_log("Data " . $formattedDate . " - Appuntamento ID " . $app['id'] . " - Distanza: " . $distance . " km");
@@ -889,8 +975,8 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                     
                     // MODIFICA: Ottieni TUTTI gli appuntamenti per questa data, indipendentemente dalla zona
                     $sql = "SELECT appointment_time, zone_id FROM cp_appointments 
-                           WHERE appointment_date = ?
-                           ORDER BY appointment_time";
+                            WHERE appointment_date = ?
+                            ORDER BY appointment_time";
                     $stmt = $conn->prepare($sql);
                     $stmt->bind_param("s", $formattedDate);
                     $stmt->execute();
@@ -900,91 +986,90 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                     while ($row = $result->fetch_assoc()) {
                         $bookedTimes[] = $row['appointment_time'];
                     }
-                    
-                    // Controlla se questo slot è già prenotato in qualsiasi zona
-                    if (!in_array($slotTime, $bookedTimes)) {
-                        // Controlla se lo slot è troppo vicino a uno prenotato (entro 60 minuti)
-                        $slotTimestamp = strtotime($formattedDate . ' ' . $slotTime);
-                        $tooClose = false;
-                        
-                        foreach ($bookedTimes as $bookedTime) {
-                            $bookedTimestamp = strtotime($formattedDate . ' ' . $bookedTime);
-                            $diffMinutes = abs(($slotTimestamp - $bookedTimestamp) / 60);
-                            
-                            if ($diffMinutes < 60) {
-                                $tooClose = true;
-                                break;
+                                        // Controlla se questo slot è già prenotato in qualsiasi zona
+                                        if (!in_array($slotTime, $bookedTimes)) {
+                                            // Controlla se lo slot è troppo vicino a uno prenotato (entro 60 minuti)
+                                            $slotTimestamp = strtotime($formattedDate . ' ' . $slotTime);
+                                            $tooClose = false;
+                                            
+                                            foreach ($bookedTimes as $bookedTime) {
+                                                $bookedTimestamp = strtotime($formattedDate . ' ' . $bookedTime);
+                                                $diffMinutes = abs(($slotTimestamp - $bookedTimestamp) / 60);
+                                                
+                                                if ($diffMinutes < 60) {
+                                                    $tooClose = true;
+                                                    break;
+                                                }
+                                            }
+                                            
+                                            if (!$tooClose) {
+                                                $availableSlots[] = $slotTime;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Se ci sono almeno 2 slot disponibili, aggiungi questa data
+                                if (count($availableSlots) >= 2) {
+                                    $next3Days[$formattedDate] = $availableSlots;
+                                    
+                                    if (count($next3Days) >= 3) {
+                                        break; // Abbiamo raggiunto le 3 date
+                                    }
+                                }
                             }
+                            
+                            $iterationCount++;
                         }
                         
-                        if (!$tooClose) {
-                            $availableSlots[] = $slotTime;
+                        // Ordina per data
+                        ksort($next3Days);
+                        
+                        return array_slice($next3Days, 0, 3, true);
+                    }
+                    
+                    
+                    // Function to add patient information to the cp_patients table
+                    function addPatient($name, $surname, $phone, $notes) {
+                        global $conn;
+                        $sql = "INSERT INTO cp_patients (name, surname, phone, notes) VALUES (?, ?, ?, ?)";
+                        $stmt = $conn->prepare($sql);
+                    
+                        if (!$stmt) {
+                            error_log("Database prepare failed for adding patient: " . mysqli_error($conn));
+                            throw new Exception("Database prepare failed for adding patient: " . mysqli_error($conn));
+                        }
+                    
+                        $stmt->bind_param("ssss", $name, $surname, $phone, $notes);
+                    
+                        if (!$stmt->execute()) {
+                            error_log("Database query failed for adding patient: " . mysqli_error($conn));
+                            throw new Exception("Database query failed for adding patient: " . mysqli_error($conn));
+                        }
+                    
+                        return $conn->insert_id;
+                    }
+                    
+                    // Function to add appointment information to the cp_appointments table
+                    function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime, $address) {
+                        global $conn;
+                        $formattedDate = date('Y-m-d', strtotime($appointmentDate)); // Ensure correct date format
+                        $sql = "INSERT INTO cp_appointments (zone_id, patient_id, appointment_date, appointment_time, address) VALUES (?, ?, ?, ?, ?)";
+                        $stmt = $conn->prepare($sql);
+                    
+                        if (!$stmt) {
+                            error_log("Database prepare failed for adding appointment: " . mysqli_error($conn));
+                            throw new Exception("Database prepare failed for adding appointment: " . mysqli_error($conn));
+                        }
+                    
+                        $stmt->bind_param("iisss", $zoneId, $patientId, $formattedDate, $appointmentTime, $address);
+                    
+                        if (!$stmt->execute()) {
+                            error_log("Database query failed for adding appointment: " . mysqli_error($conn));
+                            throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
                         }
                     }
-                }
-            }
-            
-            // Se ci sono almeno 2 slot disponibili, aggiungi questa data
-            if (count($availableSlots) >= 2) {
-                $next3Days[$formattedDate] = $availableSlots;
-                
-                if (count($next3Days) >= 3) {
-                    break; // Abbiamo raggiunto le 3 date
-                }
-            }
-        }
-        
-        $iterationCount++;
-    }
-    
-    // Ordina per data
-    ksort($next3Days);
-    
-    return array_slice($next3Days, 0, 3, true);
-}
-
-
-// Function to add patient information to the cp_patients table
-function addPatient($name, $surname, $phone, $notes) {
-    global $conn;
-    $sql = "INSERT INTO cp_patients (name, surname, phone, notes) VALUES (?, ?, ?, ?)";
-    $stmt = $conn->prepare($sql);
-
-    if (!$stmt) {
-        error_log("Database prepare failed for adding patient: " . mysqli_error($conn));
-        throw new Exception("Database prepare failed for adding patient: " . mysqli_error($conn));
-    }
-
-    $stmt->bind_param("ssss", $name, $surname, $phone, $notes);
-
-    if (!$stmt->execute()) {
-        error_log("Database query failed for adding patient: " . mysqli_error($conn));
-        throw new Exception("Database query failed for adding patient: " . mysqli_error($conn));
-    }
-
-    return $conn->insert_id;
-}
-
-// Function to add appointment information to the cp_appointments table
-function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime, $address) {
-    global $conn;
-    $formattedDate = date('Y-m-d', strtotime($appointmentDate)); // Ensure correct date format
-    $sql = "INSERT INTO cp_appointments (zone_id, patient_id, appointment_date, appointment_time, address) VALUES (?, ?, ?, ?, ?)";
-    $stmt = $conn->prepare($sql);
-
-    if (!$stmt) {
-        error_log("Database prepare failed for adding appointment: " . mysqli_error($conn));
-        throw new Exception("Database prepare failed for adding appointment: " . mysqli_error($conn));
-    }
-
-    $stmt->bind_param("iisss", $zoneId, $patientId, $formattedDate, $appointmentTime, $address);
-
-    if (!$stmt->execute()) {
-        error_log("Database query failed for adding appointment: " . mysqli_error($conn));
-        throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
-    }
-}
-// Gestione del POST per la ricerca di appuntamenti
+                    // Gestione del POST per la ricerca di appuntamenti
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
     header('Content-Type: text/html; charset=UTF-8');
     $address = $_POST['address'];
@@ -1000,149 +1085,110 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_
         // Prima cerca appuntamenti vicini entro 7km
         $nearby_appointments = findNearbyAppointments($address, $latitude, $longitude, 7);
         
-        //////STAMPA A SCHERMO BLOCCO INDIRIZZI CONFRONTATI////////
-
-        // Visualizza informazioni di debug
-    /*    global $address_comparison_debug;
-        echo "<div class='container'>";
-        echo "<h3>Confronto indirizzi (Debug):</h3>";
-        echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
-        echo "<thead><tr><th>ID</th><th>Indirizzo appuntamento</th><th>Coordinate</th><th>Distanza</th><th>Stato</th></tr></thead>";
-        echo "<tbody>";
-
-        if (empty($address_comparison_debug)) {
-            echo "<tr><td colspan='5'>Nessun indirizzo di appuntamento elaborato.</td></tr>";
-        } else {
-            foreach ($address_comparison_debug as $item) {
-                $rowClass = (strpos($item['status'], 'Entro raggio') !== false) ? "style='background-color:#d4edda'" : "";
-                
-                echo "<tr {$rowClass}>";
-                echo "<td>{$item['id']}</td>";
-                echo "<td>{$item['address']}</td>";
-                echo "<td>{$item['coords']}</td>";
-                echo "<td>{$item['distance']}</td>";
-                echo "<td>" . ($item['error'] ? "<span style='color:red'>{$item['error']}</span>" : $item['status']) . "</td>";
-                echo "</tr>";
-            }
-        }
-
-        echo "</tbody></table>";
-        echo "</div><hr>";
-        */
-        //////FINE STAMPA A SCHERMO BLOCCO INDIRIZZI CONFRONTATI////////
-        
-        
         // Verifica se l'indirizzo corrente ha già un appuntamento
-$existingAppointmentForAddress = null;
-$checkAddressSql = "SELECT a.id, a.appointment_date, a.appointment_time, p.name, p.surname 
-                  FROM cp_appointments a
-                  JOIN cp_patients p ON a.patient_id = p.id
-                  WHERE a.address = ? AND a.appointment_date >= CURDATE()
-                  ORDER BY a.appointment_date, a.appointment_time
-                  LIMIT 1";
-$checkAddressStmt = $conn->prepare($checkAddressSql);
-$checkAddressStmt->bind_param("s", $address);
-$checkAddressStmt->execute();
-$existingResult = $checkAddressStmt->get_result();
-
-if ($existingResult->num_rows > 0) {
-    $existingAppointmentForAddress = $existingResult->fetch_assoc();
-}
-
-// Mostra l'avviso se esiste già un appuntamento per questo indirizzo
-if ($existingAppointmentForAddress) {
-    $appDate = date('d/m/Y', strtotime($existingAppointmentForAddress['appointment_date']));
-    $appTime = date('H:i', strtotime($existingAppointmentForAddress['appointment_time']));
-    $appId = $existingAppointmentForAddress['id'];
-    $patientName = $existingAppointmentForAddress['name'] . ' ' . $existingAppointmentForAddress['surname'];
-    
-    echo "<div class='container' style='margin-bottom: 30px;'>";
-    echo "<div class='alert alert-danger' style='font-size: 1.2em; padding: 20px; text-align: center;'>";
-    echo "<h3 style='color: #721c24;'><i class='bi bi-exclamation-triangle-fill'></i> ATTENZIONE: Per questo indirizzo esiste già un appuntamento!</h3>";
-    echo "<p>Paziente: <strong>{$patientName}</strong></p>";
-    echo "<p>Data: <strong>{$appDate}</strong> alle <strong>{$appTime}</strong></p>";
-    
-    // Pulsante Vedi Agenda
-    echo "<button class='btn btn-info btn-lg' type='button' data-bs-toggle='collapse' data-bs-target='#existingAppAgenda' aria-expanded='false' aria-controls='existingAppAgenda' style='margin-right: 10px;'>";
-    echo "<i class='bi bi-calendar'></i> Vedi Agenda";
-    echo "</button>";
-    
-
-// Pulsante Modifica Appuntamento che reindirizza alla pagina corretta
-echo "<a href='manage_appointments.php?find_appointment={$appId}' class='btn btn-warning btn-lg'>";
-echo "<i class='bi bi-pencil-square'></i> Modifica Appuntamento";
-echo "</a>";
-    
-    
-    // Div collassabile per l'agenda
-    echo "<div class='collapse mt-3' id='existingAppAgenda'>";
-    echo "<div class='card card-body' id='existingAppAgendaContent'>";
-    echo "<div class='text-center'>";
-    echo "<div class='spinner-border text-primary' role='status'>";
-    echo "<span class='visually-hidden'>Caricamento appuntamenti...</span>";
-    echo "</div>";
-    echo "<p>Caricamento appuntamenti...</p>";
-    echo "</div>";
-    echo "</div>";
-    echo "</div>";
-    
-    echo "</div></div>";
-    
-    // Script per caricare dinamicamente l'agenda e aprire la finestra di modifica
-  echo "<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Funzione per caricare l'agenda quando si clicca su 'Vedi Agenda'
-    const agendaElement = document.querySelector('#existingAppAgenda');
-    if (agendaElement) {
-        agendaElement.addEventListener('shown.bs.collapse', function() {
-            fetch('get_appointments_modal.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: 'appointment_date=" . $existingAppointmentForAddress['appointment_date'] . "'
-            })
-            .then(function(response) {
-                if (!response.ok) throw new Error('Errore di rete');
-                return response.text();
-            })
-            .then(function(html) {
-                document.getElementById('existingAppAgendaContent').innerHTML = html;
-            })
-            .catch(function(error) {
-                document.getElementById('existingAppAgendaContent').innerHTML = '<div class=\"alert alert-danger\"><p>Si è verificato un errore: ' + error.message + '</p></div>';
+        $existingAppointmentForAddress = null;
+        $checkAddressSql = "SELECT a.id, a.appointment_date, a.appointment_time, p.name, p.surname 
+                          FROM cp_appointments a
+                          JOIN cp_patients p ON a.patient_id = p.id
+                          WHERE a.address = ? AND a.appointment_date >= CURDATE()
+                          ORDER BY a.appointment_date, a.appointment_time
+                          LIMIT 1";
+        $checkAddressStmt = $conn->prepare($checkAddressSql);
+        $checkAddressStmt->bind_param("s", $address);
+        $checkAddressStmt->execute();
+        $existingResult = $checkAddressStmt->get_result();
+        
+        if ($existingResult->num_rows > 0) {
+            $existingAppointmentForAddress = $existingResult->fetch_assoc();
+        }
+        
+        // Mostra l'avviso se esiste già un appuntamento per questo indirizzo
+        if ($existingAppointmentForAddress) {
+            $appDate = date('d/m/Y', strtotime($existingAppointmentForAddress['appointment_date']));
+            $appTime = date('H:i', strtotime($existingAppointmentForAddress['appointment_time']));
+            $appId = $existingAppointmentForAddress['id'];
+            $patientName = $existingAppointmentForAddress['name'] . ' ' . $existingAppointmentForAddress['surname'];
+            
+            echo "<div class='container' style='margin-bottom: 30px;'>";
+            echo "<div class='alert alert-danger' style='font-size: 1.2em; padding: 20px; text-align: center;'>";
+            echo "<h3 style='color: #721c24;'><i class='bi bi-exclamation-triangle-fill'></i> ATTENZIONE: Per questo indirizzo esiste già un appuntamento!</h3>";
+            echo "<p>Paziente: <strong>{$patientName}</strong></p>";
+            echo "<p>Data: <strong>{$appDate}</strong> alle <strong>{$appTime}</strong></p>";
+            
+            // Pulsante Vedi Agenda
+            echo "<button class='btn btn-info btn-lg' type='button' data-bs-toggle='collapse' data-bs-target='#existingAppAgenda' aria-expanded='false' aria-controls='existingAppAgenda' style='margin-right: 10px;'>";
+            echo "<i class='bi bi-calendar'></i> Vedi Agenda";
+            echo "</button>";
+            
+            // Pulsante Modifica Appuntamento che reindirizza alla pagina corretta
+            echo "<a href='manage_appointments.php?find_appointment={$appId}' class='btn btn-warning btn-lg'>";
+            echo "<i class='bi bi-pencil-square'></i> Modifica Appuntamento";
+            echo "</a>";
+            
+            // Div collassabile per l'agenda
+            echo "<div class='collapse mt-3' id='existingAppAgenda'>";
+            echo "<div class='card card-body' id='existingAppAgendaContent'>";
+            echo "<div class='text-center'>";
+            echo "<div class='spinner-border text-primary' role='status'>";
+            echo "<span class='visually-hidden'>Caricamento appuntamenti...</span>";
+            echo "</div>";
+            echo "<p>Caricamento appuntamenti...</p>";
+            echo "</div>";
+            echo "</div>";
+            echo "</div>";
+            
+            echo "</div></div>";
+            
+            // Script per caricare dinamicamente l'agenda e aprire la finestra di modifica
+            echo "<script>
+            document.addEventListener('DOMContentLoaded', function() {
+                // Funzione per caricare l'agenda quando si clicca su 'Vedi Agenda'
+                const agendaElement = document.querySelector('#existingAppAgenda');
+                if (agendaElement) {
+                    agendaElement.addEventListener('shown.bs.collapse', function() {
+                        fetch('get_appointments_modal.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                            },
+                            body: 'appointment_date=" . $existingAppointmentForAddress['appointment_date'] . "'
+                        })
+                        .then(function(response) {
+                            if (!response.ok) throw new Error('Errore di rete');
+                            return response.text();
+                        })
+                        .then(function(html) {
+                            document.getElementById('existingAppAgendaContent').innerHTML = html;
+                        })
+                        .catch(function(error) {
+                            document.getElementById('existingAppAgendaContent').innerHTML = '<div class=\"alert alert-danger\"><p>Si è verificato un errore: ' + error.message + '</p></div>';
+                        });
+                    });
+                }
             });
-        });
-    }
-});
 
-    
-    // Funzione per aprire la pagina di modifica dell'appuntamento
-    function openModifyAppointment(appointmentId) {
-        // Prima creiamo un form nascosto
-        var form = document.createElement('form');
-        form.method = 'POST';
-        form.action = 'manage_appointments.php';
-        form.style.display = 'none';
-        
-        // Aggiungiamo un campo nascosto con l'ID dell'appuntamento
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'open_edit_appointment';
-        input.value = appointmentId;
-        form.appendChild(input);
-        
-        // Aggiungiamo il form al body e lo inviamo
-        document.body.appendChild(form);
-        form.submit();
-    }
-    </script>";
-}
-        
-        
-        
-        
-
+                
+                // Funzione per aprire la pagina di modifica dell'appuntamento
+                function openModifyAppointment(appointmentId) {
+                    // Prima creiamo un form nascosto
+                    var form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = 'manage_appointments.php';
+                    form.style.display = 'none';
+                    
+                    // Aggiungiamo un campo nascosto con l'ID dell'appuntamento
+                    var input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'open_edit_appointment';
+                    input.value = appointmentId;
+                    form.appendChild(input);
+                    
+                    // Aggiungiamo il form al body e lo inviamo
+                    document.body.appendChild(form);
+                    form.submit();
+                }
+            </script>";
+        }
         $available_slots_near_appointments = [];
         
         // Per ogni appuntamento trovato vicino, verifica slot disponibili
@@ -1162,570 +1208,399 @@ document.addEventListener('DOMContentLoaded', function() {
             echo "</center></div>";
         }
         
-        
-        // Aggiungi questa funzione di debug prima della visualizzazione degli slot disponibili
-function displayAppointmentDetails($appointments) {
-    echo "<div class='container'><center>";
-    echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
-    echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
-    echo "<thead><tr><th>ID</th><th>Zona</th><th>Data</th><th>Ora</th><th>Distanza</th><th>Primo Slot</th><th>Ultimo Slot</th></tr></thead>";
-    echo "<tbody>";
-    
-    foreach ($appointments as $appointment) {
-        // Ottieni il primo e l'ultimo slot per questa zona e data
-        global $conn;
-        $zone_id = $appointment['zone_id'];
-        $date = $appointment['appointment_date'];
-        
-        $sql = "SELECT MIN(appointment_time) as first_time, MAX(appointment_time) as last_time 
-                FROM cp_appointments 
-                WHERE zone_id = ? AND appointment_date = ?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("is", $zone_id, $date);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-        
-        $first_time = $row['first_time'] ?: 'N/A';
-        $last_time = $row['last_time'] ?: 'N/A';
-        
-        echo "<tr>";
-        echo "<td>{$appointment['id']}</td>";
-        echo "<td>{$appointment['zone_id']}</td>";
-        echo "<td>{$appointment['appointment_date']}</td>";
-        echo "<td>{$appointment['appointment_time']}</td>";
-        echo "<td>" . number_format($appointment['distance'], 2) . " km</td>";
-        echo "<td>{$first_time}</td>";
-        echo "<td>{$last_time}</td>";
-        echo "</tr>";
-    }
-    
-    echo "</tbody></table>";
-    echo "</center></div><hr>";
-}
-
-        // Mostra i dettagli degli appuntamenti considerati
-        /* DEBUG
-if (!empty($nearby_appointments)) {
-    displayAppointmentDetails($nearby_appointments);
-}
-        */
-    
-        
-// Codice per la visualizzazione degli slot disponibili con le modifiche richieste
-if (!empty($available_slots_near_appointments)) {
-    echo "<div class='container'><center>";
-    echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
-    foreach ($available_slots_near_appointments as $slot) {
-        $slot_date = date('d/m/Y', strtotime($slot['date']));
-        $slot_time = date('H:i', strtotime($slot['time']));
-        $distance = number_format($slot['related_appointment']['distance'], 1);
-        $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
-        
-        // Check if this is the first appointment of the day
-        $firstAppSql = "SELECT MIN(appointment_time) as first_time FROM cp_appointments 
-                        WHERE zone_id = ? AND appointment_date = ?";
-        $firstAppStmt = $conn->prepare($firstAppSql);
-        $firstAppStmt->bind_param("is", $slot['related_appointment']['zone_id'], $slot['date']);
-        $firstAppStmt->execute();
-        $firstAppResult = $firstAppStmt->get_result();
-        $firstAppRow = $firstAppResult->fetch_assoc();
-        $isFirstSlot = ($firstAppRow['first_time'] == $slot['related_appointment']['appointment_time']);
-        
-        echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
-        echo "<h4>{$slot_date} {$slot_time}</h4>";
-        echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
-        echo "{$slot['related_appointment']['address']}<br>";
-        echo "<small>Distanza: {$distance} km</small></p>";
-        
-        // Aggiungi le informazioni di debug sull'indirizzo precedente/successivo
-        if (isset($slot['debug_info']) && !empty($slot['debug_info'])) {
-            $debug = $slot['debug_info'];
-            if ($slot['type'] == 'before' && isset($debug['prev_address'])) {
-                echo "<p><small>Rispetto all'indirizzo precedente: " . $debug['prev_address'] . "<br>";
-                echo "Distanza: " . number_format($debug['distance'], 1) . " km</small></p>";
-            } elseif ($slot['type'] == 'after' && isset($debug['next_address'])) {
-                echo "<p><small>Rispetto all'indirizzo successivo: " . $debug['next_address'] . "<br>";
-                echo "Distanza: " . number_format($debug['distance'], 1) . " km</small></p>";
-            }
-        }
-        
-        // Add an indicator if this is before the first appointment
-        if ($slot['type'] == 'before' && $isFirstSlot) {
-            echo "<p style='color:#FF0000; font-weight:bold; font-size:1.1em;'>Questo slot precede il primo appuntamento della giornata</p>";
-        }
-
-        // Aggiungi il pulsante "Vedi agenda" 
-        $date = $slot['date'];
-        // Crea un ID univoco per il collapsible
-        $collapseId = "collapse-slot-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $slot['related_appointment']['zone_id'];
-        $contentId = "agenda-content-slot-" . $collapseId;
-
-        echo "<button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
-            <i class='bi bi-calendar'></i> Vedi agenda
-        </button>";
-
-        // Aggiunta del div collassabile per i contenuti dell'agenda
-        echo "<div class='collapse mb-3 mt-2' id='$collapseId'>
-            <div class='card card-body agenda-details' id='$contentId'>
-                <div class='text-center'>
-                    <div class='spinner-border text-primary' role='status'>
-                        <span class='visually-hidden'>Caricamento appuntamenti...</span>
-                    </div>
-                    <p>Caricamento appuntamenti...</p>
-                </div>
-            </div>
-        </div>";
-
-        // Script inline per caricare i contenuti
-        echo "<script>
-            (function() {
-                var collapseEl = document.getElementById('$collapseId');
-                var contentEl = document.getElementById('$contentId');
-                var date = '$date';
-                var zoneId = {$slot['related_appointment']['zone_id']};
+        // Funzione di debug per visualizzare i dettagli degli appuntamenti
+        function displayAppointmentDetails($appointments) {
+            echo "<div class='container'><center>";
+            echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
+            echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
+            echo "<thead><tr><th>ID</th><th>Zona</th><th>Data</th><th>Ora</th><th>Distanza</th><th>Primo Slot</th><th>Ultimo Slot</th></tr></thead>";
+            echo "<tbody>";
+            
+            foreach ($appointments as $appointment) {
+                // Ottieni il primo e l'ultimo slot per questa zona e data
+                global $conn;
+                $zone_id = $appointment['zone_id'];
+                $date = $appointment['appointment_date'];
                 
-                if (collapseEl) {
-                    collapseEl.addEventListener('shown.bs.collapse', function() {
-                        fetch('get_appointments_modal.php', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            },
-                            body: 'appointment_date=' + date
-                        })
-                            .then(function(response) {
-                                if (!response.ok) throw new Error('Errore di rete');
-                                return response.text();
-                            })
-                            .then(function(html) {
-                                contentEl.innerHTML = html;
-                            })
-                            .catch(function(error) {
-                                contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
-                                    '<p>Si è verificato un errore: ' + error.message + '</p>' +
-                                    '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
-                                    '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
-                                    '</button>' +
-                                '</div>';
-                            });
-                    });
-                }
-            })();
-        </script>";
-
-        // Continue with the booking link...
-        $nameEncoded = !empty($name) ? urlencode($name) : '';
-        $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
-        $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
-        $addressEncoded = urlencode($address);
-
-        echo "<br><a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot_time}";
-        echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
-        echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-        echo "' class='btn btn-success mt-2 fw-bold'>Seleziona</a>";
-
-        echo "</div>";
-    }
-    echo "</center></div><hr>";
-}else {
-    echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
-}
-// Assicurati che anche gli altri link "Seleziona" nel codice siano aggiornati nello stesso modo.
-
-        
-        // Continua con la logica esistente per le zone
-        $zones = getZonesFromCoordinates($latitude, $longitude);
-        $origin = [$latitude, $longitude];
-
-        // Debugging: Log the origin coordinates
-        error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
-
-        $zonesFound = false;
-        $zoneNames = [];
-        foreach ($zones as $zone) {
-            $destination = [$zone['latitude'], $zone['longitude']];
-            $distance = calculateDistance($origin, $destination);
-            $difference = $distance - $zone['radius_km'];
-
-            // Hidden div for calculations
-            echo "<div style='display:none;'>Zona: {$zone['name']}<br>";
-            echo "Coordinate della zona: Latitudine={$zone['latitude']}, Longitudine={$zone['longitude']}<br>";
-            echo "Distanza: {$distance} km<br>";
-            echo "Raggio: {$zone['radius_km']} km<br>";
-            echo "Differenza: {$difference} km<br></div>";
-
-            if ($distance <= $zone['radius_km']) {
-                $zonesFound = true;
-                $zoneNames[] = $zone['name'];
-                $slots = getSlotsForZone($zone['id']);
-                if (!empty($slots)) {
-                    /* DEBUG
-                    echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
-                    */
-                    
-// Aggiungi questo codice per il debug prima di chiamare getNext3AppointmentDates()
-/* DEBUG
-echo "<div class='container'><center>";
-echo "<h4>Debug - Slots e appuntamenti per la zona {$zone['name']}:</h4>";
-
-// Mostra tutti gli slot configurati per questa zona
-$allZoneSlots = getSlotsForZone($zone['id']);
-echo "<p><strong>Slot configurati:</strong> " . count($allZoneSlots) . "</p>";
-echo "<ul style='list-style-type:none; padding:0;'>";
-foreach ($allZoneSlots as $slot) {
-    echo "<li>{$slot['day']} {$slot['time']}</li>";
-}
-echo "</ul>";
-
-// Mostra tutti gli appuntamenti futuri per questa zona
-$futureAppsSql = "SELECT appointment_date, appointment_time FROM cp_appointments 
-                 WHERE zone_id = ? AND appointment_date >= CURDATE() 
-                 ORDER BY appointment_date, appointment_time";
-$appsStmt = $conn->prepare($futureAppsSql);
-$appsStmt->bind_param("i", $zone['id']);
-$appsStmt->execute();
-$appsResult = $appsStmt->get_result();
-
-echo "<p><strong>Appuntamenti futuri:</strong> " . $appsResult->num_rows . "</p>";
-echo "<ul style='list-style-type:none; padding:0;'>";
-while ($app = $appsResult->fetch_assoc()) {
-    echo "<li>{$app['appointment_date']} {$app['appointment_time']}</li>";
-}
-echo "</ul>";
-echo "</center></div>";
-*/
-// Aggiungi questo codice per il debug prima di chiamare getNext3AppointmentDates()
-/* DEBUG
-echo "<div class='container'><center>";
-echo "<h4>Debug - Slots e appuntamenti per la zona {$zone['name']}:</h4>";
-
-
-// Mostra tutti gli slot configurati per questa zona
-$allZoneSlots = getSlotsForZone($zone['id']);
-echo "<p><strong>Slot configurati:</strong> " . count($allZoneSlots) . "</p>";
-echo "<ul style='list-style-type:none; padding:0;'>";
-foreach ($allZoneSlots as $slot) {
-    echo "<li>{$slot['day']} {$slot['time']}</li>";
-}
-echo "</ul>";
-
-// Mostra tutti gli appuntamenti futuri per questa zona
-$futureAppsSql = "SELECT appointment_date, appointment_time FROM cp_appointments 
-                 WHERE zone_id = ? AND appointment_date >= CURDATE() 
-                 ORDER BY appointment_date, appointment_time";
-$appsStmt = $conn->prepare($futureAppsSql);
-$appsStmt->bind_param("i", $zone['id']);
-$appsStmt->execute();
-$appsResult = $appsStmt->get_result();
-
-echo "<p><strong>Appuntamenti futuri:</strong> " . $appsResult->num_rows . "</p>";
-echo "<ul style='list-style-type:none; padding:0;'>";
-while ($app = $appsResult->fetch_assoc()) {
-    echo "<li>{$app['appointment_date']} {$app['appointment_time']}</li>";
-}
-echo "</ul>";
-echo "</center></div>";
-*/
-$next3Days = getNext3AppointmentDates($slots, $zone['id'], $latitude, $longitude);
-//$next3Days = getNext3AppointmentDates($slots, $zone['id']);
-
-// Aggiungi debug visibile per verificare gli slot
-/* DEBUG
-echo "<div class='container' style='border: 1px solid #ddd; padding: 10px; margin-bottom: 20px; background-color: #f9f9f9;'>";
-echo "<h5>Debug - Dettagli slot per zona {$zone['name']} (ID: {$zone['id']}):</h5>";
-
-// Mostra gli slot configurati
-echo "<p><strong>Slot configurati:</strong> ";
-foreach ($slots as $slot) {
-    echo "<span style='margin-right: 10px;'>{$slot['day']} {$slot['time']}</span>";
-}
-echo "</p>";
-
-// Mostra gli appuntamenti esistenti per le date proposte IN TUTTE LE ZONE
-echo "<p><strong>Appuntamenti esistenti nelle date proposte (TUTTE LE ZONE):</strong></p>";
-echo "<ul>";
-foreach (array_keys($next3Days) as $date) {
-    $sql = "SELECT a.appointment_time, a.zone_id, z.name as zone_name 
-           FROM cp_appointments a
-           LEFT JOIN cp_zones z ON a.zone_id = z.id
-           WHERE appointment_date = ?
-           ORDER BY appointment_time";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $date);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    echo "<li><strong>{$date}:</strong> ";
-    if ($result->num_rows > 0) {
-        $appointments = [];
-        while ($row = $result->fetch_assoc()) {
-            $appointments[] = $row['appointment_time'] . " (zona: " . ($row['zone_name'] ?: "ID ".$row['zone_id']) . ")";
-        }
-        echo implode(", ", $appointments);
-    } else {
-        echo "Nessun appuntamento";
-    }
-    echo "</li>";
-}
-echo "</ul>";
-
-// Mostra gli slot disponibili proposti
-echo "<p><strong>Slot proposti dopo filtraggio:</strong></p>";
-echo "<ul>";
-foreach ($next3Days as $date => $times) {
-    echo "<li><strong>{$date}:</strong> " . implode(", ", $times) . "</li>";
-}
-echo "</ul>";
-
-echo "</div>";
-*/
-
-// Diamo feedback all'utente se non ci sono date disponibili
-if (empty($next3Days)) {
-    echo "<div class='container'><center>";
-    echo "<p style='color:red;'>Non sono state trovate date con slot disponibili per la zona {$zone['name']}.</p>";
-    echo "</center></div>";
-} else {
-    echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
-    
-foreach ($next3Days as $date => $times) {
-    $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
-    
-    // MODIFICA: Verifica tutti gli appuntamenti per questa data in TUTTE le zone, non solo in questa zona specifica
-    $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
-                      WHERE appointment_date = ?"; // Rimosso il filtro per zone_id
-    $existingStmt = $conn->prepare($existingAppsSql);
-    $existingStmt->bind_param("s", $date); // Passato solo la data, non la zona
-    $existingStmt->execute();
-    $existingResult = $existingStmt->get_result();
-    $existingRow = $existingResult->fetch_assoc();
-    $hasExistingAppointments = ($existingRow['count'] > 0);
-    
-    echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
-    
-    // Add an indicator if there are existing appointments
-    if ($hasExistingAppointments) {
-        echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
-    }
-    
-    
-    // Add the "Vedi agenda" button with a data attribute instead of onclick
-
-
-
-// Crea un ID univoco per il collapsible
-$collapseId = "collapse-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $zone['id'];
-$contentId = "agenda-content-" . $collapseId;
-
-echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
-    <i class='bi bi-calendar'></i> Vedi agenda
-</button>";
-
-// Aggiunta del div collassabile per i contenuti dell'agenda
-echo "</p>";
-echo "<div class='collapse mb-3' id='$collapseId'>
-    <div class='card card-body agenda-details' id='$contentId'>
-        <div class='text-center'>
-            <div class='spinner-border text-primary' role='status'>
-                <span class='visually-hidden'>Caricamento appuntamenti...</span>
-            </div>
-            <p>Caricamento appuntamenti...</p>
-        </div>
-    </div>
-</div>";
-
-// Script inline per caricare i contenuti
-echo "<script>
-    (function() {
-        var collapseEl = document.getElementById('$collapseId');
-        var contentEl = document.getElementById('$contentId');
-        var date = '$date';
-        var zoneId = {$zone['id']};
-        
-        if (collapseEl) {
-            collapseEl.addEventListener('shown.bs.collapse', function() {
-                fetch('get_appointments_modal.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'appointment_date=' + date
-                })
-                    .then(function(response) {
-                        if (!response.ok) throw new Error('Errore di rete');
-                        return response.text();
-                    })
-                    .then(function(html) {
-                        contentEl.innerHTML = html;
-                    })
-                    .catch(function(error) {
-                        contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
-                            '<p>Si è verificato un errore: ' + error.message + '</p>' +
-                            '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
-                            '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
-                            '</button>' +
-                        '</div>';
-                    });
-            });
-        }
-    })();
-</script>";
-
-    echo "</p>";
-    
-    
-    if (empty($times)) {
-        echo "<p>Nessuna fascia oraria disponibile per questa data.</p>";
-    } else {
-        echo "<p>Fasce orarie disponibili: ";
-        foreach ($times as $time) {
-            $formattedTime = date('H:i', strtotime($time)); // Remove seconds
-            
-            $nameEncoded = !empty($name) ? urlencode($name) : '';
-            $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
-            $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
-            $addressEncoded = urlencode($address);
-            
-            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
-            echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
-            echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-           echo "' class='btn btn-success m-1 fw-bold'>{$formattedTime}</a>";
-        }
-        echo "</p>";
-    }
-}
-    echo "</center></div>";
-    
-    // REMOVE THIS ENTIRE BLOCK - Lines 889-914
-    /* 
-    $next3Days = getNext3AppointmentDates($slots, $zone['id']);
-    foreach ($next3Days as $date => $times) {
-        $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); 
-        
-        // Check if this date has existing appointments
-        $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
-                            WHERE zone_id = ? AND appointment_date = ?";
-        $existingStmt = $conn->prepare($existingAppsSql);
-        $existingStmt->bind_param("is", $zone['id'], $date);
-        $existingStmt->execute();
-        $existingResult = $existingStmt->get_result();
-        $existingRow = $existingResult->fetch_assoc();
-        $hasExistingAppointments = ($existingRow['count'] > 0);
-        
-        echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
-        
-        // Add an indicator if there are existing appointments
-        if ($hasExistingAppointments) {
-            echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
-        }
-        
-        echo "</p>";
-    }
-    */
-}
-                    echo "</center></div><hr>";
-                } else {
-                    
-                    /*
-                    echo "<div class='container'><p>Nessun appuntamento disponibile per i prossimi 3 giorni per la zona {$zone['name']}.</p></div>";
-                    */
-                }
+                $sql = "SELECT MIN(appointment_time) as first_time, MAX(appointment_time) as last_time 
+                        FROM cp_appointments 
+                        WHERE zone_id = ? AND appointment_date = ?";
+                $stmt = $conn->prepare($sql);
+                $stmt->bind_param("is", $zone_id, $date);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $row = $result->fetch_assoc();
+                
+                $first_time = $row['first_time'] ?: 'N/A';
+                $last_time = $row['last_time'] ?: 'N/A';
+                
+                echo "<tr>";
+                echo "<td>{$appointment['id']}</td>";
+                echo "<td>{$appointment['zone_id']}</td>";
+                echo "<td>{$appointment['appointment_date']}</td>";
+                echo "<td>{$appointment['appointment_time']}</td>";
+                echo "<td>" . number_format($appointment['distance'], 2) . " km</td>";
+                echo "<td>{$first_time}</td>";
+                echo "<td>{$last_time}</td>";
+                echo "</tr>";
             }
-        }
-                if ($zonesFound) {
-            $zoneText = implode(', ', $zoneNames);
-            echo "<div class='container'><center><p style='margin-top:2rem; font-size:120%; font-weight:700;'>L'indirizzo appartiene alla zona <span style='color:green;'>{$zoneText}</span>.</p></center></div>";
-        } else {
-            echo "<div class='container'><center><p>L'indirizzo non si trova in nessuna zona.</p></center></div>";
-        }
-    } catch (Exception $e) {
-        error_log("Exception: " . $e->getMessage());
-        echo 'Si è verificato un errore: ' . $e->getMessage();
-    }
-    exit;
-}
-
-
-
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone'])) {
-    header('Content-Type: text/html; charset=UTF-8');
-    $zoneId = $_POST['zone_id'];
-    $appointmentDate = $_POST['date'];
-    $appointmentTime = $_POST['time'];
-    $name = $_POST['name'];
-    $surname = $_POST['surname'];
-    $phone = $_POST['phone'];
-    $notes = isset($_POST['notes']) ? $_POST['notes'] : '';
-    $address = isset($_POST['address']) ? $_POST['address'] : '';
-
-    try {
-        if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $address, $_POST['latitude'], $_POST['longitude'])) {
-            $patientId = addPatient($name, $surname, $phone, $notes);
-            addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime, $address);
-
-            // Ensure correct date formatting
-            $appointmentDateFormatted = strftime('%d %B %Y', strtotime($appointmentDate));
-            $formattedAppointmentTime = date('H:i', strtotime($appointmentTime));
-
-            echo "<p>Appuntamento prenotato con successo per il {$appointmentDateFormatted} alle {$formattedAppointmentTime}.</p>";
-        } else {
-            echo "<p>L'orario selezionato non è disponibile. Si prega di scegliere un altro orario.</p>";
-        }
-    } catch (Exception $e) {
-        error_log("Exception: " . $e->getMessage());
-        echo 'Si è verificato un errore: ' . $e->getMessage();
-    }
-    exit;
-}
-?>
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calcolo Indirizzo</title>
-  <!-- Bootstrap CSS -->
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<!-- Bootstrap Icons -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.min.css">
-<!-- Bootstrap Bundle with Popper -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <style>
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
-        }
-        .menu {
-            margin-bottom: 20px;
-        }
-        .centrato {
-            text-align: center;
             
+            echo "</tbody></table>";
+            echo "</center></div><hr>";
         }
-        .etic{font-size:100%; font-weight:700;}
-        form {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        input[type="text"] {
-            width: 100%;
-            max-width: 300px;
-            margin-bottom: 10px;
-        }
-    
-    .pure-button-primary {
-    background-color: #4CAF50 !important;
-    color: white !important;
-    font-weight: bold !important;
-}
+        
+        // Codice per la visualizzazione degli slot disponibili
+        if (!empty($available_slots_near_appointments)) {
+            echo "<div class='container'><center>";
+            echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
+            foreach ($available_slots_near_appointments as $slot) {
+                $slot_date = date('d/m/Y', strtotime($slot['date']));
+                $slot_time = date('H:i', strtotime($slot['time']));
+                $distance = number_format($slot['related_appointment']['distance'], 1);
+                $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
+                
+                // Check if this is the first appointment of the day
+                $firstAppSql = "SELECT MIN(appointment_time) as first_time FROM cp_appointments 
+                                WHERE zone_id = ? AND appointment_date = ?";
+                $firstAppStmt = $conn->prepare($firstAppSql);
+                $firstAppStmt->bind_param("is", $slot['related_appointment']['zone_id'], $slot['date']);
+                $firstAppStmt->execute();
+                $firstAppResult = $firstAppStmt->get_result();
+                $firstAppRow = $firstAppResult->fetch_assoc();
+                $isFirstSlot = ($firstAppRow['first_time'] == $slot['related_appointment']['appointment_time']);
+                
+                echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
+                echo "<h4>{$slot_date} {$slot_time}</h4>";
+                echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
+                echo "{$slot['related_appointment']['address']}<br>";
+                echo "<small>Distanza: {$distance} km</small></p>";
+                
+                // Aggiungi le informazioni di debug sull'indirizzo precedente/successivo
+                     if (isset($slot['debug_info']) && !empty($slot['debug_info'])) {
+                    $debug = $slot['debug_info'];
+                    if ($slot['type'] == 'before' && isset($debug['prev_address'])) {
+                        echo "<p><small>Rispetto all'indirizzo precedente: " . $debug['prev_address'] . "<br>";
+                        echo "Distanza: " . number_format($debug['distance'], 1) . " km</small></p>";
+                    } elseif ($slot['type'] == 'after' && isset($debug['next_address'])) {
+                        echo "<p><small>Rispetto all'indirizzo successivo: " . $debug['next_address'] . "<br>";
+                        echo "Distanza: " . number_format($debug['distance'], 1) . " km</small></p>";
+                    }
+                }
+                
+                // Add an indicator if this is before the first appointment
+                if ($slot['type'] == 'before' && $isFirstSlot) {
+                    echo "<p style='color:#FF0000; font-weight:bold; font-size:1.1em;'>Questo slot precede il primo appuntamento della giornata</p>";
+                }
 
-    </style>
-        <script>
+                // Aggiungi il pulsante "Vedi agenda" 
+                $date = $slot['date'];
+                // Crea un ID univoco per il collapsible
+                $collapseId = "collapse-slot-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $slot['related_appointment']['zone_id'];
+                $contentId = "agenda-content-slot-" . $collapseId;
+
+                echo "<button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
+                    <i class='bi bi-calendar'></i> Vedi agenda
+                </button>";
+
+                // Aggiunta del div collassabile per i contenuti dell'agenda
+                echo "<div class='collapse mb-3 mt-2' id='$collapseId'>
+                    <div class='card card-body agenda-details' id='$contentId'>
+                        <div class='text-center'>
+                            <div class='spinner-border text-primary' role='status'>
+                                <span class='visually-hidden'>Caricamento appuntamenti...</span>
+                            </div>
+                            <p>Caricamento appuntamenti...</p>
+                        </div>
+                    </div>
+                </div>";
+
+                // Script inline per caricare i contenuti
+                echo "<script>
+                    (function() {
+                        var collapseEl = document.getElementById('$collapseId');
+                        var contentEl = document.getElementById('$contentId');
+                        var date = '$date';
+                        var zoneId = {$slot['related_appointment']['zone_id']};
+                        
+                        if (collapseEl) {
+                            collapseEl.addEventListener('shown.bs.collapse', function() {
+                                fetch('get_appointments_modal.php', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/x-www-form-urlencoded',
+                                    },
+                                    body: 'appointment_date=' + date
+                                })
+                                    .then(function(response) {
+                                        if (!response.ok) throw new Error('Errore di rete');
+                                        return response.text();
+                                    })
+                                    .then(function(html) {
+                                        contentEl.innerHTML = html;
+                                    })
+                                    .catch(function(error) {
+                                        contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
+                                            '<p>Si è verificato un errore: ' + error.message + '</p>' +
+                                            '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
+                                            '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
+                                            '</button>' +
+                                        '</div>';
+                                    });
+                            });
+                        }
+                    })();
+                </script>";
+
+                // Continue with the booking link...
+                $nameEncoded = !empty($name) ? urlencode($name) : '';
+                $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
+                $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
+                $addressEncoded = urlencode($address);
+
+                echo "<br><a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot_time}";
+                echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
+                echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
+                echo "' class='btn btn-success mt-2 fw-bold'>Seleziona</a>";
+
+                echo "</div>";
+            }
+            echo "</center></div><hr>";
+        }else {
+            echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
+        }
+                // Continua con la logica esistente per le zone
+                $zones = getZonesFromCoordinates($latitude, $longitude);
+                $origin = [$latitude, $longitude];
+        
+                // Debugging: Log the origin coordinates
+                error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
+        
+                $zonesFound = false;
+                $zoneNames = [];
+                foreach ($zones as $zone) {
+                    $destination = [$zone['latitude'], $zone['longitude']];
+                    $distance = calculateDistance($origin, $destination);
+                    $difference = $distance - $zone['radius_km'];
+        
+                    // Hidden div for calculations
+                    echo "<div style='display:none;'>Zona: {$zone['name']}<br>";
+                    echo "Coordinate della zona: Latitudine={$zone['latitude']}, Longitudine={$zone['longitude']}<br>";
+                    echo "Distanza: {$distance} km<br>";
+                    echo "Raggio: {$zone['radius_km']} km<br>";
+                    echo "Differenza: {$difference} km<br></div>";
+        
+                    if ($distance <= $zone['radius_km']) {
+                        $zonesFound = true;
+                        $zoneNames[] = $zone['name'];
+                        $slots = getSlotsForZone($zone['id']);
+                        if (!empty($slots)) {
+                            $next3Days = getNext3AppointmentDates($slots, $zone['id'], $latitude, $longitude);
+                            
+                            // Diamo feedback all'utente se non ci sono date disponibili
+                            if (empty($next3Days)) {
+                                echo "<div class='container'><center>";
+                                echo "<p style='color:red;'>Non sono state trovate date con slot disponibili per la zona {$zone['name']}.</p>";
+                                echo "</center></div>";
+                            } else {
+                                echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
+                                
+                                foreach ($next3Days as $date => $times) {
+                                    $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
+                                    
+                                    // MODIFICA: Verifica tutti gli appuntamenti per questa data in TUTTE le zone, non solo in questa zona specifica
+                                    $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
+                                                      WHERE appointment_date = ?"; // Rimosso il filtro per zone_id
+                                    $existingStmt = $conn->prepare($existingAppsSql);
+                                    $existingStmt->bind_param("s", $date); // Passato solo la data, non la zona
+                                    $existingStmt->execute();
+                                    $existingResult = $existingStmt->get_result();
+                                    $existingRow = $existingResult->fetch_assoc();
+                                    $hasExistingAppointments = ($existingRow['count'] > 0);
+                                    
+                                    echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
+                                    
+                                    // Add an indicator if there are existing appointments
+                                    if ($hasExistingAppointments) {
+                                        echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
+                                    }
+                                    
+                                    // Crea un ID univoco per il collapsible
+                                    $collapseId = "collapse-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $zone['id'];
+                                    $contentId = "agenda-content-" . $collapseId;
+                                    
+                                    echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
+                                        <i class='bi bi-calendar'></i> Vedi agenda
+                                    </button>";
+                                    
+                                    // Aggiunta del div collassabile per i contenuti dell'agenda
+                                    echo "</p>";
+                                    echo "<div class='collapse mb-3' id='$collapseId'>
+                                        <div class='card card-body agenda-details' id='$contentId'>
+                                            <div class='text-center'>
+                                                <div class='spinner-border text-primary' role='status'>
+                                                    <span class='visually-hidden'>Caricamento appuntamenti...</span>
+                                                </div>
+                                                <p>Caricamento appuntamenti...</p>
+                                            </div>
+                                        </div>
+                                    </div>";
+                                    
+                                    // Script inline per caricare i contenuti
+                                    echo "<script>
+                                        (function() {
+                                            var collapseEl = document.getElementById('$collapseId');
+                                            var contentEl = document.getElementById('$contentId');
+                                            var date = '$date';
+                                            var zoneId = {$zone['id']};
+                                            
+                                            if (collapseEl) {
+                                                collapseEl.addEventListener('shown.bs.collapse', function() {
+                                                    fetch('get_appointments_modal.php', {
+                                                        method: 'POST',
+                                                        headers: {
+                                                            'Content-Type': 'application/x-www-form-urlencoded',
+                                                        },
+                                                        body: 'appointment_date=' + date
+                                                    })
+                                                        .then(function(response) {
+                                                            if (!response.ok) throw new Error('Errore di rete');
+                                                            return response.text();
+                                                        })
+                                                        .then(function(html) {
+                                                            contentEl.innerHTML = html;
+                                                        })
+                                                        .catch(function(error) {
+                                                            contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
+                                                                '<p>Si è verificato un errore: ' + error.message + '</p>' +
+                                                                '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
+                                                                '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
+                                                                '</button>' +
+                                                            '</div>';
+                                                        });
+                                                });
+                                            }
+                                        })();
+                                    </script>";
+                                    
+                                    echo "</p>";
+                                    if (empty($times)) {
+                                        echo "<p>Nessuna fascia oraria disponibile per questa data.</p>";
+                                    } else {
+                                        echo "<p>Fasce orarie disponibili: ";
+                                        foreach ($times as $time) {
+                                            $formattedTime = date('H:i', strtotime($time)); // Remove seconds
+                                            
+                                            $nameEncoded = !empty($name) ? urlencode($name) : '';
+                                            $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
+                                            $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
+                                            $addressEncoded = urlencode($address);
+                                            
+                                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
+                                            echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
+                                            echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
+                                            echo "' class='btn btn-success m-1 fw-bold'>{$formattedTime}</a>";
+                                        }
+                                        echo "</p>";
+                                    }
+                                }
+                                echo "</center></div>";
+                            }
+                            echo "</center></div><hr>";
+                        } else {
+                            // Non mostrare nulla per zone senza slot configurati
+                        }
+                    }
+                }
+                
+                if ($zonesFound) {
+                    $zoneText = implode(', ', $zoneNames);
+                    echo "<div class='container'><center><p style='margin-top:2rem; font-size:120%; font-weight:700;'>L'indirizzo appartiene alla zona <span style='color:green;'>{$zoneText}</span>.</p></center></div>";
+                } else {
+                    echo "<div class='container'><center><p>L'indirizzo non si trova in nessuna zona.</p></center></div>";
+                }
+            } catch (Exception $e) {
+                error_log("Exception: " . $e->getMessage());
+                echo 'Si è verificato un errore: ' . $e->getMessage();
+            }
+            exit;
+        }
+        
+        if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone']) && isset($_POST['address'])) {
+            header('Content-Type: text/html; charset=UTF-8');
+            $zoneId = $_POST['zone_id'];
+            $appointmentDate = $_POST['date'];
+            $appointmentTime = $_POST['time'];
+            $name = $_POST['name'];
+            $surname = $_POST['surname'];
+            $phone = $_POST['phone'];
+            $notes = isset($_POST['notes']) ? $_POST['notes'] : '';
+            $address = isset($_POST['address']) ? $_POST['address'] : '';
+        
+            try {
+                if (isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $address, $_POST['latitude'], $_POST['longitude'])) {
+                    $patientId = addPatient($name, $surname, $phone, $notes);
+                    addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime, $address);
+        
+                    // Ensure correct date formatting
+                    $appointmentDateFormatted = strftime('%d %B %Y', strtotime($appointmentDate));
+                    $formattedAppointmentTime = date('H:i', strtotime($appointmentTime));
+        
+                    echo "<p>Appuntamento prenotato con successo per il {$appointmentDateFormatted} alle {$formattedAppointmentTime}.</p>";
+                } else {
+                    echo "<p>L'orario selezionato non è disponibile. Si prega di scegliere un altro orario.</p>";
+                }
+            } catch (Exception $e) {
+                error_log("Exception: " . $e->getMessage());
+                echo 'Si è verificato un errore: ' . $e->getMessage();
+            }
+            exit;
+        }
+        ?>
+        <!DOCTYPE html>
+        <html lang="it">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Calcolo Indirizzo</title>
+            <!-- Bootstrap CSS -->
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+            <!-- Bootstrap Icons -->
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.min.css">
+            <!-- Bootstrap Bundle with Popper -->
+            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+            <style>
+                .container {
+                    max-width: 600px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    text-align: center;
+                }
+                .menu {
+                    margin-bottom: 20px;
+                }
+                .centrato {
+                    text-align: center;
+                    
+                }
+                .etic{font-size:100%; font-weight:700;}
+                form {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                }
+                input[type="text"] {
+                    width: 100%;
+                    max-width: 300px;
+                    margin-bottom: 10px;
+                }
+            
+                .pure-button-primary {
+                    background-color: #4CAF50 !important;
+                    color: white !important;
+                    font-weight: bold !important;
+                }
+            </style>
+                <script>
         async function loadAPIKey() {
             try {
                 const response = await fetch('get_api_key.php');
@@ -1778,34 +1653,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_
             messageContainer.style.display = 'block';
         }
         
-// Funzione per ricaricare l'agenda
-function reloadAgenda(contentId, date, zoneId) {
-    var contentEl = document.getElementById(contentId);
-    contentEl.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Caricamento appuntamenti...</span></div><p>Caricamento appuntamenti...</p></div>';
-    
-    fetch('get_appointments_modal.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: 'appointment_date=' + date
-    })
-        .then(function(response) {
-            if (!response.ok) throw new Error('Errore di rete');
-            return response.text();
-        })
-        .then(function(html) {
-            contentEl.innerHTML = html;
-        })
-        .catch(function(error) {
-            contentEl.innerHTML = '<div class="alert alert-danger">' +
-                '<p>Si è verificato un errore: ' + error.message + '</p>' +
-                '<button class="btn btn-sm btn-outline-danger" onclick="reloadAgenda(\'' + contentId + '\', \'' + date + '\', ' + zoneId + ')">' +
-                '<i class="bi bi-arrow-clockwise"></i> Riprova' +
-                '</button>' +
-            '</div>';
-        });
-}
+        // Funzione per ricaricare l'agenda
+        function reloadAgenda(contentId, date, zoneId) {
+            var contentEl = document.getElementById(contentId);
+            contentEl.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Caricamento appuntamenti...</span></div><p>Caricamento appuntamenti...</p></div>';
+            
+            fetch('get_appointments_modal.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'appointment_date=' + date
+            })
+                .then(function(response) {
+                    if (!response.ok) throw new Error('Errore di rete');
+                    return response.text();
+                })
+                .then(function(html) {
+                    contentEl.innerHTML = html;
+                })
+                .catch(function(error) {
+                    contentEl.innerHTML = '<div class="alert alert-danger">' +
+                        '<p>Si è verificato un errore: ' + error.message + '</p>' +
+                        '<button class="btn btn-sm btn-outline-danger" onclick="reloadAgenda(\'' + contentId + '\', \'' + date + '\', ' + zoneId + ')">' +
+                        '<i class="bi bi-arrow-clockwise"></i> Riprova' +
+                        '</button>' +
+                    '</div>';
+                });
+        }
     </script>
     
     
@@ -1858,8 +1733,6 @@ function reloadAgenda(contentId, date, zoneId) {
         color: #6c757d;
     }
 </style>
-
-
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
 $(document).ready(function() {
@@ -1954,7 +1827,6 @@ $(document).ready(function() {
                         <input type="text" id="form_address" name="address" readonly style="width: 100%;">
                     </div>
                 </div>
-                
                 <input type="hidden" id="form_latitude" name="latitude">
                 <input type="hidden" id="form_longitude" name="longitude">
                 
