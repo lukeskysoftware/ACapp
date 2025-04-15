@@ -107,8 +107,18 @@ function calculateDistance($origin, $destination) {
          sin($dLng/2) * sin($dLng/2);
 
     $c = 2 * atan2(sqrt($a), sqrt(1-$a));
-
-    return $earthRadiusKm * $c;
+    
+    // Distanza euclidea
+    $distance = $earthRadiusKm * $c;
+    
+    // Applicare un fattore di correzione per approssimare meglio la distanza stradale
+    // Tipicamente, la distanza stradale è circa 1.3-1.5 volte la distanza euclidea
+    $distanceCorrection = 1.4;
+    $estimatedRoadDistance = $distance * $distanceCorrection;
+    
+    error_log("Distanza euclidea: $distance km, Distanza stradale stimata: $estimatedRoadDistance km");
+    
+    return $estimatedRoadDistance;
 }
 // Funzione per trovare appuntamenti vicini entro il raggio specificato
 function findNearbyAppointments($user_address, $user_latitude, $user_longitude, $radius_km = 7) {
@@ -660,41 +670,66 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
     $end_datetime = date('Y-m-d H:i:s', strtotime($start_datetime . ' +' . $duration . ' minutes'));
     
     // Verifica prima se lo slot rientra negli unavailable slots
+    // Calcola l'orario di fine esplicitamente
     $endTime = date('H:i:s', strtotime($time . " +{$duration} minutes"));
     $availability = isSlotAvailable($date, $time, $endTime, $zone_id);
+    
     if (!$availability['available']) {
+        error_log("Slot non disponibile per blocco: $date $time-$endTime (zona $zone_id): " . $availability['reason']);
         return false;
     }
     
-    // Verifica se ci sono appuntamenti sovrapposti nella stessa zona
-    $sql = "SELECT COUNT(*) FROM cp_appointments 
-            WHERE zone_id = ? AND appointment_date = ? AND 
-            (
-                (appointment_time <= ? AND DATE_ADD(CONCAT(appointment_date, ' ', appointment_time), INTERVAL {$duration} MINUTE) > ?) OR 
+    // Verifica prima gli appuntamenti nella stessa zona
+    $sql1 = "SELECT COUNT(*) FROM cp_appointments 
+            WHERE zone_id = ? AND appointment_date = ? AND (
+                (appointment_time <= ? AND ADDTIME(appointment_time, '01:00:00') > ?) OR 
                 (appointment_time >= ? AND appointment_time < ?)
             )";
     
-    $stmt = $conn->prepare($sql);
-    if (!$stmt) {
+    $stmt1 = $conn->prepare($sql1);
+    if (!$stmt1) {
+        error_log("Errore nella preparazione della query isTimeSlotAvailable (stessa zona): " . $conn->error);
         return false;
     }
     
-    // Corretto il numero di parametri per corrispondere alla query SQL
-    $stmt->bind_param("isssss", 
-        $zone_id,           // 1. ?
-        $date,              // 2. ?
-        $time,              // 3. ?
-        $start_datetime,    // 4. ?
-        $time,              // 5. ?
-        $end_datetime       // 6. ?
-    );
+    $stmt1->bind_param("isssss", $zone_id, $date, $time, $start_datetime, $time, $end_datetime);
+    $stmt1->execute();
+    $stmt1->bind_result($count1);
+    $stmt1->fetch();
+    $stmt1->close();
     
-    $stmt->execute();
-    $stmt->bind_result($count);
-    $stmt->fetch();
-    $stmt->close();
+    if ($count1 > 0) {
+        error_log("Sovrapposizione temporale rilevata nella stessa zona: $date $time (zona $zone_id)");
+        return false;
+    }
     
-    return ($count == 0);
+    // Poi verifica appuntamenti in TUTTE le zone che siano a meno di 7km
+    $sql2 = "SELECT a.id, a.zone_id, a.appointment_time, a.address 
+            FROM cp_appointments a
+            WHERE a.appointment_date = ? AND 
+                  a.zone_id != ? AND
+                  (a.appointment_time <= ? AND ADDTIME(a.appointment_time, '01:00:00') > ?) OR 
+                  (a.appointment_time >= ? AND a.appointment_time < ?)";
+    
+    $stmt2 = $conn->prepare($sql2);
+    if (!$stmt2) {
+        error_log("Errore nella preparazione della query isTimeSlotAvailable (altre zone): " . $conn->error);
+        return false;
+    }
+    
+    $stmt2->bind_param("sissss", $date, $zone_id, $time, $start_datetime, $time, $end_datetime);
+    $stmt2->execute();
+    $result2 = $stmt2->get_result();
+    
+    // Verifica se qualcuno di questi appuntamenti è entro 7km dal punto corrente
+    // Nota: questo richiederebbe di conoscere le coordinate dell'indirizzo corrente
+    // Per adesso, consideriamo tutti gli appuntamenti temporalmente sovrapposti come non disponibili
+    if ($result2->num_rows > 0) {
+        error_log("Trovati {$result2->num_rows} appuntamenti sovrapposti in altre zone per $date $time");
+        return false;
+    }
+    
+    return true;
 }
 
 /**
@@ -898,7 +933,9 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
             error_log("Controllo data: " . $formattedDate . " (giorno della settimana: " . $checkDayOfWeek . ")");
             
             // Verifica se questa data è disponibile negli unavailable slots
+            // Passa null per gli orari perché stiamo verificando l'intera giornata
             $dateAvailability = isSlotAvailable($formattedDate, null, null, $zoneId);
+            
             if (!$dateAvailability['available']) {
                 error_log("Data " . $formattedDate . " saltata: " . $dateAvailability['reason']);
                 continue;
@@ -968,8 +1005,14 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                     continue;
                 }
                 
+                // Calcola l'orario di fine (1 ora dopo l'inizio)
+                // IMPORTANTE: Questo risolve il problema principale
+                $endTime = date('H:i:s', strtotime($slotTime . " +1 hour"));
+                
                 // Verifica se questo slot è disponibile negli unavailable slots
-                $slotAvailability = isSlotAvailable($formattedDate, $slotTime, null, $zoneId);
+                // Ora passiamo sia start_time che end_time
+                $slotAvailability = isSlotAvailable($formattedDate, $slotTime, $endTime, $zoneId);
+                
                 if ($slotAvailability['available']) {
                     // Continua con il resto delle verifiche esistenti...
                     
@@ -986,50 +1029,54 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                     while ($row = $result->fetch_assoc()) {
                         $bookedTimes[] = $row['appointment_time'];
                     }
-                                        // Controlla se questo slot è già prenotato in qualsiasi zona
-                                        if (!in_array($slotTime, $bookedTimes)) {
-                                            // Controlla se lo slot è troppo vicino a uno prenotato (entro 60 minuti)
-                                            $slotTimestamp = strtotime($formattedDate . ' ' . $slotTime);
-                                            $tooClose = false;
-                                            
-                                            foreach ($bookedTimes as $bookedTime) {
-                                                $bookedTimestamp = strtotime($formattedDate . ' ' . $bookedTime);
-                                                $diffMinutes = abs(($slotTimestamp - $bookedTimestamp) / 60);
-                                                
-                                                if ($diffMinutes < 60) {
-                                                    $tooClose = true;
-                                                    break;
-                                                }
-                                            }
-                                            
-                                            if (!$tooClose) {
-                                                $availableSlots[] = $slotTime;
-                                            }
-                                        }
-                                    }
-                                }
-                                
-                                // Se ci sono almeno 2 slot disponibili, aggiungi questa data
-                                if (count($availableSlots) >= 2) {
-                                    $next3Days[$formattedDate] = $availableSlots;
-                                    
-                                    if (count($next3Days) >= 3) {
-                                        break; // Abbiamo raggiunto le 3 date
-                                    }
-                                }
-                            }
+                    
+                    // Controlla se questo slot è già prenotato in qualsiasi zona
+                    if (!in_array($slotTime, $bookedTimes)) {
+                        // Controlla se lo slot è troppo vicino a uno prenotato (entro 60 minuti)
+                        $slotTimestamp = strtotime($formattedDate . ' ' . $slotTime);
+                        $tooClose = false;
+                        
+                        foreach ($bookedTimes as $bookedTime) {
+                            $bookedTimestamp = strtotime($formattedDate . ' ' . $bookedTime);
+                            $diffMinutes = abs(($slotTimestamp - $bookedTimestamp) / 60);
                             
-                            $iterationCount++;
+                            if ($diffMinutes < 60) {
+                                $tooClose = true;
+                                break;
+                            }
                         }
                         
-                        // Ordina per data
-                        ksort($next3Days);
-                        
-                        return array_slice($next3Days, 0, 3, true);
+                        if (!$tooClose) {
+                            $availableSlots[] = $slotTime;
+                        }
                     }
+                } else {
+                    // Log per debug
+                    error_log("Slot " . $formattedDate . " " . $slotTime . " non disponibile: " . $slotAvailability['reason']);
+                }
+            }
+            
+            // Se ci sono almeno 2 slot disponibili, aggiungi questa data
+            if (count($availableSlots) >= 2) {
+                $next3Days[$formattedDate] = $availableSlots;
+                
+                if (count($next3Days) >= 3) {
+                    break; // Abbiamo raggiunto le 3 date
+                }
+            }
+        }
+        
+        $iterationCount++;
+    }
+    
+    // Ordina per data
+    ksort($next3Days);
+    
+    return array_slice($next3Days, 0, 3, true);
+}
                     
                     
-                    // Function to add patient information to the cp_patients table
+ // Function to add patient information to the cp_patients table
                     function addPatient($name, $surname, $phone, $notes) {
                         global $conn;
                         $sql = "INSERT INTO cp_patients (name, surname, phone, notes) VALUES (?, ?, ?, ?)";
