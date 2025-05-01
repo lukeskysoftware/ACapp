@@ -87,6 +87,8 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
             $saveStmt->execute();
         }
         
+        error_log("Distanza stradale via API: $distance_km km tra ($origin_lat,$origin_lng) e ($dest_lat,$dest_lng)");
+        
         return $distance_km;
     } else {
         error_log("Errore nell'API Distance Matrix: " . ($data['status'] ?? 'Unknown error'));
@@ -113,10 +115,12 @@ function calculateDistance($origin, $destination) {
     
     // Applicare un fattore di correzione per approssimare meglio la distanza stradale
     // Tipicamente, la distanza stradale è circa 1.3-1.5 volte la distanza euclidea
-    $distanceCorrection = 1.4;
+    $distanceCorrection = 2.0;
     $estimatedRoadDistance = $distance * $distanceCorrection;
     
     error_log("Distanza euclidea: $distance km, Distanza stradale stimata: $estimatedRoadDistance km");
+    
+    error_log("Distanza stimata: $estimatedRoadDistance km tra [$origin[0],$origin[1]] e [$destination[0],$destination[1]]");
     
     return $estimatedRoadDistance;
 }
