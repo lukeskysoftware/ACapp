@@ -40,8 +40,7 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
     global $conn, $apiKey;
 
     // Prima verificare se questa distanza è in cache
-
-    $cacheSql = "SELECT distance FROM distance_cache
+    $cacheSql = "SELECT distance FROM distance_cache 
                  WHERE (origin_lat = ? AND origin_lng = ? AND dest_lat = ? AND dest_lng = ?) OR
                        (origin_lat = ? AND origin_lng = ? AND dest_lat = ? AND dest_lng = ?)";
     $cacheStmt = $conn->prepare($cacheSql);
@@ -61,7 +60,6 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
         }
     }
 
-
     // Recupera solo la chiave privata dalla tabella cp_api_keys con ID 5
     $privateKeyQuery = "SELECT `api_key` FROM cp_api_keys WHERE id = 5";
     $privateKeyResult = mysqli_query($conn, $privateKeyQuery);
@@ -79,12 +77,11 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
             error_log("Private key recuperata con successo dall'ID 5");
         } else {
             error_log("No private key found with id = 5");
-            return -1; // Return -1 if no private key is found
+            return -1;
         }
-
     } else {
         error_log("Errore nel recupero della private key: " . mysqli_error($conn));
-        return -1; // Return -1 if the query fails
+        return -1;
     }
 
     // Costruisci l'URL della richiesta
@@ -114,20 +111,31 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
     if ($response === false) {
         error_log("Errore cURL durante la chiamata all'API Distance Matrix: " . curl_error($ch));
         curl_close($ch);
-        return -1; // Return -1 to indicate failure
+        return -1;
     }
 
     curl_close($ch);
     $data = json_decode($response, true);
 
-    if ($data['status'] == 'OK' && isset($data['rows'][0]['elements'][0]['status']) && $data['rows'][0]['elements'][0]['status'] == 'OK') {
+    // Verifica tutti i livelli dell'array prima di accedervi
+    if (isset($data['status']) && 
+        $data['status'] == 'OK' && 
+        isset($data['rows']) && 
+        is_array($data['rows']) && 
+        !empty($data['rows']) && 
+        isset($data['rows'][0]['elements']) && 
+        is_array($data['rows'][0]['elements']) && 
+        !empty($data['rows'][0]['elements']) &&
+        isset($data['rows'][0]['elements'][0]['status']) && 
+        $data['rows'][0]['elements'][0]['status'] == 'OK' &&
+        isset($data['rows'][0]['elements'][0]['distance']['value'])) {
+        
         // Distanza in metri, convertiamo in km
         $distance_km = $data['rows'][0]['elements'][0]['distance']['value'] / 1000;
 
         error_log("Distanza stradale via API: $distance_km km tra ($origin_lat,$origin_lng) e ($dest_lat,$dest_lng)");
 
         // Salviamo in cache
-
         $saveSql = "INSERT INTO distance_cache (origin_lat, origin_lng, dest_lat, dest_lng, distance)
                     VALUES (?, ?, ?, ?, ?)";
         $saveStmt = $conn->prepare($saveSql);
@@ -141,8 +149,7 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
     } else {
         error_log("Errore nell'API Distance Matrix: " . ($data['status'] ?? 'Unknown error') .
                  (isset($data['error_message']) ? " - " . $data['error_message'] : ""));
-
-        return -1; // Return -1 to indicate failure
+        return -1;
     }
 }
 
