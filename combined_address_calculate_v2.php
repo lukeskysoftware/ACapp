@@ -28,74 +28,125 @@ $phone = isset($_GET['phone']) ? $_GET['phone'] : '';
 // Set locale to Italian
 setlocale(LC_TIME, 'it_IT.UTF-8');
 
-// Funzione per calcolare la distanza stradale tramite Google Maps API
+// Funzione per calcolare la distanza stradale tramite Google Maps API con firma digitale
 function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
     global $conn, $apiKey;
-    
+
     // Prima verificare se questa distanza è in cache
-    $cacheSql = "SELECT distance FROM distance_cache 
+    $cacheSql = "SELECT distance FROM distance_cache
                  WHERE (origin_lat = ? AND origin_lng = ? AND dest_lat = ? AND dest_lng = ?) OR
                        (origin_lat = ? AND origin_lng = ? AND dest_lat = ? AND dest_lng = ?)";
     $cacheStmt = $conn->prepare($cacheSql);
-    
+
     if ($cacheStmt) {
-        $cacheStmt->bind_param("dddddddd", 
+        $cacheStmt->bind_param("dddddddd",
             $origin_lat, $origin_lng, $dest_lat, $dest_lng,
             $dest_lat, $dest_lng, $origin_lat, $origin_lng
         );
         $cacheStmt->execute();
         $cacheResult = $cacheStmt->get_result();
-        
+
         if ($cacheResult->num_rows > 0) {
             $cacheRow = $cacheResult->fetch_assoc();
+            error_log("Distanza recuperata dalla cache: {$cacheRow['distance']} km tra ($origin_lat,$origin_lng) e ($dest_lat,$dest_lng)");
             return $cacheRow['distance'];
         }
     }
-    
-    // Se non è in cache, calcola con l'API Distance Matrix
-    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins={$origin_lat},{$origin_lng}&destinations={$dest_lat},{$dest_lng}&key={$apiKey}";
-    
+
+    // Recupera solo la chiave privata dalla tabella cp_api_keys con ID 5
+    $privateKeyQuery = "SELECT private_key FROM cp_api_keys WHERE id = 5";
+    $privateKeyResult = mysqli_query($conn, $privateKeyQuery);
+    $privateKey = null;
+
+    if ($privateKeyResult && mysqli_num_rows($privateKeyResult) > 0) {
+        $privateKeyRow = mysqli_fetch_assoc($privateKeyResult);
+        $privateKey = $privateKeyRow['private_key'];
+        error_log("Private key recuperata con successo dall'ID 5");
+    } else {
+        error_log("Errore nel recupero della private key: " . mysqli_error($conn));
+        // Handle the error appropriately, e.g., return an error value or throw an exception
+        return calculateDistance([$origin_lat, $origin_lng], [$dest_lat, $dest_lng]); // Fallback
+    }
+
+    // Costruisci l'URL della richiesta
+    $baseUrl = "https://maps.googleapis.com/maps/api/distancematrix/json";
+    $params = "origins={$origin_lat},{$origin_lng}&destinations={$dest_lat},{$dest_lng}&key={$apiKey}";
+    $url = $baseUrl . "?" . $params;
+
+    // Se abbiamo la chiave privata, generiamo la firma e la aggiungiamo all'URL
+    if ($privateKey) {
+        $pathAndQuery = "/maps/api/distancematrix/json?" . $params;
+        $signature = signUrlWithPrivateKey($pathAndQuery, $privateKey);
+        $url = $url . "&signature=" . $signature;
+        error_log("URL firmato generato per la richiesta");
+    } else {
+        error_log("URL non firmato: chiave privata non disponibile");
+    }
+
     // Usa cURL per la richiesta
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_USERAGENT, 'PHP Distance Matrix Application');
+
     $response = curl_exec($ch);
-    
+
     if ($response === false) {
         error_log("Errore cURL durante la chiamata all'API Distance Matrix: " . curl_error($ch));
         curl_close($ch);
-        // Se fallisce, ritorna la distanza euclidea come fallback
+        // Fallback alla distanza euclidea
         return calculateDistance([$origin_lat, $origin_lng], [$dest_lat, $dest_lng]);
     }
-    
+
     curl_close($ch);
     $data = json_decode($response, true);
-    
+
     if ($data['status'] == 'OK' && isset($data['rows'][0]['elements'][0]['status']) && $data['rows'][0]['elements'][0]['status'] == 'OK') {
         // Distanza in metri, convertiamo in km
         $distance_km = $data['rows'][0]['elements'][0]['distance']['value'] / 1000;
-        
+
+        error_log("Distanza stradale via API: $distance_km km tra ($origin_lat,$origin_lng) e ($dest_lat,$dest_lng)");
+
         // Salviamo in cache
-        $saveSql = "INSERT INTO distance_cache (origin_lat, origin_lng, dest_lat, dest_lng, distance) 
+        $saveSql = "INSERT INTO distance_cache (origin_lat, origin_lng, dest_lat, dest_lng, distance)
                     VALUES (?, ?, ?, ?, ?)";
         $saveStmt = $conn->prepare($saveSql);
-        
+
         if ($saveStmt) {
             $saveStmt->bind_param("ddddd", $origin_lat, $origin_lng, $dest_lat, $dest_lng, $distance_km);
             $saveStmt->execute();
         }
-        
-        error_log("Distanza stradale via API: $distance_km km tra ($origin_lat,$origin_lng) e ($dest_lat,$dest_lng)");
-        
+
         return $distance_km;
     } else {
-        error_log("Errore nell'API Distance Matrix: " . ($data['status'] ?? 'Unknown error'));
+        error_log("Errore nell'API Distance Matrix: " . ($data['status'] ?? 'Unknown error') .
+                 (isset($data['error_message']) ? " - " . $data['error_message'] : ""));
+
         // Fallback alla distanza euclidea
         return calculateDistance([$origin_lat, $origin_lng], [$dest_lat, $dest_lng]);
     }
 }
+
+/**
+ * Funzione per firmare un URL con la chiave privata
+ * @param string $url L'URL da firmare (path e query, senza dominio)
+ * @param string $privateKey La chiave privata
+ * @return string La firma URL-safe Base64
+ */
+function signUrlWithPrivateKey($url, $privateKey) {
+    // Decodifica la chiave privata da base64 URL-safe a binario
+    $decodedKey = base64_decode(strtr($privateKey, '-_', '+/'));
+
+    // Genera la firma usando HMAC-SHA1
+    $signature = hash_hmac('sha1', $url, $decodedKey, true);
+
+    // Codifica la firma in base64 URL-safe
+    $encodedSignature = strtr(base64_encode($signature), '+/', '-_');
+
+    return $encodedSignature;
+}
+
 
 // Function to calculate distance between two coordinates (distanza euclidea, usata come fallback)
 function calculateDistance($origin, $destination) {
