@@ -28,7 +28,7 @@ $phone = isset($_GET['phone']) ? $_GET['phone'] : '';
 // Set locale to Italian
 setlocale(LC_TIME, 'it_IT.UTF-8');
 
-/**
+   /**
  * Funzione per calcolare la distanza stradale tramite Google Maps API con firma digitale
  * @param float $origin_lat Latitudine dell'origine
  * @param float $origin_lng Longitudine dell'origine
@@ -40,6 +40,7 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
     global $conn, $apiKey;
 
     // Prima verificare se questa distanza è in cache
+    /**************************
     $cacheSql = "SELECT distance FROM distance_cache
                  WHERE (origin_lat = ? AND origin_lng = ? AND dest_lat = ? AND dest_lng = ?) OR
                        (origin_lat = ? AND origin_lng = ? AND dest_lat = ? AND dest_lng = ?)";
@@ -59,6 +60,7 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
             return $cacheRow['distance'];
         }
     }
+    ************************/
 
     // Recupera solo la chiave privata dalla tabella cp_api_keys con ID 5
     $privateKeyQuery = "SELECT `api_key` FROM cp_api_keys WHERE id = 5";
@@ -66,8 +68,13 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
     $privateKey = null;
 
     if ($privateKeyResult) {
+        error_log("privateKeyResult is not null");
         if (mysqli_num_rows($privateKeyResult) > 0) {
+            error_log("mysqli_num_rows(\$privateKeyResult) > 0");
             $privateKeyRow = mysqli_fetch_assoc($privateKeyResult);
+            if ($privateKeyRow === null) {
+                error_log("mysqli_fetch_assoc(\$privateKeyResult) returned null");
+            }
             $privateKey = $privateKeyRow['api_key'];
             error_log("Private key recuperata con successo dall'ID 5");
         } else {
@@ -120,6 +127,7 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
         error_log("Distanza stradale via API: $distance_km km tra ($origin_lat,$origin_lng) e ($dest_lat,$dest_lng)");
 
         // Salviamo in cache
+        /********************
         $saveSql = "INSERT INTO distance_cache (origin_lat, origin_lng, dest_lat, dest_lng, distance)
                     VALUES (?, ?, ?, ?, ?)";
         $saveStmt = $conn->prepare($saveSql);
@@ -128,6 +136,7 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
             $saveStmt->bind_param("ddddd", $origin_lat, $origin_lng, $dest_lat, $dest_lng, $distance_km);
             $saveStmt->execute();
         }
+        *********************/
 
         return $distance_km;
     } else {
@@ -345,7 +354,7 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
     
     // Log dell'operazione
     error_log("Tentativo di geocodifica per indirizzo: " . $address);
-    
+   /************************** 
     // Controlla se abbiamo già le coordinate per questo indirizzo
     $sql = "SELECT latitude, longitude FROM address_cache WHERE address = ? LIMIT 1";
     $stmt = $conn->prepare($sql);
@@ -369,7 +378,7 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
             return ['lat' => $row['latitude'], 'lng' => $row['longitude']];
         }
     }
-    
+    *****************************/
     // Recupera la chiave API dalla tabella config
     $apiKey = '';
     $sql = "SELECT value FROM config WHERE name = 'GOOGLE_MAPS_API_KEY'";
