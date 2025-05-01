@@ -669,6 +669,28 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
     $start_datetime = $date . ' ' . $time;
     $end_datetime = date('Y-m-d H:i:s', strtotime($start_datetime . ' +' . $duration . ' minutes'));
     
+    // Prima di proporre uno slot, verificare che sia disponibile
+    $checkQuery = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
+    $checkStmt = $conn->prepare($checkQuery);
+    
+    // Verifica se la preparazione della query è riuscita
+    if (!$checkStmt) {
+        error_log("Errore nella preparazione della query di verifica disponibilità: " . $conn->error);
+        return false; // In caso di errore, consideriamo lo slot come non disponibile per sicurezza
+    }
+    
+    $checkStmt->bind_param("ss", $date, $time);
+    $checkStmt->execute();
+    $checkResult = $checkStmt->get_result();
+    $row = $checkResult->fetch_assoc();
+    $isOccupied = ($row['count'] > 0);
+    $checkStmt->close();
+    
+    if ($isOccupied) {
+        error_log("Slot $date $time già occupato da un appuntamento esistente");
+        return false;
+    }
+    
     // Verifica prima se lo slot rientra negli unavailable slots
     // Calcola l'orario di fine esplicitamente
     $endTime = date('H:i:s', strtotime($time . " +{$duration} minutes"));
@@ -731,6 +753,8 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
     
     return true;
 }
+    
+
 
 /**
  * Verifica se è possibile inserire un appuntamento in un dato orario
