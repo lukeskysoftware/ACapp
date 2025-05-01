@@ -28,7 +28,14 @@ $phone = isset($_GET['phone']) ? $_GET['phone'] : '';
 // Set locale to Italian
 setlocale(LC_TIME, 'it_IT.UTF-8');
 
-// Funzione per calcolare la distanza stradale tramite Google Maps API con firma digitale
+/**
+ * Funzione per calcolare la distanza stradale tramite Google Maps API con firma digitale
+ * @param float $origin_lat Latitudine dell'origine
+ * @param float $origin_lng Longitudine dell'origine
+ * @param float $dest_lat Latitudine della destinazione
+ * @param float $dest_lng Longitudine della destinazione
+ * @return float Distanza in km, -1 in caso di errore
+ */
 function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
     global $conn, $apiKey;
 
@@ -54,18 +61,23 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
     }
 
     // Recupera solo la chiave privata dalla tabella cp_api_keys con ID 5
-    $privateKeyQuery = "SELECT private_key FROM cp_api_keys WHERE id = 5";
+    $privateKeyQuery = "SELECT `api_key` FROM cp_api_keys WHERE id = 5";
     $privateKeyResult = mysqli_query($conn, $privateKeyQuery);
     $privateKey = null;
 
-    if ($privateKeyResult && mysqli_num_rows($privateKeyResult) > 0) {
-        $privateKeyRow = mysqli_fetch_assoc($privateKeyResult);
-        $privateKey = $privateKeyRow['private_key'];
-        error_log("Private key recuperata con successo dall'ID 5");
+    if ($privateKeyResult) {
+        if (mysqli_num_rows($privateKeyResult) > 0) {
+            $privateKeyRow = mysqli_fetch_assoc($privateKeyResult);
+            $privateKey = $privateKeyRow['api_key'];
+            error_log("Private key recuperata con successo dall'ID 5");
+        } else {
+            error_log("No private key found with id = 5");
+            return -1; // Return -1 if no private key is found
+        }
+
     } else {
         error_log("Errore nel recupero della private key: " . mysqli_error($conn));
-        // Handle the error appropriately, e.g., return an error value or throw an exception
-        return calculateDistance([$origin_lat, $origin_lng], [$dest_lat, $dest_lng]); // Fallback
+        return -1; // Return -1 if the query fails
     }
 
     // Costruisci l'URL della richiesta
@@ -95,8 +107,7 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
     if ($response === false) {
         error_log("Errore cURL durante la chiamata all'API Distance Matrix: " . curl_error($ch));
         curl_close($ch);
-        // Fallback alla distanza euclidea
-        return calculateDistance([$origin_lat, $origin_lng], [$dest_lat, $dest_lng]);
+        return -1; // Return -1 to indicate failure
     }
 
     curl_close($ch);
@@ -123,8 +134,7 @@ function calculateRoadDistance($origin_lat, $origin_lng, $dest_lat, $dest_lng) {
         error_log("Errore nell'API Distance Matrix: " . ($data['status'] ?? 'Unknown error') .
                  (isset($data['error_message']) ? " - " . $data['error_message'] : ""));
 
-        // Fallback alla distanza euclidea
-        return calculateDistance([$origin_lat, $origin_lng], [$dest_lat, $dest_lng]);
+        return -1; // Return -1 to indicate failure
     }
 }
 
@@ -175,13 +185,21 @@ function calculateDistance($origin, $destination) {
     
     return $estimatedRoadDistance;
 }
-// Funzione per trovare appuntamenti vicini entro il raggio specificato
+
+/**
+ * Funzione per trovare appuntamenti vicini entro il raggio specificato
+ * @param string $user_address Indirizzo dell'utente
+ * @param float $user_latitude Latitudine dell'utente
+ * @param float $user_longitude Longitudine dell'utente
+ * @param float $radius_km Raggio in km (default 7)
+ * @return array Array di appuntamenti vicini
+ */
 function findNearbyAppointments($user_address, $user_latitude, $user_longitude, $radius_km = 7) {
     global $conn;
     $today = date('Y-m-d');
     $nearby_appointments = [];
     $debug_info = [];
-    
+
     // Recupera tutti gli appuntamenti futuri
     $sql = "SELECT id, address, appointment_date, appointment_time, zone_id, patient_id, notes 
             FROM cp_appointments 
@@ -192,25 +210,25 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
         error_log("Database prepare failed: " . mysqli_error($conn));
         return $nearby_appointments;
     }
-    
+
     $stmt->bind_param("s", $today);
     if (!$stmt->execute()) {
         error_log("Execute failed: " . mysqli_error($conn));
         return $nearby_appointments;
     }
-    
+
     $result = $stmt->get_result();
-    
+
     if ($result->num_rows == 0) {
         error_log("Nessun appuntamento futuro trovato.");
         return $nearby_appointments;
     }
-    
+
     // Per ogni appuntamento
     while ($row = $result->fetch_assoc()) {
         $appointment_id = $row['id'];
         $address = $row['address'];
-        
+
         $debug_item = [
             'id' => $appointment_id,
             'address' => $address,
@@ -219,24 +237,24 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
             'status' => '',
             'error' => ''
         ];
-        
+
         // Salta se l'indirizzo è vuoto
         if (empty($address)) {
             $debug_item['status'] = 'Saltato - Indirizzo vuoto';
             $debug_info[] = $debug_item;
             continue;
         }
-        
+
         // 1. Verifica se l'appuntamento è già in cache
         $cache_sql = "SELECT appointment_id, latitude, longitude FROM address_cache WHERE appointment_id = ? LIMIT 1";
         $cache_stmt = $conn->prepare($cache_sql);
         $coordinates = null;
-        
+
         if ($cache_stmt) {
             $cache_stmt->bind_param("i", $appointment_id);
             $cache_stmt->execute();
             $cache_result = $cache_stmt->get_result();
-            
+
             if ($cache_result->num_rows > 0) {
                 // Coordinate già in cache per questo appuntamento
                 $cache_row = $cache_result->fetch_assoc();
@@ -251,7 +269,7 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
             } else {
                 // 2. Nessuna cache, geocodifica l'indirizzo e salvalo
                 $coordinates = getCoordinatesFromAddress($address, $appointment_id);
-                
+
                 if ($coordinates) {
                     /* DEBUG
                     $debug_item['status'] = 'Geocodificato';
@@ -274,12 +292,17 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
             */
             continue;
         }
-        
+
         // 3. Calcola la distanza stradale
         $distance = calculateRoadDistance(
             $user_latitude, $user_longitude,
             $coordinates['lat'], $coordinates['lng']
         );
+
+        if ($distance == -1) {
+            error_log("Failed to calculate road distance for appointment ID: " . $appointment_id);
+            continue; // Skip this appointment if distance calculation failed
+        }
         
         /* DEBUG
         $debug_item['distance'] = number_format($distance, 2) . " km";
@@ -303,12 +326,12 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
         $debug_info[] = $debug_item;
         */
     }
-    
+
     // Ordina gli appuntamenti per distanza
     usort($nearby_appointments, function($a, $b) {
         return $a['distance'] <=> $b['distance'];
     });
-    
+
     // Salva le informazioni di debug in una variabile globale
     /* DEBUG
     global $address_comparison_debug;
@@ -821,6 +844,19 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
  * @param int $buffer_minutes Minuti di buffer (default 60)
  * @return bool True se l'appuntamento può essere inserito, false altrimenti
  */
+/**
+ * Verifica se è possibile inserire un appuntamento in un dato orario
+ * Controlla sia la disponibilità temporale che la distanza dagli appuntamenti adiacenti
+ * 
+ * @param int $zoneId ID della zona
+ * @param string $appointmentDate Data dell'appuntamento (Y-m-d)
+ * @param string $appointmentTime Orario dell'appuntamento (H:i:s)
+ * @param string $address Indirizzo dell'appuntamento
+ * @param float $latitude Latitudine dell'indirizzo
+ * @param float $longitude Longitudine dell'indirizzo
+ * @param int $buffer_minutes Minuti di buffer (default 60)
+ * @return bool True se l'appuntamento può essere inserito, false altrimenti
+ */
 function isAppointmentAvailable($zoneId, $appointmentDate, $appointmentTime, $address, $latitude, $longitude, $buffer_minutes = 60) {
     global $conn;
     
@@ -952,6 +988,11 @@ if ($prevAppointment && !empty($prevAppointment['address'])) {
             $latitude, $longitude,
             $prevCoordinates['lat'], $prevCoordinates['lng']
         );
+
+        if ($distance == -1) {
+            error_log("Failed to calculate road distance for prev appointment");
+            return false;
+        }
         
         if ($distance > 7) {
             error_log("Appuntamento non disponibile: distanza stradale dall'appuntamento precedente ($distance km) > 7 km");
@@ -970,6 +1011,10 @@ if ($nextAppointment && !empty($nextAppointment['address'])) {
             $latitude, $longitude,
             $nextCoordinates['lat'], $nextCoordinates['lng']
         );
+        if ($distance == -1) {
+            error_log("Failed to calculate road distance for next appointment");
+            return false;
+        }
         
         if ($distance > 7) {
             error_log("Appuntamento non disponibile: distanza stradale dall'appuntamento successivo ($distance km) > 7 km");
