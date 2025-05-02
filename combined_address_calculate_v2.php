@@ -162,7 +162,7 @@ function calculateDistance($origin, $destination) {
     
     // Applicare un fattore di correzione per approssimare meglio la distanza stradale
     // Tipicamente, la distanza stradale è circa 1.3-1.5 volte la distanza euclidea
-    $distanceCorrection = 2.0;
+    $distanceCorrection = 1.4;
     $estimatedRoadDistance = $distance * $distanceCorrection;
     
     error_log("Distanza euclidea: $distance km, Distanza stradale stimata: $estimatedRoadDistance km");
