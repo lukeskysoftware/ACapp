@@ -610,16 +610,17 @@ if (document.getElementById('sendFullEmail')) {
             dateText = "del giorno " + formattedDate;
         }
         
-       // Costruisci il messaggio usando il testo dinamico
-let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
-if (formatGoogle) {
-    // Usa la variabile globale window.mapUrlGoogle
-    message += "**APRI IN GOOGLE MAPS**\n" + window.mapUrlGoogle + "\n\n";
-}
-if (formatApple) {
-    // Usa la variabile globale window.mapUrlApple
-    message += "**APRI IN MAPPE APPLE**\n" + window.mapUrlApple + "\n\n";
-}
+        // Costruisci il messaggio usando il testo dinamico
+        let message = "Ciao,\n\nEcco l'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
+        
+        // Aggiungi i link delle mappe prima di "Cordiali saluti"
+        if (formatGoogle) {
+            message += window.mapUrlGoogle + "\n\n";
+        }
+        if (formatApple) {
+            message += window.mapUrlApple + "\n\n";
+        }
+        
         message += "Cordiali saluti,\nIl Team degli Appuntamenti";
 
         // Send email using fetch API
@@ -632,6 +633,7 @@ if (formatApple) {
                 email: email, 
                 subject: emailSubject, 
                 message: message 
+              //   format: 'text'  // Specifico per email in formato solo testo
             })
         })
         .then(response => response.json())
@@ -681,28 +683,17 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     const emailField = document.getElementById('email');
     const email = emailField.value;
     
-    // Debug aggiuntivo
-  //  console.log("Tipo elemento email:", emailField.type);
-   // console.log("Valore email:", email);
-    
     // Gestione checkbox per utenti specifici (ID 6 e 9)
     let formatGoogle, formatApple;
     if (emailField.type === 'hidden') {
         // Per utenti con form precompilata, leggi i valori dagli input hidden
         formatGoogle = document.getElementById('formatGoogle').value === '1';
         formatApple = document.getElementById('formatApple').value === '1';
-    //    console.log("Form precompilata - valori originali:", 
-              //    document.getElementById('formatGoogle').value,
-              //    document.getElementById('formatApple').value);
     } else {
         // Per tutti gli altri utenti, leggi lo stato dei checkbox
         formatGoogle = document.getElementById('formatGoogle').checked;
         formatApple = document.getElementById('formatApple').checked;
     }
-
- //   console.log("Debug - Email:", email);
- //   console.log("Debug - Format Google:", formatGoogle);
-  //  console.log("Debug - Format Apple:", formatApple);
 
     // Verifiche dei dati
     if (!email) {
@@ -742,10 +733,6 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         dateText = "del giorno " + formattedDate;
     }
     
-    // Debug del mapUrl - verifichiamo che le variabili mapUrlGoogle e mapUrlApple esistano
-  //  console.log("mapUrlGoogle disponibile:", typeof mapUrlGoogle !== 'undefined');
-  //  console.log("mapUrlApple disponibile:", typeof mapUrlApple !== 'undefined');
-    
     if (typeof mapUrlGoogle === 'undefined' || typeof mapUrlApple === 'undefined') {
         console.error("ERRORE: URL mappe non disponibili");
         alert("Errore: URL mappe non disponibili. Riprovare più tardi.");
@@ -753,22 +740,17 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     }
     
     // Costruisci il messaggio usando il testo dinamico
-    let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
+    let message = "Ciao,\n\nEcco l'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
+    
+    // Aggiungi i link delle mappe prima di "Cordiali saluti"
     if (formatGoogle) {
-        message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
+        message += mapUrlGoogle + "\n\n";
     }
     if (formatApple) {
-        message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
+        message += mapUrlApple + "\n\n";
     }
+    
     message += "Cordiali saluti,\nIl Team degli Appuntamenti";
-
-    // Debug dei dati da inviare
-    const emailData = { 
-        email: email, 
-        subject: emailSubject, 
-        message: message 
-    };
- //   console.log("Dati da inviare:", emailData);
 
     // Send email using fetch API
     fetch('send_email.php', {
@@ -776,14 +758,17 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(emailData)
+        body: JSON.stringify({
+            email: email,
+            subject: emailSubject,
+            message: message
+            // format: 'text'  // Specifico per email in formato solo testo
+        })
     })
     .then(response => {
-     console.log("Status risposta:", response.status);
         return response.json();
     })
     .then(data => {
-       console.log("Risposta completa dal server:", data);
         if (data.success) {
             alert('Email inviata con successo.');
         } else {
