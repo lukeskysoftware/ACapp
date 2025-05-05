@@ -610,15 +610,20 @@ if (document.getElementById('sendFullEmail')) {
             dateText = "del giorno " + formattedDate;
         }
         
-       // Costruisci il messaggio usando il testo dinamico
-let message = "Ciao,\n\nEcco l'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
-if (formatGoogle) {
-    message += "<a href=\"" + window.mapUrlGoogle + "\" style=\"background-color: #4285F4; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0;\">APRI IN GOOGLE MAPS</a>\n\n";
-}
-if (formatApple) {
-    message += "<a href=\"" + window.mapUrlApple + "\" style=\"background-color: #000000; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0;\">APRI IN MAPPE APPLE</a>\n\n";
-}
+        // Costruisci il messaggio usando il testo dinamico
+        let message = "Ciao,\n\nEcco l'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
+        
+        // Rimuoviamo i link con asterischi e aggiungiamo solo "Cordiali saluti"
         message += "Cordiali saluti,\nIl Team degli Appuntamenti";
+
+        // Prepariamo i dati da inviare includendo le URL delle mappe come proprietà separate
+        const sendData = { 
+            email: email, 
+            subject: emailSubject, 
+            message: message,
+            mapUrlGoogle: formatGoogle ? window.mapUrlGoogle : null,
+            mapUrlApple: formatApple ? window.mapUrlApple : null
+        };
 
         // Send email using fetch API
         fetch('send_email.php', {
@@ -626,11 +631,7 @@ if (formatApple) {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ 
-                email: email, 
-                subject: emailSubject, 
-                message: message 
-            })
+            body: JSON.stringify(sendData)
         })
         .then(response => response.json())
         .then(data => {
@@ -679,28 +680,17 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     const emailField = document.getElementById('email');
     const email = emailField.value;
     
-    // Debug aggiuntivo
-  //  console.log("Tipo elemento email:", emailField.type);
-   // console.log("Valore email:", email);
-    
     // Gestione checkbox per utenti specifici (ID 6 e 9)
     let formatGoogle, formatApple;
     if (emailField.type === 'hidden') {
         // Per utenti con form precompilata, leggi i valori dagli input hidden
         formatGoogle = document.getElementById('formatGoogle').value === '1';
         formatApple = document.getElementById('formatApple').value === '1';
-    //    console.log("Form precompilata - valori originali:", 
-              //    document.getElementById('formatGoogle').value,
-              //    document.getElementById('formatApple').value);
     } else {
         // Per tutti gli altri utenti, leggi lo stato dei checkbox
         formatGoogle = document.getElementById('formatGoogle').checked;
         formatApple = document.getElementById('formatApple').checked;
     }
-
- //   console.log("Debug - Email:", email);
- //   console.log("Debug - Format Google:", formatGoogle);
-  //  console.log("Debug - Format Apple:", formatApple);
 
     // Verifiche dei dati
     if (!email) {
@@ -740,10 +730,6 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         dateText = "del giorno " + formattedDate;
     }
     
-    // Debug del mapUrl - verifichiamo che le variabili mapUrlGoogle e mapUrlApple esistano
-  //  console.log("mapUrlGoogle disponibile:", typeof mapUrlGoogle !== 'undefined');
-  //  console.log("mapUrlApple disponibile:", typeof mapUrlApple !== 'undefined');
-    
     if (typeof mapUrlGoogle === 'undefined' || typeof mapUrlApple === 'undefined') {
         console.error("ERRORE: URL mappe non disponibili");
         alert("Errore: URL mappe non disponibili. Riprovare più tardi.");
@@ -752,21 +738,18 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     
     // Costruisci il messaggio usando il testo dinamico
     let message = "Ciao,\n\nEcco l'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
-   if (formatGoogle) {
-    message += "<a href=\"" + mapUrlGoogle + "\" style=\"background-color: #4285F4; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0;\">APRI IN GOOGLE MAPS</a>\n\n";
-}
-if (formatApple) {
-    message += "<a href=\"" + mapUrlApple + "\" style=\"background-color: #000000; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0;\">APRI IN MAPPE APPLE</a>\n\n";
-}
+    
+    // Rimuoviamo i link con asterischi e aggiungiamo solo "Cordiali saluti"
     message += "Cordiali saluti,\nIl Team degli Appuntamenti";
 
-    // Debug dei dati da inviare
+    // Prepariamo i dati da inviare includendo le URL delle mappe come proprietà separate
     const emailData = { 
         email: email, 
         subject: emailSubject, 
-        message: message 
+        message: message,
+        mapUrlGoogle: formatGoogle ? mapUrlGoogle : null,
+        mapUrlApple: formatApple ? mapUrlApple : null
     };
- //   console.log("Dati da inviare:", emailData);
 
     // Send email using fetch API
     fetch('send_email.php', {
@@ -777,11 +760,9 @@ if (formatApple) {
         body: JSON.stringify(emailData)
     })
     .then(response => {
-     console.log("Status risposta:", response.status);
         return response.json();
     })
     .then(data => {
-       console.log("Risposta completa dal server:", data);
         if (data.success) {
             alert('Email inviata con successo.');
         } else {
@@ -793,7 +774,6 @@ if (formatApple) {
         alert('Errore nell\'invio dell\'email: ' + error.message);
     });
 });
-
 
 
         document.getElementById('openMapButton').addEventListener('click', function() {
