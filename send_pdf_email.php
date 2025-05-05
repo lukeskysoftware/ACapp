@@ -1,132 +1,96 @@
 <?php
-// File per gestire l'invio di email con PDF allegato
+// Includi le librerie PHPMailer
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+use PHPMailer\PHPMailer\SMTP;
 
-// Funzione per il logging
+require 'ext_parts/phpmailer/src/Exception.php';
+require 'ext_parts/phpmailer/src/PHPMailer.php';
+require 'ext_parts/phpmailer/src/SMTP.php';
+
+// Funzione per il logging in un file specifico
 function log_message($message) {
     $log_file = __DIR__ . "/email_debug.log";
     $timestamp = date("Y-m-d H:i:s");
     $log_entry = "[$timestamp] $message\n";
-    file_put_contents($log_file, $log_entry, FILE_APPEND);
-}
-
-// Funzione per inviare email con allegato tramite SMTP
-function send_smtp_email_with_attachment($to, $subject, $message, $attachment_path, $attachment_name) {
-    // Configurazione del server SMTP
-    $smtp_server = 'ac.nimagodev.com';
-    $smtp_port = 465;
-    $smtp_username = 'acapp@ac.nimagodev.com';
-    $smtp_password = 'TUA_PASSWORD_QUI'; // Sostituisci con la password reale
-    $smtp_from = 'acapp@ac.nimagodev.com';
-    $smtp_from_name = 'ACapp';
     
     try {
-        // Genera un boundary per il messaggio multipart
-        $boundary = md5(time());
-        
-        // Leggi il contenuto del file PDF
-        $pdf_content = file_get_contents($attachment_path);
-        if ($pdf_content === false) {
-            log_message("ERRORE: Impossibile leggere il file PDF");
+        // Tenta di scrivere nel file
+        if (@file_put_contents($log_file, $log_entry, FILE_APPEND) === false) {
+            // Se fallisce, prova l'error_log di PHP come fallback
+            error_log("Non è stato possibile scrivere nel file di log. Messaggio: $log_entry");
+        }
+    } catch (Exception $e) {
+        // Cattura eventuali eccezioni
+        error_log("Eccezione durante la scrittura nel file di log: " . $e->getMessage());
+    }
+}
+
+// Funzione per inviare email con PDF tramite SMTP di Gmail
+function send_email_with_attachment($to, $subject, $message, $attachment_path, $attachment_name) {
+    // Crea una nuova istanza
+    $mail = new PHPMailer(true);
+    
+    try {
+        // Configura il server SMTP di Gmail
+        $mail->isSMTP();
+        $mail->SMTPDebug = 0;                      // Disabilita il debug per la produzione
+        $mail->Host = 'smtp.gmail.com';            // Server SMTP di Gmail
+        $mail->SMTPAuth = true;                    // Abilita autenticazione SMTP
+        $mail->Username = 'MAIL@gmail.com'; // Il tuo indirizzo Gmail completo
+        $mail->Password = 'PASSWORDAPP';  // La password per app generata generata
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // Usa STARTTLS
+        $mail->Port = 587;                         // Porta TCP per STARTTLS
+        $mail->CharSet = 'UTF-8';                  // Set caratteri
+
+        // Impostazioni mittente e destinatario
+        $mail->setFrom('MAIL@gmail.com', 'Agenda'); // Usa lo stesso indirizzo Gmail
+       // $mail->addReplyTo('acapp@ac.nimagodev.com', 'ACapp'); // Questo può essere diverso
+        $mail->addAddress($to);                    // Destinatario
+
+        // Allegato PDF
+        if (file_exists($attachment_path)) {
+            $mail->addAttachment($attachment_path, $attachment_name);
+        } else {
+            log_message("ERRORE: File allegato non trovato: $attachment_path");
             return false;
         }
+
+        // Contenuto
+        $mail->isHTML(true);                     // Imposta il formato HTML
+        $mail->Subject = $subject;
         
-        // Crea una connessione sicura al server SMTP
-        $context = stream_context_create([
-            'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false,
-            ]
-        ]);
-        
-        $smtp = stream_socket_client(
-            "ssl://$smtp_server:$smtp_port", 
-            $errno, 
-            $errstr, 
-            30, 
-            STREAM_CLIENT_CONNECT, 
-            $context
-        );
-        
-        if (!$smtp) {
-            log_message("ERRORE: Connessione SMTP fallita: $errstr ($errno)");
-            return false;
+        // Gestiamo il link alle mappe di Google
+        if (strpos($message, 'google.com/maps') !== false) {
+            preg_match('/(https?:\/\/(?:www\.)?google\.com\/maps[^\s]+)/', $message, $matches);
+            $maps_url = isset($matches[1]) ? $matches[1] : '';
+            
+            if ($maps_url) {
+                $message_without_url = str_replace($maps_url, '', $message);
+                
+                // Versione HTML del messaggio
+                $html_message = nl2br($message_without_url);
+                $html_message .= '<br><br><a href="' . htmlspecialchars($maps_url) . '" style="background-color: #4285F4; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold;">Apri l\'itinerario</a>';
+                
+                // Versione testo del messaggio
+                $text_message = $message_without_url . "\n\nApri l'itinerario: " . $maps_url;
+                
+                $mail->Body = $html_message;
+                $mail->AltBody = $text_message;
+            } else {
+                $mail->Body = nl2br($message);
+                $mail->AltBody = $message;
+            }
+        } else {
+            $mail->Body = nl2br($message);
+            $mail->AltBody = $message;
         }
-        
-        // Leggi il saluto del server
-        fgets($smtp);
-        
-        // EHLO command
-        fputs($smtp, "EHLO " . $_SERVER['SERVER_NAME'] . "\r\n");
-        fgets($smtp);
-        
-        // AUTH LOGIN
-        fputs($smtp, "AUTH LOGIN\r\n");
-        fgets($smtp);
-        
-        // Username (base64 encoded)
-        fputs($smtp, base64_encode($smtp_username) . "\r\n");
-        fgets($smtp);
-        
-        // Password (base64 encoded)
-        fputs($smtp, base64_encode($smtp_password) . "\r\n");
-        $auth_response = fgets($smtp);
-        
-        if (strpos($auth_response, '235') === false) {
-            log_message("ERRORE: Autenticazione SMTP fallita: " . trim($auth_response));
-            fclose($smtp);
-            return false;
-        }
-        
-        // MAIL FROM
-        fputs($smtp, "MAIL FROM: <$smtp_from>\r\n");
-        fgets($smtp);
-        
-        // RCPT TO
-        fputs($smtp, "RCPT TO: <$to>\r\n");
-        fgets($smtp);
-        
-        // DATA
-        fputs($smtp, "DATA\r\n");
-        fgets($smtp);
-        
-        // Costruisci l'intestazione e il corpo dell'email con allegato
-        $email_content = "From: $smtp_from_name <$smtp_from>\r\n";
-        $email_content .= "To: $to\r\n";
-        $email_content .= "Subject: $subject\r\n";
-        $email_content .= "MIME-Version: 1.0\r\n";
-        $email_content .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n";
-        $email_content .= "\r\n";
-        
-        // Parte testuale
-        $email_content .= "--$boundary\r\n";
-        $email_content .= "Content-Type: text/plain; charset=utf-8\r\n";
-        $email_content .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-        $email_content .= "$message\r\n\r\n";
-        
-        // Parte allegato
-        $email_content .= "--$boundary\r\n";
-        $email_content .= "Content-Type: application/pdf; name=\"$attachment_name\"\r\n";
-        $email_content .= "Content-Disposition: attachment; filename=\"$attachment_name\"\r\n";
-        $email_content .= "Content-Transfer-Encoding: base64\r\n\r\n";
-        $email_content .= chunk_split(base64_encode($pdf_content)) . "\r\n";
-        $email_content .= "--$boundary--";
-        
-        // Invia il contenuto dell'email
-        fputs($smtp, $email_content . "\r\n.\r\n");
-        $send_response = fgets($smtp);
-        
-        // QUIT
-        fputs($smtp, "QUIT\r\n");
-        fclose($smtp);
-        
-        if (strpos($send_response, '250') === false) {
-            log_message("ERRORE: Invio email SMTP con allegato fallito: " . trim($send_response));
-            return false;
-        }
-        
+
+        $mail->send();
+        log_message("Email con PDF inviata con successo a: $to");
         return true;
     } catch (Exception $e) {
-        log_message("ERRORE: Eccezione SMTP: " . $e->getMessage());
+        log_message("ERRORE: Invio email fallito. " . $mail->ErrorInfo);
         return false;
     }
 }
@@ -152,8 +116,6 @@ $subject = $_POST['subject'];
 $message = $_POST['message'];
 
 log_message("Invio email a: $email");
-log_message("Oggetto: $subject");
-log_message("Messaggio: " . substr($message, 0, 100) . "...");
 
 // Verifica che il file PDF sia stato caricato correttamente
 if ($_FILES['pdf']['error'] !== UPLOAD_ERR_OK) {
@@ -170,15 +132,14 @@ $pdf_size = filesize($pdf_path);
 
 log_message("PDF caricato: $pdf_name ($pdf_size bytes)");
 
-// Prova l'invio tramite SMTP
-$smtp_result = send_smtp_email_with_attachment($email, $subject, $message, $pdf_path, $pdf_name);
+// Invia email tramite PHPMailer
+$result = send_email_with_attachment($email, $subject, $message, $pdf_path, $pdf_name);
 
-if ($smtp_result) {
-    log_message("Email con PDF inviata con successo via SMTP a: $email");
+if ($result) {
     echo json_encode(['success' => true]);
 } else {
-    // Fallback al metodo originale se SMTP fallisce
-    log_message("ATTENZIONE: SMTP fallito, tentativo con metodo tradizionale");
+    // Fallback alla funzione mail() nativa
+    log_message("PHPMailer fallito, tentativo con mail() nativa");
     
     // Crea un boundary per il messaggio multipart
     $boundary = md5(time());
@@ -186,40 +147,68 @@ if ($smtp_result) {
     // Leggi il contenuto del file PDF
     $pdf_content = file_get_contents($pdf_path);
     
-    // Intestazioni dell'email
-    $headers = "From: ACapp <acapp@ac.nimagodev.com>\r\n";
-    $headers .= "Reply-To: acapp@ac.nimagodev.com\r\n";
+    // Prepara gli header e il corpo per email multipart con PDF e opzionalmente HTML
+    $headers = "From: Agenda <acapp@nimagodev.com>\r\n";
+   // $headers .= "Reply-To: acapp@ac.nimagodev.com\r\n";
     $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
     $headers .= "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n";
     
-    // Corpo dell'email
-    $email_body = "--$boundary\r\n";
-    $email_body .= "Content-Type: text/plain; charset=utf-8\r\n";
-    $email_body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-    $email_body .= $message . "\r\n\r\n";
+    // Inizio corpo email
+    $body = "--$boundary\r\n";
+    
+    // Controlla se c'è un link alle mappe di Google
+    if (strpos($message, 'google.com/maps') !== false) {
+        preg_match('/(https?:\/\/(?:www\.)?google\.com\/maps[^\s]+)/', $message, $matches);
+        $maps_url = isset($matches[1]) ? $matches[1] : '';
+        
+        if ($maps_url) {
+            $message_without_url = str_replace($maps_url, '', $message);
+            
+            // Crea una sottoparte per il contenuto multipart/alternative (testo/HTML)
+            $body .= "Content-Type: multipart/alternative; boundary=\"alt-$boundary\"\r\n\r\n";
+            
+            // Versione testo
+            $body .= "--alt-$boundary\r\n";
+            $body .= "Content-Type: text/plain; charset=utf-8\r\n";
+            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $body .= $message_without_url . "\n\nApri l'itinerario: " . $maps_url . "\r\n\r\n";
+            
+            // Versione HTML
+            $body .= "--alt-$boundary\r\n";
+            $body .= "Content-Type: text/html; charset=utf-8\r\n";
+            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $body .= "<html><body>" . nl2br($message_without_url) . "<br><br>";
+            $body .= "<a href=\"" . htmlspecialchars($maps_url) . "\" style=\"background-color: #4285F4; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold;\">Apri l'itinerario</a>";
+            $body .= "</body></html>\r\n\r\n";
+            $body .= "--alt-$boundary--\r\n\r\n";
+        } else {
+            $body .= "Content-Type: text/plain; charset=utf-8\r\n";
+            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $body .= $message . "\r\n\r\n";
+        }
+    } else {
+        $body .= "Content-Type: text/plain; charset=utf-8\r\n";
+        $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+        $body .= $message . "\r\n\r\n";
+    }
     
     // Allegato PDF
-    $email_body .= "--$boundary\r\n";
-    $email_body .= "Content-Type: application/pdf; name=\"$pdf_name\"\r\n";
-    $email_body .= "Content-Disposition: attachment; filename=\"$pdf_name\"\r\n";
-    $email_body .= "Content-Transfer-Encoding: base64\r\n\r\n";
-    $email_body .= chunk_split(base64_encode($pdf_content)) . "\r\n";
-    $email_body .= "--$boundary--";
-    
-    // Parametri aggiuntivi per mail()
-    $additional_parameters = '-f acapp@ac.nimagodev.com';
+    $body .= "--$boundary\r\n";
+    $body .= "Content-Type: application/pdf; name=\"$pdf_name\"\r\n";
+    $body .= "Content-Disposition: attachment; filename=\"$pdf_name\"\r\n";
+    $body .= "Content-Transfer-Encoding: base64\r\n\r\n";
+    $body .= chunk_split(base64_encode($pdf_content)) . "\r\n";
+    $body .= "--$boundary--";
     
     // Invia l'email
-    $mail_sent = mail($email, $subject, $email_body, $headers, $additional_parameters);
+    $mail_result = mail($email, $subject, $body, $headers);
     
-    if ($mail_sent) {
+    if ($mail_result) {
         log_message("Email con PDF inviata con successo via mail() a: $email");
         echo json_encode(['success' => true]);
     } else {
-        $error = error_get_last();
         log_message("ERRORE: Invio email fallito a: $email");
-        log_message("Dettagli errore: " . ($error ? json_encode($error) : "Nessun dettaglio disponibile"));
         echo json_encode(['success' => false, 'error' => 'Errore nell\'invio dell\'email']);
     }
 }
