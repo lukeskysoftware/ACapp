@@ -392,27 +392,33 @@ if (isset($_GET['pdf'])) {
                         <?php if ($_SESSION['user_id'] == 9 || $_SESSION['user_id'] == 6): ?>
                             <!-- Versione semplificata per utenti specifici -->
                           <div class="row">
-    <div class="col-md-12 mb-3" id="userSpecificSection">
-        <?php if ($_SESSION['user_id'] == 9): ?>
-            <p class="lead">Antonella, puoi inviarti l'itinerario cliccando sul pulsante INVIA.</p>
-            <input type="hidden" id="email" value="corbellini@tiscali.it">
-            <input type="hidden" id="formatGoogle" value="0">
-            <input type="hidden" id="formatApple" value="1">
-        <?php elseif ($_SESSION['user_id'] == 6): ?>
-            <p class="lead">Angelo, puoi inviarti l'itinerario cliccando sul pulsante INVIA.</p>
-            <input type="hidden" id="email" value="aleonforte@tiscali.it">
-            <input type="hidden" id="formatGoogle" value="1">
-            <input type="hidden" id="formatApple" value="0">
-        <?php endif; ?>
-        <div class="input-group mt-2">
-            <button id="sendEmail" class="btn btn-primary email-button">
-                <i class="bi bi-envelope-fill"></i>INVIA
-            </button>
-        </div>
-        <div class="mt-3">
-            <a href="#" id="showFullForm">Vuoi inviare l'itinerario a qualcun altro?</a>
-        </div>
+  <div class="col-md-12 mb-3" id="userSpecificSection">
+    <?php if ($_SESSION['user_id'] == 9): ?>
+        <p class="lead">Antonella, puoi inviarti l'itinerario cliccando sul pulsante INVIA.</p>
+        <input type="hidden" id="email" value="corbellini@tiscali.it">
+        <input type="hidden" id="formatGoogle" value="0">
+        <input type="hidden" id="formatApple" value="1">
+        <!-- Aggiungi debug hidden per monitorare i valori delle URL -->
+        <input type="hidden" id="debugMapGoogle" value="">
+        <input type="hidden" id="debugMapApple" value="">
+    <?php elseif ($_SESSION['user_id'] == 6): ?>
+        <p class="lead">Angelo, puoi inviarti l'itinerario cliccando sul pulsante INVIA.</p>
+        <input type="hidden" id="email" value="aleonforte@tiscali.it">
+        <input type="hidden" id="formatGoogle" value="1">
+        <input type="hidden" id="formatApple" value="0">
+        <!-- Aggiungi debug hidden per monitorare i valori delle URL -->
+        <input type="hidden" id="debugMapGoogle" value="">
+        <input type="hidden" id="debugMapApple" value="">
+    <?php endif; ?>
+    <div class="input-group mt-2">
+        <button id="sendEmail" class="btn btn-primary email-button" style="width: auto; padding: 0.375rem 0.75rem;">
+            <i class="bi bi-envelope-fill"></i>INVIA
+        </button>
     </div>
+    <div class="mt-3">
+        <a href="#" id="showFullForm">Vuoi inviare l'itinerario a qualcun altro?</a>
+    </div>
+</div>
 </div>
                             <!-- Form completa nascosta -->
                             <div class="row" id="fullFormSection" style="display: none;">
@@ -491,6 +497,57 @@ if (isset($_GET['pdf'])) {
     </div>
 
     <script>
+    
+    document.addEventListener('DOMContentLoaded', function() {
+    // Creiamo una funzione che è sicuro eseguire solo quando ci sono appuntamenti
+    function initializeMapUrls() {
+        var appointments = <?php echo json_encode($appointments); ?>;
+        if (appointments.length > 0) {
+            let waypoints = appointments.map(appointment => appointment.address);
+            
+            // Ensure at least a start and end point
+            let start = "Current+Location";
+            let end = waypoints.pop(); // Last waypoint as end
+            let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
+
+            // Generate Apple Maps URL using +to: format
+            window.mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+            
+            // Generate Google Maps URL
+            window.mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
+            
+            console.log("URL mappe generate:");
+            console.log("Google:", window.mapUrlGoogle);
+            console.log("Apple:", window.mapUrlApple);
+            
+            // Aggiorniamo i campi debug hidden
+            if (document.getElementById('debugMapGoogle')) {
+                document.getElementById('debugMapGoogle').value = window.mapUrlGoogle;
+            }
+            if (document.getElementById('debugMapApple')) {
+                document.getElementById('debugMapApple').value = window.mapUrlApple;
+            }
+            
+            // Abilita i pulsanti ora che le URL sono pronte
+            document.getElementById('openMapButton').style.display = 'block';
+            document.getElementById('emailGroup').style.display = 'block';
+            
+            // Aggiungi listener eventi ai pulsanti
+            setupButtonListeners();
+        } else {
+            document.getElementById('openMapButton').style.display = 'none';
+            document.getElementById('emailGroup').style.display = 'none';
+        }
+    }
+    
+    // Chiama la funzione di inizializzazione
+    initializeMapUrls();
+    
+    // Configura tutti i listener degli eventi dei pulsanti
+    function setupButtonListeners() {
+        // Codice esistente per i listener...
+    }
+});
     document.addEventListener('DOMContentLoaded', function() {
         var appointments = <?php echo json_encode($appointments); ?>;
         var mapUrlGoogle = '';
@@ -511,56 +568,87 @@ if (isset($_GET['pdf'])) {
         }
 
         // Gestione del bottone "sendFullEmail" per la form completa
-        if (document.getElementById('sendFullEmail')) {
-            document.getElementById('sendFullEmail').addEventListener('click', function() {
-                const email = document.getElementById('fullEmail').value;
-                const formatGoogle = document.getElementById('fullFormatGoogle').checked;
-                const formatApple = document.getElementById('fullFormatApple').checked;
+        // Sostituire la funzione sendFullEmail esistente (righe 514-563) con questa versione aggiornata:
+if (document.getElementById('sendFullEmail')) {
+    document.getElementById('sendFullEmail').addEventListener('click', function() {
+        const email = document.getElementById('fullEmail').value;
+        const formatGoogle = document.getElementById('fullFormatGoogle').checked;
+        const formatApple = document.getElementById('fullFormatApple').checked;
 
-                if (!email) {
-                    alert('Inserisci un indirizzo email valido.');
-                    return;
-                }
-
-                if (!formatGoogle && !formatApple) {
-                    alert('Seleziona almeno un formato per l\'URL delle mappe.');
-                    return;
-                }
-                
-                let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti del giorno " + "<?php echo $displayDate; ?>" + ":\n\n";
-                if (formatGoogle) {
-                    message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
-                }
-                if (formatApple) {
-                    message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
-                }
-                message += "Cordiali saluti,\nIl Team degli Appuntamenti";
-
-                // Send email using fetch API
-                fetch('send_email.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ email: email, subject: "Itinerario per gli appuntamenti del giorno " + "<?php echo $displayDate; ?>", message: message })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Email inviata con successo.');
-                        // Ripristina la vista originale
-                        document.getElementById('userSpecificSection').style.display = 'block';
-                        document.getElementById('fullFormSection').style.display = 'none';
-                    } else {
-                        alert('Errore nell\'invio dell\'email.');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Errore nell\'invio dell\'email.');
-                });
-            });
+        if (!email) {
+            alert('Inserisci un indirizzo email valido.');
+            return;
         }
+
+        if (!formatGoogle && !formatApple) {
+            alert('Seleziona almeno un formato per l\'URL delle mappe.');
+            return;
+        }
+        
+        // Variabili per il testo dinamico
+        let emailSubject;
+        let dateText;
+        
+        // Controlla se è oggi o un altro giorno
+        if ("<?php echo $isToday; ?>" === "1") {
+            emailSubject = "Itinerario per gli appuntamenti di oggi";
+            dateText = "di oggi";
+        } else {
+            // Formato del giorno e mese in italiano
+            const dateParts = "<?php echo $displayDate; ?>".split('-');
+            const day = parseInt(dateParts[0]);
+            
+            // Array dei nomi dei mesi in italiano
+            const mesi = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 
+                        'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+            
+            // Il mese in PHP è 1-based, quindi sottraiamo 1 per ottenere l'indice corretto
+            const month = mesi[parseInt(dateParts[1]) - 1];
+            
+            const formattedDate = day + " " + month;
+            emailSubject = "Itinerario per gli appuntamenti del giorno " + formattedDate;
+            dateText = "del giorno " + formattedDate;
+        }
+        
+        // Costruisci il messaggio usando il testo dinamico
+        let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
+        if (formatGoogle) {
+            message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
+        }
+        if (formatApple) {
+            message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
+        }
+        message += "Cordiali saluti,\nIl Team degli Appuntamenti";
+
+        // Send email using fetch API
+        fetch('send_email.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                email: email, 
+                subject: emailSubject, 
+                message: message 
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Email inviata con successo.');
+                // Ripristina la vista originale
+                document.getElementById('userSpecificSection').style.display = 'block';
+                document.getElementById('fullFormSection').style.display = 'none';
+            } else {
+                alert('Errore nell\'invio dell\'email.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Errore nell\'invio dell\'email.');
+        });
+    });
+}
 
         if (appointments.length > 0) {
             let waypoints = appointments.map(appointment => appointment.address);
@@ -587,12 +675,19 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     const emailField = document.getElementById('email');
     const email = emailField.value;
     
+    // Debug aggiuntivo
+    console.log("Tipo elemento email:", emailField.type);
+    console.log("Valore email:", email);
+    
     // Gestione checkbox per utenti specifici (ID 6 e 9)
     let formatGoogle, formatApple;
     if (emailField.type === 'hidden') {
         // Per utenti con form precompilata, leggi i valori dagli input hidden
         formatGoogle = document.getElementById('formatGoogle').value === '1';
         formatApple = document.getElementById('formatApple').value === '1';
+        console.log("Form precompilata - valori originali:", 
+                  document.getElementById('formatGoogle').value,
+                  document.getElementById('formatApple').value);
     } else {
         // Per tutti gli altri utenti, leggi lo stato dei checkbox
         formatGoogle = document.getElementById('formatGoogle').checked;
@@ -603,13 +698,16 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     console.log("Debug - Format Google:", formatGoogle);
     console.log("Debug - Format Apple:", formatApple);
 
+    // Verifiche dei dati
     if (!email) {
         alert('Inserisci un indirizzo email valido.');
+        console.error("Email mancante");
         return;
     }
 
     if (!formatGoogle && !formatApple) {
         alert('Seleziona almeno un formato per l\'URL delle mappe.');
+        console.error("Nessun formato selezionato");
         return;
     }
     
@@ -638,6 +736,16 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         dateText = "del giorno " + formattedDate;
     }
     
+    // Debug del mapUrl - verifichiamo che le variabili mapUrlGoogle e mapUrlApple esistano
+    console.log("mapUrlGoogle disponibile:", typeof mapUrlGoogle !== 'undefined');
+    console.log("mapUrlApple disponibile:", typeof mapUrlApple !== 'undefined');
+    
+    if (typeof mapUrlGoogle === 'undefined' || typeof mapUrlApple === 'undefined') {
+        console.error("ERRORE: URL mappe non disponibili");
+        alert("Errore: URL mappe non disponibili. Riprovare più tardi.");
+        return;
+    }
+    
     // Costruisci il messaggio usando il testo dinamico
     let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
     if (formatGoogle) {
@@ -648,21 +756,28 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     }
     message += "Cordiali saluti,\nIl Team degli Appuntamenti";
 
+    // Debug dei dati da inviare
+    const emailData = { 
+        email: email, 
+        subject: emailSubject, 
+        message: message 
+    };
+    console.log("Dati da inviare:", emailData);
+
     // Send email using fetch API
     fetch('send_email.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
-            email: email, 
-            subject: emailSubject, 
-            message: message 
-        })
+        body: JSON.stringify(emailData)
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log("Status risposta:", response.status);
+        return response.json();
+    })
     .then(data => {
-        console.log("Risposta dal server:", data);
+        console.log("Risposta completa dal server:", data);
         if (data.success) {
             alert('Email inviata con successo.');
         } else {
@@ -670,40 +785,13 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         }
     })
     .catch(error => {
-        console.error('Error:', error);
+        console.error('Error completo:', error);
         alert('Errore nell\'invio dell\'email: ' + error.message);
     });
 });
 
 
-function sendEmail(email, subject, message) {
-    console.log("Tentativo di invio email a:", email);
-    console.log("Contenuto del messaggio:", message);
-    
-    fetch('send_email.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email: email, subject: subject, message: message })
-    })
-    .then(response => {
-        console.log("Risposta HTTP:", response.status);
-        return response.json();
-    })
-    .then(data => {
-        console.log("Dati di risposta:", data);
-        if (data.success) {
-            alert('Email inviata con successo.');
-        } else {
-            alert('Errore nell\'invio dell\'email: ' + (data.error || 'Nessun dettaglio disponibile'));
-        }
-    })
-    .catch(error => {
-        console.error("Errore completo:", error);
-        alert('Errore nell\'invio dell\'email: ' + error.message);
-    });
-}
+
         document.getElementById('openMapButton').addEventListener('click', function() {
             openMap(mapUrlGoogle, mapUrlApple);
         });
