@@ -501,44 +501,44 @@ if (isset($_GET['pdf'])) {
     document.addEventListener('DOMContentLoaded', function() {
     // Creiamo una funzione che è sicuro eseguire solo quando ci sono appuntamenti
     function initializeMapUrls() {
-        var appointments = <?php echo json_encode($appointments); ?>;
-        if (appointments.length > 0) {
-            let waypoints = appointments.map(appointment => appointment.address);
-            
-            // Ensure at least a start and end point
-            let start = "Current+Location";
-            let end = waypoints.pop(); // Last waypoint as end
-            let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
-
-            // Generate Apple Maps URL using +to: format
-            window.mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
-            
-            // Generate Google Maps URL
-            window.mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}`;
-            
-            console.log("URL mappe generate:");
-            console.log("Google:", window.mapUrlGoogle);
-            console.log("Apple:", window.mapUrlApple);
-            
-            // Aggiorniamo i campi debug hidden
-            if (document.getElementById('debugMapGoogle')) {
-                document.getElementById('debugMapGoogle').value = window.mapUrlGoogle;
-            }
-            if (document.getElementById('debugMapApple')) {
-                document.getElementById('debugMapApple').value = window.mapUrlApple;
-            }
-            
-            // Abilita i pulsanti ora che le URL sono pronte
-            document.getElementById('openMapButton').style.display = 'block';
-            document.getElementById('emailGroup').style.display = 'block';
-            
-            // Aggiungi listener eventi ai pulsanti
-            setupButtonListeners();
-        } else {
-            document.getElementById('openMapButton').style.display = 'none';
-            document.getElementById('emailGroup').style.display = 'none';
+    var appointments = <?php echo json_encode($appointments); ?>;
+    if (appointments.length > 0) {
+        let waypoints = appointments.map(appointment => appointment.address);
+        
+        // Ensure at least a start and end point
+        let start = "Current+Location";
+        let end = waypoints.pop(); // Last waypoint as end
+        
+        // Generate Apple Maps URL using +to: format
+        window.mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+        
+        // Generate Google Maps URL - FIXED COMPLETE URL
+        window.mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
+        
+        // Usare le stesse variabili anche nell'ambito principale
+        mapUrlGoogle = window.mapUrlGoogle;
+        mapUrlApple = window.mapUrlApple;
+        
+        console.log("URL mappe generate:");
+        console.log("Google:", window.mapUrlGoogle);
+        console.log("Apple:", window.mapUrlApple);
+        
+        // Aggiorniamo i campi debug hidden
+        if (document.getElementById('debugMapGoogle')) {
+            document.getElementById('debugMapGoogle').value = window.mapUrlGoogle;
         }
+        if (document.getElementById('debugMapApple')) {
+            document.getElementById('debugMapApple').value = window.mapUrlApple;
+        }
+        
+        // Abilita i pulsanti ora che le URL sono pronte
+        document.getElementById('openMapButton').style.display = 'block';
+        document.getElementById('emailGroup').style.display = 'block';
+    } else {
+        document.getElementById('openMapButton').style.display = 'none';
+        document.getElementById('emailGroup').style.display = 'none';
     }
+}
     
     // Chiama la funzione di inizializzazione
     initializeMapUrls();
@@ -610,14 +610,16 @@ if (document.getElementById('sendFullEmail')) {
             dateText = "del giorno " + formattedDate;
         }
         
-        // Costruisci il messaggio usando il testo dinamico
-        let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
-        if (formatGoogle) {
-            message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
-        }
-        if (formatApple) {
-            message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
-        }
+       // Costruisci il messaggio usando il testo dinamico
+let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
+if (formatGoogle) {
+    // Usa la variabile globale window.mapUrlGoogle
+    message += "**APRI IN GOOGLE MAPS**\n" + window.mapUrlGoogle + "\n\n";
+}
+if (formatApple) {
+    // Usa la variabile globale window.mapUrlApple
+    message += "**APRI IN MAPPE APPLE**\n" + window.mapUrlApple + "\n\n";
+}
         message += "Cordiali saluti,\nIl Team degli Appuntamenti";
 
         // Send email using fetch API
@@ -651,25 +653,29 @@ if (document.getElementById('sendFullEmail')) {
 }
 
         if (appointments.length > 0) {
-            let waypoints = appointments.map(appointment => appointment.address);
-            
-            // Ensure at least a start and end point
-            let start = "Current+Location";
-            let end = waypoints.pop(); // Last waypoint as end
-            let intermediateWaypoints = waypoints.map(waypoint => `&daddr=${encodeURIComponent(waypoint)}`).join('');
+    let waypoints = appointments.map(appointment => appointment.address);
+    
+    // Ensure at least a start and end point
+    let start = "Current+Location";
+    let end = waypoints.pop(); // Last waypoint as end
+    
+    // Generate Apple Maps URL using +to: format
+    mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
+    
+    // Complete Google Maps URL
+    mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
 
-            // Generate Apple Maps URL using +to: format
-            mapUrlApple = `maps://?saddr=${start}&daddr=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('+to:')}+to:${encodeURIComponent(end)}&dirflg=d`;
-            
-            // Fixed Google Maps URL
-            mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
+    console.log("DEBUG - URL generate:");
+    console.log("Google:", mapUrlGoogle);
+    console.log("Apple:", mapUrlApple);
+    
+    document.getElementById('openMapButton').style.display = 'block';
+    document.getElementById('emailGroup').style.display = 'block';
+} else {
+    document.getElementById('openMapButton').style.display = 'none';
+    document.getElementById('emailGroup').style.display = 'none';
+}
 
-            document.getElementById('openMapButton').style.display = 'block';
-            document.getElementById('emailGroup').style.display = 'block';
-        } else {
-            document.getElementById('openMapButton').style.display = 'none';
-            document.getElementById('emailGroup').style.display = 'none';
-        }
 
 document.getElementById('sendEmail').addEventListener('click', function() {
     const emailField = document.getElementById('email');
