@@ -519,9 +519,9 @@ if (isset($_GET['pdf'])) {
         mapUrlGoogle = window.mapUrlGoogle;
         mapUrlApple = window.mapUrlApple;
         
-        console.log("URL mappe generate:");
-        console.log("Google:", window.mapUrlGoogle);
-        console.log("Apple:", window.mapUrlApple);
+        //console.log("URL mappe generate:");
+        //console.log("Google:", window.mapUrlGoogle);
+        //console.log("Apple:", window.mapUrlApple);
         
         // Aggiorniamo i campi debug hidden
         if (document.getElementById('debugMapGoogle')) {
@@ -665,9 +665,9 @@ if (formatApple) {
     // Complete Google Maps URL
     mapUrlGoogle = `https://www.google.com/maps/dir/?api=1&origin=${start}&destination=${encodeURIComponent(end)}&waypoints=${waypoints.map(waypoint => encodeURIComponent(waypoint)).join('|')}&travelmode=driving`;
 
-    console.log("DEBUG - URL generate:");
-    console.log("Google:", mapUrlGoogle);
-    console.log("Apple:", mapUrlApple);
+   // console.log("DEBUG - URL generate:");
+    //console.log("Google:", mapUrlGoogle);
+   // console.log("Apple:", mapUrlApple);
     
     document.getElementById('openMapButton').style.display = 'block';
     document.getElementById('emailGroup').style.display = 'block';
@@ -682,8 +682,8 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     const email = emailField.value;
     
     // Debug aggiuntivo
-    console.log("Tipo elemento email:", emailField.type);
-    console.log("Valore email:", email);
+  //  console.log("Tipo elemento email:", emailField.type);
+   // console.log("Valore email:", email);
     
     // Gestione checkbox per utenti specifici (ID 6 e 9)
     let formatGoogle, formatApple;
@@ -691,7 +691,7 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         // Per utenti con form precompilata, leggi i valori dagli input hidden
         formatGoogle = document.getElementById('formatGoogle').value === '1';
         formatApple = document.getElementById('formatApple').value === '1';
-        console.log("Form precompilata - valori originali:", 
+    //    console.log("Form precompilata - valori originali:", 
                   document.getElementById('formatGoogle').value,
                   document.getElementById('formatApple').value);
     } else {
@@ -700,9 +700,9 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         formatApple = document.getElementById('formatApple').checked;
     }
 
-    console.log("Debug - Email:", email);
-    console.log("Debug - Format Google:", formatGoogle);
-    console.log("Debug - Format Apple:", formatApple);
+ //   console.log("Debug - Email:", email);
+ //   console.log("Debug - Format Google:", formatGoogle);
+  //  console.log("Debug - Format Apple:", formatApple);
 
     // Verifiche dei dati
     if (!email) {
@@ -743,8 +743,8 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     }
     
     // Debug del mapUrl - verifichiamo che le variabili mapUrlGoogle e mapUrlApple esistano
-    console.log("mapUrlGoogle disponibile:", typeof mapUrlGoogle !== 'undefined');
-    console.log("mapUrlApple disponibile:", typeof mapUrlApple !== 'undefined');
+  //  console.log("mapUrlGoogle disponibile:", typeof mapUrlGoogle !== 'undefined');
+  //  console.log("mapUrlApple disponibile:", typeof mapUrlApple !== 'undefined');
     
     if (typeof mapUrlGoogle === 'undefined' || typeof mapUrlApple === 'undefined') {
         console.error("ERRORE: URL mappe non disponibili");
@@ -768,7 +768,7 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         subject: emailSubject, 
         message: message 
     };
-    console.log("Dati da inviare:", emailData);
+ //   console.log("Dati da inviare:", emailData);
 
     // Send email using fetch API
     fetch('send_email.php', {
@@ -779,11 +779,11 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         body: JSON.stringify(emailData)
     })
     .then(response => {
-        console.log("Status risposta:", response.status);
+   //     console.log("Status risposta:", response.status);
         return response.json();
     })
     .then(data => {
-        console.log("Risposta completa dal server:", data);
+     //   console.log("Risposta completa dal server:", data);
         if (data.success) {
             alert('Email inviata con successo.');
         } else {
