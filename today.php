@@ -611,14 +611,12 @@ if (document.getElementById('sendFullEmail')) {
         }
         
        // Costruisci il messaggio usando il testo dinamico
-let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
+let message = "Ciao,\n\nEcco l'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
 if (formatGoogle) {
-    // Usa la variabile globale window.mapUrlGoogle
-    message += "**APRI IN GOOGLE MAPS**\n" + window.mapUrlGoogle + "\n\n";
+    message += "<a href=\"" + window.mapUrlGoogle + "\" style=\"background-color: #4285F4; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0;\">APRI IN GOOGLE MAPS</a>\n\n";
 }
 if (formatApple) {
-    // Usa la variabile globale window.mapUrlApple
-    message += "**APRI IN MAPPE APPLE**\n" + window.mapUrlApple + "\n\n";
+    message += "<a href=\"" + window.mapUrlApple + "\" style=\"background-color: #000000; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0;\">APRI IN MAPPE APPLE</a>\n\n";
 }
         message += "Cordiali saluti,\nIl Team degli Appuntamenti";
 
@@ -753,13 +751,13 @@ document.getElementById('sendEmail').addEventListener('click', function() {
     }
     
     // Costruisci il messaggio usando il testo dinamico
-    let message = "Ciao,\n\nEcco l'URL dell'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
-    if (formatGoogle) {
-        message += "**APRI IN GOOGLE MAPS**\n" + mapUrlGoogle + "\n\n";
-    }
-    if (formatApple) {
-        message += "**APRI IN MAPPE APPLE**\n" + mapUrlApple + "\n\n";
-    }
+    let message = "Ciao,\n\nEcco l'itinerario per i tuoi appuntamenti " + dateText + ":\n\n";
+   if (formatGoogle) {
+    message += "<a href=\"" + mapUrlGoogle + "\" style=\"background-color: #4285F4; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0;\">APRI IN GOOGLE MAPS</a>\n\n";
+}
+if (formatApple) {
+    message += "<a href=\"" + mapUrlApple + "\" style=\"background-color: #000000; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin: 10px 0;\">APRI IN MAPPE APPLE</a>\n\n";
+}
     message += "Cordiali saluti,\nIl Team degli Appuntamenti";
 
     // Debug dei dati da inviare
