@@ -692,8 +692,8 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         formatGoogle = document.getElementById('formatGoogle').value === '1';
         formatApple = document.getElementById('formatApple').value === '1';
     //    console.log("Form precompilata - valori originali:", 
-                  document.getElementById('formatGoogle').value,
-                  document.getElementById('formatApple').value);
+              //    document.getElementById('formatGoogle').value,
+              //    document.getElementById('formatApple').value);
     } else {
         // Per tutti gli altri utenti, leggi lo stato dei checkbox
         formatGoogle = document.getElementById('formatGoogle').checked;
@@ -779,11 +779,11 @@ document.getElementById('sendEmail').addEventListener('click', function() {
         body: JSON.stringify(emailData)
     })
     .then(response => {
-   //     console.log("Status risposta:", response.status);
+     console.log("Status risposta:", response.status);
         return response.json();
     })
     .then(data => {
-     //   console.log("Risposta completa dal server:", data);
+       console.log("Risposta completa dal server:", data);
         if (data.success) {
             alert('Email inviata con successo.');
         } else {
