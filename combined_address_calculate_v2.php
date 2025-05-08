@@ -1244,7 +1244,20 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                         }
                     }
                     // Gestione del POST per la ricerca di appuntamenti
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']) && isset($_POST['latitude']) && isset($_POST['longitude'])) {
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
+    // Verifica che latitude e longitude siano presenti e validi prima di procedere
+    if (!isset($_POST['latitude']) || !isset($_POST['longitude']) || 
+        empty($_POST['latitude']) || empty($_POST['longitude'])) {
+        
+        echo '<div class="container"><div class="alert alert-danger">';
+        echo '<h3><i class="bi bi-exclamation-triangle-fill"></i> Errore</h3>';
+        echo '<p>Impossibile procedere senza coordinate geografiche.</p>';
+        echo '<p>Per favore, torna indietro e seleziona un indirizzo dal menu a discesa per ottenere le coordinate.</p>';
+        echo '<p><a href="javascript:history.back()" class="btn btn-primary">Torna indietro</a></p>';
+        echo '</div></div>';
+        exit;
+    }
+
     header('Content-Type: text/html; charset=UTF-8');
     $address = $_POST['address'];
     $latitude = $_POST['latitude'];
@@ -2061,6 +2074,18 @@ $(document).ready(function() {
         </div>
     </div>
 
+<script>
+document.getElementById('addressForm').addEventListener('submit', function(e) {
+    var lat = document.getElementById('latitude').value;
+    var lng = document.getElementById('longitude').value;
+    
+    if (!lat || !lng) {
+        e.preventDefault();
+        alert('Impossibile procedere senza coordinate geografiche. Per favore, seleziona un indirizzo dal menu a discesa per ottenere le coordinate.');
+        return false;
+    }
+});
+</script>
 
 
 </body>
