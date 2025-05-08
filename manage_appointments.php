@@ -567,29 +567,52 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
 
 <!-- Div separato per i filtri -->
 <div class="pure-g aria">
-    <form onsubmit="event.preventDefault(); filterAppointments();" class="pure-form centrato aria">
-        <label for="date">Filtra per Data:</label>
-        <input type="text" id="date" name="date" class="flatpickr" value="<?php echo htmlspecialchars($filter['date']); ?>">
-        <label for="zone">Filtra per Zona:</label>
-        <select id="zone" name="zone">
-            <option value="">Seleziona Zona</option>
-            <?php foreach ($zones as $zone) { ?>
-                <option value="<?php echo htmlspecialchars($zone); ?>"<?php echo ($filter['zone'] === $zone) ? ' selected' : ''; ?>><?php echo htmlspecialchars($zone); ?></option>
-            <?php } ?>
-        </select>
-        <label for="search">Cerca per Nome/Cognome:</label>
-        <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
-        <label for="phone_search">Cerca per Telefono:</label>
-        <input type="text" id="phone_search" name="phone_search" value="<?php echo htmlspecialchars($phone_search); ?>">
-        <button type="button" id="search-button" class="pure-button button-primary">Cerca</button>
-        <button type="button" id="clear-filters" class="pure-button button-small">Cancella Filtri</button>
-        <span id="loading-indicator" style="display: none; margin-left: 10px;">
-            <span class="spinner"></span> Caricamento...
-        </span>
-    </form>
-    
-    <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?> centrato aria">Non ci sono appuntamenti</p>
+    <div style="max-width: 1024px; margin: 0 auto; width: 100%;">
+        <form onsubmit="event.preventDefault(); filterAppointments();" class="pure-form">
+            <!-- Prima riga per i filtri -->
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; margin-bottom: 15px; background-color: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
+                <div style="display: flex; align-items: center; margin-right: 10px; margin-bottom: 5px;">
+                    <label for="date" style="margin-right: 5px; font-weight: bold;">Data:</label>
+                    <input type="text" id="date" name="date" class="flatpickr" value="<?php echo htmlspecialchars($filter['date']); ?>" style="width: 120px;">
+                </div>
+                
+                <div style="display: flex; align-items: center; margin-right: 10px; margin-bottom: 5px;">
+                    <label for="zone" style="margin-right: 5px; font-weight: bold;">Zona:</label>
+                    <select id="zone" name="zone" style="width: 120px;">
+                        <option value="">Seleziona</option>
+                        <?php foreach ($zones as $zone) { ?>
+                            <option value="<?php echo htmlspecialchars($zone); ?>"<?php echo ($filter['zone'] === $zone) ? ' selected' : ''; ?>><?php echo htmlspecialchars($zone); ?></option>
+                        <?php } ?>
+                    </select>
+                </div>
+                
+                <div style="display: flex; align-items: center; margin-right: 10px; margin-bottom: 5px;">
+                    <label for="search" style="margin-right: 5px; font-weight: bold;">Nome/Cognome:</label>
+                    <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>" style="width: 150px;">
+                </div>
+                
+                <div style="display: flex; align-items: center; margin-bottom: 5px;">
+                    <label for="phone_search" style="margin-right: 5px; font-weight: bold;">Telefono:</label>
+                    <input type="text" id="phone_search" name="phone_search" value="<?php echo htmlspecialchars($phone_search); ?>" style="width: 120px;">
+                </div>
+            </div>
+            
+            <!-- Seconda riga per i pulsanti -->
+            <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+                <button type="button" id="search-button" class="pure-button button-primary" style="margin-right: 10px;">Cerca</button>
+                <button type="button" id="clear-filters" class="pure-button">Cancella Filtri</button>
+                <span id="loading-indicator" style="display: none; margin-left: 10px;">
+                    <span class="spinner"></span> Caricamento...
+                </span>
+            </div>
+        </form>
+        
+        
+    </div>
 </div>
+
+<p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?> centrato aria">Non ci sono appuntamenti</p>
+
     
    
     
