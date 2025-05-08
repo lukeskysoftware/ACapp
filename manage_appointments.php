@@ -11,9 +11,14 @@ if (!isset($_SESSION['user_id'])) {
 include 'db.php';
 include 'utils_appointment.php';
 // Function to get all appointments with patient and zone information
-function getAppointments($filter = [], $search = '', $page = 1, $results_per_page = 15) {
+function getAppointments($filter = [], $search = '', $phone_search = '', $page = 1, $results_per_page = 15) {
     global $conn;
     $conditions = [];
+    
+    // Aggiungiamo la condizione per mostrare solo gli appuntamenti dalla data corrente in poi
+    $today = date('Y-m-d');
+    $conditions[] = "a.appointment_date >= '$today'";
+    
     if (!empty($filter['date'])) {
         $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
     }
@@ -22,6 +27,9 @@ function getAppointments($filter = [], $search = '', $page = 1, $results_per_pag
     }
     if (!empty($search)) {
         $conditions[] = "(p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
+    }
+    if (!empty($phone_search)) {
+        $conditions[] = "p.phone LIKE '%" . mysqli_real_escape_string($conn, $phone_search) . "%'";
     }
     $offset = ($page - 1) * $results_per_page;
     $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, COALESCE(z.name, 'N/A') as zone
@@ -41,9 +49,14 @@ function getAppointments($filter = [], $search = '', $page = 1, $results_per_pag
 }
 
 // Function to get total number of appointments for pagination
-function getTotalAppointments($filter = [], $search = '') {
+function getTotalAppointments($filter = [], $search = '', $phone_search = '') {
     global $conn;
     $conditions = [];
+    
+    // Aggiungiamo la condizione per mostrare solo gli appuntamenti dalla data corrente in poi
+    $today = date('Y-m-d');
+    $conditions[] = "a.appointment_date >= '$today'";
+    
     if (!empty($filter['date'])) {
         $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
     }
@@ -52,6 +65,9 @@ function getTotalAppointments($filter = [], $search = '') {
     }
     if (!empty($search)) {
         $conditions[] = "(p.name LIKE '%" . mysqli_real_escape_string($conn, $search) . "%' OR p.surname LIKE '%" . mysqli_real_escape_string($conn, $search) . "%')";
+    }
+    if (!empty($phone_search)) {
+        $conditions[] = "p.phone LIKE '%" . mysqli_real_escape_string($conn, $phone_search) . "%'";
     }
     $sql = "SELECT COUNT(*) as total
             FROM cp_appointments a
@@ -150,9 +166,9 @@ if (isset($_POST['delete_confirm'])) {
     exit(); // Ensure the script stops executing after the redirect
 }
 
-// AGGIUNGI QUESTO NUOVO CODICE QUI:
 // Definisci queste variabili prima di usarle
 $search = isset($_GET['search']) ? $_GET['search'] : '';
+$phone_search = isset($_GET['phone_search']) ? $_GET['phone_search'] : '';
 $results_per_page = 15;
 
 // Gestione del parametro highlight_appointment
@@ -169,7 +185,23 @@ if (isset($_GET['highlight_appointment'])) {
     $check_result = $check_stmt->get_result();
     
     if ($row = $check_result->fetch_assoc()) {
-        // Appuntamento trovato, impostiamo il filtro per data e forziamo la pagina a 1
+    // Verifichiamo che l'appuntamento sia un appuntamento futuro
+    $today = date('Y-m-d');
+    if ($row['appointment_date'] < $today) {
+        $_SESSION['info_message'] = "L'appuntamento per " . $row['name'] . " " . $row['surname'] . " del " . date('d/m/Y', strtotime($row['appointment_date'])) . " è una data passata.";
+        
+        // Riporta a una vista senza filtri, ma con solo appuntamenti futuri
+        $filter = [
+            'date' => '',
+            'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
+        ];
+        $page = 1;
+        $total_appointments = getTotalAppointments($filter, $search);
+        $total_pages = ceil($total_appointments / $results_per_page);
+        $appointments = getAppointments($filter, $search, $page, $results_per_page);
+        $showTable = !empty($appointments);
+    } else {
+        // Appuntamento trovato e futuro, impostiamo il filtro per data e forziamo la pagina a 1
         $filter = [
             'date' => $row['appointment_date'],
             'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
@@ -183,9 +215,10 @@ if (isset($_GET['highlight_appointment'])) {
         $showTable = !empty($appointments);
         
         $_SESSION['info_message'] = "Mostrando l'appuntamento richiesto per " . $row['name'] . " " . $row['surname'] . " del " . date('d/m/Y', strtotime($row['appointment_date']));
-    } else {
-        $_SESSION['error_message'] = "Appuntamento ID $highlight_id non trovato nel database.";
     }
+} else {
+    $_SESSION['error_message'] = "Appuntamento ID $highlight_id non trovato nel database.";
+}
 } else {
     // Se non c'è un highlight_appointment, impostiamo i filtri standard
     $filter = [
@@ -193,12 +226,11 @@ if (isset($_GET['highlight_appointment'])) {
         'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
     ];
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-    $total_appointments = getTotalAppointments($filter, $search);
+    $total_appointments = getTotalAppointments($filter, $search, $phone_search);
     $total_pages = ceil($total_appointments / $results_per_page);
-    $appointments = getAppointments($filter, $search, $page, $results_per_page);
+    $appointments = getAppointments($filter, $search, $phone_search, $page, $results_per_page);
     $showTable = !empty($appointments);
 }
-// FINE DEL NUOVO CODICE
 
 $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle zone
 ?>
@@ -207,6 +239,8 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
 <html>
 <head>
     <title>Gestione Appuntamenti</title>
+         
+        
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/purecss@3.0.0/build/pure-min.css" integrity="sha384-X38yfunGUhNzHpBaEBsWLO+A0HDYOQi8ufWDkZ0k9e0eXz/tH3II7uKZ9msv++Ls" crossorigin="anonymous">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -231,97 +265,127 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
             display: none;
         }
         
-         .pagination {
-        display: flex;
-        justify-content: center;
-        margin-top: 20px;
-    }
-    .inline-edit-form {
-    display: flex;
-    flex-flow: row wrap;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 10px;
-}
+        .button-primary {
+            background-color: #0078e7;
+            color: white;
+            margin-right: 5px;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .inline-edit-form {
+            display: flex;
+            flex-flow: row wrap;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
 
-.edit-column {
-    display: inline-block;
-    margin: 5px;
-    text-align: center;
-    flex: 1;
-    min-width: 100px;
-}
+        .edit-column {
+            display: inline-block;
+            margin: 5px;
+            text-align: center;
+            flex: 1;
+            min-width: 100px;
+        }
 
-.edit-column label {
-    display: block;
-    font-weight: bold;
-    margin-bottom: 5px;
-}
+        .edit-column label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
 
-.edit-column input {
-    width: 100%;
-}
+        .edit-column input {
+            width: 100%;
+        }
 
-.notes-column {
-    flex: 2;
-    max-width: 200px;
-    width: 200px;
-}
+        .notes-column {
+            flex: 2;
+            max-width: 200px;
+            width: 200px;
+        }
 
-.notes-column textarea {
-    width: 100%;
-    resize: vertical;
-    min-height: 60px;
-}
+        .notes-column textarea {
+            width: 100%;
+            resize: vertical;
+            min-height: 60px;
+        }
 
-.edit-buttons {
-    width: 100%;
-    text-align: center;
-    margin-top: 10px;
-}
-.notes-cell {
-    max-width: 200px;
-    white-space: normal;
-    word-wrap: break-word;
-    overflow: hidden;
-}
-.alert {
-    padding: 15px;
-    margin-bottom: 20px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    width: 100%;
-    display: block;
-    text-align: center;
-}
-.alert-danger {
-    color: #721c24;
-    background-color: #f8d7da;
-    border-color: #f5c6cb;
-}
-.alert-success {
-    color: #155724;
-    background-color: #d4edda;
-    border-color: #c3e6cb;
-}
-/* AGGIUNGI QUESTO PER IL MESSAGGIO INFO */
-.alert-info {
-    color: #0c5460;
-    background-color: #d1ecf1;
-    border-color: #bee5eb;
-}
-/* Per schermi più piccoli */
-@media (max-width: 992px) {
-    .notes-column {
-        flex: 1 1 100%;
-        max-width: 100%;
-    }
-}
+        .edit-buttons {
+            width: 100%;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .notes-cell {
+            max-width: 200px;
+            white-space: normal;
+            word-wrap: break-word;
+            overflow: hidden;
+        }
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            width: 100%;
+            display: block;
+            text-align: center;
+        }
+        .alert-danger {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        /* AGGIUNGI QUESTO PER IL MESSAGGIO INFO */
+        .alert-info {
+            color: #0c5460;
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+        }
+        /* Per schermi più piccoli */
+        @media (max-width: 992px) {
+            .notes-column {
+                flex: 1 1 100%;
+                max-width: 100%;
+            }
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0,0,0,.3);
+            border-radius: 50%;
+            border-top-color: #0078e7;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     
-    <!-- AGGIUNGI QUESTO NUOVO BLOCCO DI SCRIPT QUI -->
     <script>
+        // Funzione debounce per limitare le chiamate durante la digitazione
+        function debounce(func, wait) {
+            let timeout;
+            return function() {
+                const context = this;
+                const args = arguments;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), wait);
+            };
+        }
+        
         // Funzioni globali per gestire azioni sugli appuntamenti
         function showActions(id) {
             const actionRow = document.getElementById(`action-${id}`);
@@ -344,7 +408,7 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
         }
     
         function confirmDelete(appointment) {
-            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.appointment_date} ${appointment.appointment_time}?`)) {
+            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.date} ${appointment.time}?`)) {
                 document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
                 document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
             }
@@ -393,50 +457,81 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
                 time_24hr: true,
                 allowInput: true
             });
-            document.getElementById('date').addEventListener('change', filterAppointments);
-            document.getElementById('zone').addEventListener('input', filterAppointments);
-            document.getElementById('search').addEventListener('input', filterAppointments);
+            
+            // Utilizziamo debounce per i filtri in tempo reale
+           // document.getElementById('date').addEventListener('change', debounce(filterAppointments, 500));
+            //document.getElementById('zone').addEventListener('input', debounce(filterAppointments, 500));
+           // document.getElementById('search').addEventListener('input', debounce(filterAppointments, 500));
+           // document.getElementById('phone_search').addEventListener('input', debounce(filterAppointments, 500));
+            
+            // Aggiungere pulsante di ricerca esplicito
+            document.getElementById('search-button').addEventListener('click', filterAppointments);
             document.getElementById('clear-filters').addEventListener('click', clearFilters);
         });
-    
+
+        // Indichiamo visivamente che stiamo cercando
+        function showLoadingIndicator() {
+            document.getElementById('loading-indicator').style.display = 'inline-block';
+        }
+
+        function hideLoadingIndicator() {
+            document.getElementById('loading-indicator').style.display = 'none';
+        }
+
         function filterAppointments() {
+            showLoadingIndicator();
+            
             const date = document.getElementById('date').value;
             const zone = document.getElementById('zone').value;
             const search = document.getElementById('search').value;
-    
+            const phone_search = document.getElementById('phone_search').value;
+            
             const xhr = new XMLHttpRequest();
-            xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}`, true);
+            xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}&phone_search=${encodeURIComponent(phone_search)}`, true);
+            
             xhr.onreadystatechange = function() {
-                if (xhr.readyState === 4 && xhr.status === 200) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(xhr.responseText, 'text/html');
-                    const newTable = doc.querySelector('table');
-                    const appointmentsMessage = doc.getElementById('no-appointments-message');
+                if (xhr.readyState === 4) {
+                    hideLoadingIndicator();
                     
-                    const tableElement = document.querySelector('table');
-                    if (newTable && newTable.querySelector('tbody').children.length > 0) {
-                        tableElement.innerHTML = newTable.innerHTML;
-                        tableElement.classList.remove('hidden');
-                        document.getElementById('no-appointments-message').classList.add('hidden');
+                    if (xhr.status === 200) {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(xhr.responseText, 'text/html');
+                        const newTable = doc.querySelector('table');
+                        const tableElement = document.querySelector('table');
                         
-                        // Riapplica i gestori di eventi dopo l'aggiornamento della tabella
-                        reapplyEventHandlers();
-                    } else {
-                        tableElement.classList.add('hidden');
-                        document.getElementById('no-appointments-message').classList.remove('hidden');
+                        if (newTable && newTable.querySelector('tbody').children.length > 0) {
+                            // Ottimizzazione: aggiorniamo solo tbody invece dell'intera tabella
+                            const newTbody = newTable.querySelector('tbody');
+                            const tbody = tableElement.querySelector('tbody');
+                            tbody.innerHTML = newTbody.innerHTML;
+                            
+                            tableElement.classList.remove('hidden');
+                            document.getElementById('no-appointments-message').classList.add('hidden');
+                            
+                            // Riapplica i gestori di eventi dopo l'aggiornamento della tabella
+                            reapplyEventHandlers();
+                        } else {
+                            tableElement.classList.add('hidden');
+                            document.getElementById('no-appointments-message').classList.remove('hidden');
+                        }
                     }
                 }
             };
             xhr.send();
         }
-                function clearFilters() {
+        
+        function clearFilters() {
             document.getElementById('date').value = '';
             document.getElementById('zone').value = '';
             document.getElementById('search').value = '';
+            document.getElementById('phone_search').value = '';
             filterAppointments();
         }
     </script>
-    <!-- FINE DEL NUOVO BLOCCO DI SCRIPT -->
+    
+   
+
+    
 </head>
 <body>
     <?php include 'menu.php'; ?>
@@ -461,20 +556,18 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
             </div>
         <?php endif; ?>
         
-        <!-- AGGIUNGI QUESTO BLOCCO PER I MESSAGGI INFO -->
         <?php if (isset($_SESSION['info_message'])): ?>
             <div class="alert alert-info">
                 <?php echo $_SESSION['info_message']; unset($_SESSION['info_message']); ?>
             </div>
         <?php endif; ?>
-        <!-- FINE DEL NUOVO BLOCCO -->
     </div>
 </div>
 </div>
 
 <!-- Div separato per i filtri -->
 <div class="pure-g aria">
-    <form onsubmit="return false;" class="pure-form centrato aria">
+    <form onsubmit="event.preventDefault(); filterAppointments();" class="pure-form centrato aria">
         <label for="date">Filtra per Data:</label>
         <input type="text" id="date" name="date" class="flatpickr" value="<?php echo htmlspecialchars($filter['date']); ?>">
         <label for="zone">Filtra per Zona:</label>
@@ -484,9 +577,15 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
                 <option value="<?php echo htmlspecialchars($zone); ?>"<?php echo ($filter['zone'] === $zone) ? ' selected' : ''; ?>><?php echo htmlspecialchars($zone); ?></option>
             <?php } ?>
         </select>
-        <label for="search">Cerca per Nome:</label>
+        <label for="search">Cerca per Nome/Cognome:</label>
         <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>">
-        <button id="clear-filters" class="pure-button button-small">Cancella Filtri</button>
+        <label for="phone_search">Cerca per Telefono:</label>
+        <input type="text" id="phone_search" name="phone_search" value="<?php echo htmlspecialchars($phone_search); ?>">
+        <button type="button" id="search-button" class="pure-button button-primary">Cerca</button>
+        <button type="button" id="clear-filters" class="pure-button button-small">Cancella Filtri</button>
+        <span id="loading-indicator" style="display: none; margin-left: 10px;">
+            <span class="spinner"></span> Caricamento...
+        </span>
     </form>
     
     <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?> centrato aria">Non ci sono appuntamenti</p>
@@ -525,7 +624,7 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
                     <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
                     <td>
                         <button class="modifica-btn pure-button button-small button-green" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
-                        <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
+                        <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode(['id' => $appointment['id'], 'name' => $appointment['name'], 'surname' => $appointment['surname'], 'phone' => $appointment['phone'], 'zone' => $appointment['zone'], 'date' => date('d/m/Y', strtotime($appointment['appointment_date'])), 'time' => $appointment['appointment_time'], 'address' => $appointment['address']])); ?>)">Cancella</button>
                         <form method="post" action="manage_appointments.php" style="display:inline;">
                             <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
                             <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
@@ -579,15 +678,14 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
     </div>
     <div class="pure-g aria centrato pagination">
         <?php if ($page > 1) { ?>
-            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>" class="pure-button button-small">Precedente</a>
+            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>" class="pure-button">Pagina Precedente</a>
         <?php } ?>
         <?php if ($page < $total_pages) { ?>
-            <a href="manage_appointments.php?page=<?php echo $page + 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>" class="pure-button button-small">Successivo</a>
+            <a href="manage_appointments.php?page=<?php echo $page + 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>" class="pure-button">Pagina Successiva</a>
         <?php } ?>
     </div>
     
     
-<!-- SOSTITUISCI TUTTO IL BLOCCO DI CODICE DI HIGHLIGHT_APPOINTMENT CON QUESTO NUOVO BLOCCO -->
 <?php if (isset($_GET['highlight_appointment'])): ?>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -638,9 +736,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <?php endif; ?>
-<!-- FINE DEL NUOVO BLOCCO -->
     
-    
+
 </body>
 </html>
 
