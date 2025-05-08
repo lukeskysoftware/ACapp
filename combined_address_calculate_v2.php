@@ -1583,19 +1583,73 @@ if (!empty($available_slots_near_appointments)) {
                                     $hasExistingAppointments = ($existingRow['count'] > 0);
                                     
                                     echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
-                                    
-                                    // Add an indicator if there are existing appointments
-                                    if ($hasExistingAppointments) {
-                                        echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
-                                    }
-                                    
-                                    // Crea un ID univoco per il collapsible
-                                    $collapseId = "collapse-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $zone['id'];
-                                    $contentId = "agenda-content-" . $collapseId;
-                                    
-                                    echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
-                                        <i class='bi bi-calendar'></i> Vedi agenda
-                                    </button>";
+
+// Add an indicator if there are existing appointments
+if ($hasExistingAppointments) {
+    echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
+    
+    // Crea un ID univoco per il collapsible
+    $collapseId = "collapse-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $zone['id'];
+    $contentId = "agenda-content-" . $collapseId;
+    
+    // Mostra il pulsante "Vedi agenda" SOLO se ci sono appuntamenti
+    echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
+        <i class='bi bi-calendar'></i> Vedi agenda
+    </button>";
+    
+    // Aggiunta del div collassabile per i contenuti dell'agenda
+    echo "</p>";
+    echo "<div class='collapse mb-3' id='$collapseId'>
+        <div class='card card-body agenda-details' id='$contentId'>
+            <div class='text-center'>
+                <div class='spinner-border text-primary' role='status'>
+                    <span class='visually-hidden'>Caricamento appuntamenti...</span>
+                </div>
+                <p>Caricamento appuntamenti...</p>
+            </div>
+        </div>
+    </div>";
+    
+    // Script inline per caricare i contenuti
+    echo "<script>
+        (function() {
+            var collapseEl = document.getElementById('$collapseId');
+            var contentEl = document.getElementById('$contentId');
+            var date = '$date';
+            var zoneId = {$zone['id']};
+            
+            if (collapseEl) {
+                collapseEl.addEventListener('shown.bs.collapse', function() {
+                    fetch('get_appointments_modal.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: 'appointment_date=' + date
+                    })
+                        .then(function(response) {
+                            if (!response.ok) throw new Error('Errore di rete');
+                            return response.text();
+                        })
+                        .then(function(html) {
+                            contentEl.innerHTML = html;
+                        })
+                        .catch(function(error) {
+                            contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
+                                '<p>Si è verificato un errore: ' + error.message + '</p>' +
+                                '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
+                                '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
+                                '</button>' +
+                            '</div>';
+                        });
+                });
+            }
+        })();
+    </script>";
+} else {
+    // Chiudi il paragrafo se non ci sono appuntamenti
+    echo "</p>";
+}
                                     
                                     // Aggiunta del div collassabile per i contenuti dell'agenda
                                     echo "</p>";
