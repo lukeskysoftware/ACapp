@@ -1662,57 +1662,58 @@ if ($hasExistingAppointments) {
 } else {
     // Chiudi il paragrafo se non ci sono appuntamenti
     echo "</p>";
+    // Non inserire nessuno script qui perché le variabili non sono definite
 }
-                                    
-                                    // Aggiunta del div collassabile per i contenuti dell'agenda
-                                    echo "</p>";
-                                    echo "<div class='collapse mb-3' id='$collapseId'>
-                                        <div class='card card-body agenda-details' id='$contentId'>
-                                            <div class='text-center'>
-                                                <div class='spinner-border text-primary' role='status'>
-                                                    <span class='visually-hidden'>Caricamento appuntamenti...</span>
-                                                </div>
-                                                <p>Caricamento appuntamenti...</p>
-                                            </div>
-                                        </div>
-                                    </div>";
-                                    
-                                    // Script inline per caricare i contenuti
-                                    echo "<script>
-                                        (function() {
-                                            var collapseEl = document.getElementById('$collapseId');
-                                            var contentEl = document.getElementById('$contentId');
-                                            var date = '$date';
-                                            var zoneId = {$zone['id']};
-                                            
-                                            if (collapseEl) {
-                                                collapseEl.addEventListener('shown.bs.collapse', function() {
-                                                    fetch('get_appointments_modal.php', {
-                                                        method: 'POST',
-                                                        headers: {
-                                                            'Content-Type': 'application/x-www-form-urlencoded',
-                                                        },
-                                                        body: 'appointment_date=' + date
-                                                    })
-                                                        .then(function(response) {
-                                                            if (!response.ok) throw new Error('Errore di rete');
-                                                            return response.text();
-                                                        })
-                                                        .then(function(html) {
-                                                            contentEl.innerHTML = html;
-                                                        })
-                                                        .catch(function(error) {
-                                                            contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
-                                                                '<p>Si è verificato un errore: ' + error.message + '</p>' +
-                                                                '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
-                                                                '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
-                                                                '</button>' +
-                                                            '</div>';
-                                                        });
-                                                });
-                                            }
-                                        })();
-                                    </script>";
+
+// Rimuovi queste righe duplicate che stanno causando gli errori
+// echo "</p>";
+// echo "<div class='collapse mb-3' id='$collapseId'>
+//     <div class='card card-body agenda-details' id='$contentId'>
+//         <div class='text-center'>
+//             <div class='spinner-border text-primary' role='status'>
+//                 <span class='visually-hidden'>Caricamento appuntamenti...</span>
+//             </div>
+//             <p>Caricamento appuntamenti...</p>
+//         </div>
+//     </div>
+// </div>";
+
+// Rimuovi anche questo script che usa le variabili non definite
+// echo "<script>
+//     (function() {
+//         var collapseEl = document.getElementById('$collapseId');
+//         var contentEl = document.getElementById('$contentId');
+//         var date = '$date';
+//         var zoneId = {$zone['id']};
+//         
+//         if (collapseEl) {
+//             collapseEl.addEventListener('shown.bs.collapse', function() {
+//                 fetch('get_appointments_modal.php', {
+//                     method: 'POST',
+//                     headers: {
+//                         'Content-Type': 'application/x-www-form-urlencoded',
+//                     },
+//                     body: 'appointment_date=' + date
+//                 })
+//                     .then(function(response) {
+//                         if (!response.ok) throw new Error('Errore di rete');
+//                         return response.text();
+//                     })
+//                     .then(function(html) {
+//                         contentEl.innerHTML = html;
+//                     })
+//                     .catch(function(error) {
+//                         contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
+//                             '<p>Si è verificato un errore: ' + error.message + '</p>' +
+//                             '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
+//                             '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
+//                             '</button>' +
+//                         '</div>';
+//                     });
+//             });
+//         }
+//     })();
+// </script>";
                                     
                                     echo "</p>";
                                     if (empty($times)) {
