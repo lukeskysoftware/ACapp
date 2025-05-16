@@ -188,11 +188,10 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
     $now = date('H:i:s');
     $durata_visita = 60 * 60; // 60 minuti in secondi
 
-    // MODIFICA: query solo appuntamenti da oggi in poi
+    // Query solo appuntamenti da oggi in poi
     $sql = "SELECT * FROM cp_appointments WHERE appointment_date >= ?";
     $stmt = $conn->prepare($sql);
     if (!$stmt) {
-        // Se la prepare fallisce, ritorna vuoto
         return [];
     }
     $stmt->bind_param("s", $today);
@@ -318,9 +317,10 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
                 $nearby_appointments[] = $row;
-                continue; // Skip this appointment if distance calculation failed
+                continue;
             }
 
+            $row['distance'] = $distance;
             $debug_item['distance'] = number_format($distance, 2) . " km";
 
             // Se la distanza è entro il raggio, aggiungi all'elenco
@@ -328,7 +328,7 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 $row['distance'] = $distance;
                 $row['latitude'] = $coordinates['lat'];
                 $row['longitude'] = $coordinates['lng'];
-                $row['excluded_reason'] = ''; // Nessun motivo: appuntamento valido
+                $row['excluded_reason'] = '';
                 $debug_item['status'] .= ' - Entro raggio';
                 $debug_item['excluded_reason'] = '';
                 $nearby_appointments[] = $row;
@@ -342,10 +342,105 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
         }
     }
 
+    // ORDINA appuntamenti per data e ora crescente
+    usort($nearby_appointments, function($a, $b) {
+        $adate = $a['appointment_date'] . ' ' . $a['appointment_time'];
+        $bdate = $b['appointment_date'] . ' ' . $b['appointment_time'];
+        return strcmp($adate, $bdate);
+    });
+
     global $address_comparison_debug;
     $address_comparison_debug = $debug_info;
 
     return $nearby_appointments;
+}
+
+// Funzione per ottenere il nome del giorno della settimana in italiano
+function giornoSettimana($data) {
+    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    $ts = strtotime($data);
+    return $giorni[date('w', $ts)];
+}
+
+// Per la tabella dettagli appuntamenti
+function displayAppointmentDetails($appointments) {
+    echo "<div class='container'><center>";
+    echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
+    echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
+    echo "<thead><tr>
+        <th>ID</th>
+        <th>Zona</th>
+        <th>Data</th>
+        <th>Ora</th>
+        <th>Distanza</th>
+        <th>Primo Slot</th>
+        <th>Ultimo Slot</th>
+        <th>Motivo esclusione</th>
+    </tr></thead>";
+    echo "<tbody>";
+
+    foreach ($appointments as $appointment) {
+        global $conn;
+        $zone_id = $appointment['zone_id'];
+        $date = $appointment['appointment_date'];
+
+        $sql = "SELECT MIN(appointment_time) as first_time, MAX(appointment_time) as last_time 
+                FROM cp_appointments 
+                WHERE zone_id = ? AND appointment_date = ?";
+        $stmt = $conn->prepare($sql);
+        if (!$stmt) {
+            $first_time = 'N/A';
+            $last_time = 'N/A';
+        } else {
+            $stmt->bind_param("is", $zone_id, $date);
+            if ($stmt->execute()) {
+                $result = $stmt->get_result();
+                if ($result) {
+                    $row_time = $result->fetch_assoc();
+                    $first_time = $row_time['first_time'] ?: 'N/A';
+                    $last_time = $row_time['last_time'] ?: 'N/A';
+                } else {
+                    $first_time = 'N/A';
+                    $last_time = 'N/A';
+                }
+            } else {
+                $first_time = 'N/A';
+                $last_time = 'N/A';
+            }
+            $stmt->close();
+        }
+
+        echo "<tr>";
+        echo "<td>{$appointment['id']}</td>";
+        echo "<td>{$appointment['zone_id']}</td>";
+        echo "<td>{$appointment['appointment_date']}</td>";
+        echo "<td>{$appointment['appointment_time']}</td>";
+        // CORREGGE Notice: Undefined index: distance
+        echo "<td>" . (isset($appointment['distance']) ? number_format($appointment['distance'], 2) . " km" : '') . "</td>";
+        echo "<td>{$first_time}</td>";
+        echo "<td>{$last_time}</td>";
+        echo "<td>" . (isset($appointment['excluded_reason']) ? htmlspecialchars($appointment['excluded_reason']) : '') . "</td>";
+        echo "</tr>";
+    }
+
+    echo "</tbody></table>";
+    echo "</center></div><hr>";
+}
+
+// Negli slot proposti: aggiungi il giorno della settimana prima della data (es: "Mercoledì 2025-05-21")
+// Supponiamo che la stampa degli slot proposti sia tipo:
+function displayProposedSlots($appointments) {
+    // Solo slot validi (excluded_reason vuoto)
+    foreach ($appointments as $a) {
+        if (!empty($a['excluded_reason'])) continue;
+        $giorno = giornoSettimana($a['appointment_date']);
+        echo "<div class='slot'>";
+        echo "<b>{$giorno} {$a['appointment_date']}</b> — {$a['appointment_time']}";
+        if (isset($a['distance'])) {
+            echo " (" . number_format($a['distance'],2) . " km)";
+        }
+        echo "</div>";
+    }
 }
 
 // Funzione per ottenere coordinate da un indirizzo
