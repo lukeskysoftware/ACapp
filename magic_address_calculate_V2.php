@@ -1389,13 +1389,19 @@ function displayAppointmentDetails($appointments) {
                 FROM cp_appointments 
                 WHERE zone_id = ? AND appointment_date = ?";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("is", $zone_id, $date);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $row = $result->fetch_assoc();
-
-        $first_time = $row['first_time'] ?: 'N/A';
-        $last_time = $row['last_time'] ?: 'N/A';
+if(!$stmt) {
+    error_log("Errore prepare SQL: " . $conn->error . " - Query: $sql");
+    $first_time = 'N/A';
+    $last_time = 'N/A';
+} else {
+    $stmt->bind_param("is", $zone_id, $date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    $first_time = $row['first_time'] ?: 'N/A';
+    $last_time = $row['last_time'] ?: 'N/A';
+}
+       
 
         echo "<tr>";
         echo "<td>{$appointment['id']}</td>";
