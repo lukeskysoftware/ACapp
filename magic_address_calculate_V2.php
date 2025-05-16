@@ -248,10 +248,10 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
                     'lat' => $cache_row['latitude'], 
                     'lng' => $cache_row['longitude']
                 ];
-                /* DEBUG
+                /* DEBUG*/
                 $debug_item['status'] = 'In cache';
                 $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
-                */
+                /**/
             } else {
                 // 2. Nessuna cache, geocodifica l'indirizzo e salvalo
                 $coordinates = getCoordinatesFromAddress($address, $appointment_id);
@@ -319,10 +319,10 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
     });
 
     // Salva le informazioni di debug in una variabile globale
-    /* DEBUG
+    /* DEBUG*/
     global $address_comparison_debug;
     $address_comparison_debug = $debug_info;
-    */
+    /**/
     return $nearby_appointments;
 }
 // Funzione per ottenere coordinate da un indirizzo
@@ -1393,6 +1393,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
             echo "<div class='container'><center>";
             echo "<h3>Appuntamenti trovati nel raggio di 7km: " . count($nearby_appointments) . "</h3>";
             echo "</center></div>";
+            displayAppointmentDetails($nearby_appointments);
         }
         
         // Funzione di debug per visualizzare i dettagli degli appuntamenti
