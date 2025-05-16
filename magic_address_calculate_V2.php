@@ -1388,14 +1388,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
         echo "<div class='container'><center><h2>Indirizzo: <span style='color:green; font-weight:700;'>{$address}</span></h2>";
         echo "<p>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</p></center></div><hr>";
        
-        // Mostra appuntamenti trovati nel raggio (opzionale, per debug)
-        if (!empty($nearby_appointments)) {
-            echo "<div class='container'><center>";
-            echo "<h3>Appuntamenti trovati nel raggio di 7km: " . count($nearby_appointments) . "</h3>";
-            echo "</center></div>";
-            displayAppointmentDetails($nearby_appointments);
-        }
-        
+       
         // Funzione di debug per visualizzare i dettagli degli appuntamenti
         function displayAppointmentDetails($appointments) {
             echo "<div class='container'><center>";
@@ -1437,6 +1430,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
             echo "</center></div><hr>";
         }
         
+       
+       
+        // Mostra appuntamenti trovati nel raggio (opzionale, per debug)
+        if (!empty($nearby_appointments)) {
+            echo "<div class='container'><center>";
+            echo "<h3>Appuntamenti trovati nel raggio di 7km: " . count($nearby_appointments) . "</h3>";
+            echo "</center></div>";
+            displayAppointmentDetails($nearby_appointments);
+        }
+        
+       
 // Codice per la visualizzazione degli slot disponibili
 if (!empty($available_slots_near_appointments)) {
     echo "<div class='container'><center>";
