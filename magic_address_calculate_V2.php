@@ -368,7 +368,6 @@ function giornoSettimana($data) {
 }
 
 // Per la tabella dettagli appuntamenti
-// Per la tabella dettagli appuntamenti
 function displayAppointmentDetails($appointments) {
     echo "<div class='container'><center>";
     echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
@@ -431,6 +430,13 @@ function displayAppointmentDetails($appointments) {
 
     echo "</tbody></table>";
     echo "</center></div><hr>";
+}
+
+// Funzione per ottenere il nome del giorno della settimana in italiano
+function giornoSettimana($data) {
+    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    $ts = strtotime($data);
+    return $giorni[date('w', $ts)];
 }
 
 // Negli slot proposti: aggiungi il giorno della settimana prima della data (es: "Mercoledì 2025-05-21")
@@ -1536,12 +1542,13 @@ if (!empty($available_slots_near_appointments)) {
     echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
     foreach ($available_slots_near_appointments as $slot) {
         $slot_date = date('d/m/Y', strtotime($slot['date']));
+        $giorno = giornoSettimana($slot['date']); // Aggiungiamo il giorno della settimana
         $slot_time = date('H:i', strtotime($slot['time']));
         $distance = number_format($slot['related_appointment']['distance'], 1);
         $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
         
         echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
-        echo "<h4>{$slot_date} {$slot_time}</h4>";
+        echo "<h4>{$giorno} {$slot_date} {$slot_time}</h4>"; // Mostriamo il giorno della settimana
         echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
         echo "{$slot['related_appointment']['address']}<br>";
         echo "<small>Distanza: {$distance} km</small></p>";
@@ -1557,12 +1564,6 @@ if (!empty($available_slots_near_appointments)) {
                 echo "Distanza: " . number_format($debug['distance'], 1) . " km</small></p>";
             }
         }
-        
-        // MODIFICA: Rimosso il messaggio "Questo slot precede il primo appuntamento della giornata"
-        // Il blocco if seguente è stato rimosso:
-        // if ($slot['type'] == 'before' && $isFirstSlot) {
-        //     echo "<p style='color:#FF0000; font-weight:bold; font-size:1.1em;'>Questo slot precede il primo appuntamento della giornata</p>";
-        // }
 
         // Aggiungi il pulsante "Vedi agenda" 
         $date = $slot['date'];
@@ -1574,70 +1575,70 @@ if (!empty($available_slots_near_appointments)) {
             <i class='bi bi-calendar'></i> Vedi agenda
         </button>";
 
-                // Aggiunta del div collassabile per i contenuti dell'agenda
-                echo "<div class='collapse mb-3 mt-2' id='$collapseId'>
-                    <div class='card card-body agenda-details' id='$contentId'>
-                        <div class='text-center'>
-                            <div class='spinner-border text-primary' role='status'>
-                                <span class='visually-hidden'>Caricamento appuntamenti...</span>
-                            </div>
-                            <p>Caricamento appuntamenti...</p>
-                        </div>
+        // Aggiunta del div collassabile per i contenuti dell'agenda
+        echo "<div class='collapse mb-3 mt-2' id='$collapseId'>
+            <div class='card card-body agenda-details' id='$contentId'>
+                <div class='text-center'>
+                    <div class='spinner-border text-primary' role='status'>
+                        <span class='visually-hidden'>Caricamento appuntamenti...</span>
                     </div>
-                </div>";
+                    <p>Caricamento appuntamenti...</p>
+                </div>
+            </div>
+        </div>";
 
-                // Script inline per caricare i contenuti
-                echo "<script>
-                    (function() {
-                        var collapseEl = document.getElementById('$collapseId');
-                        var contentEl = document.getElementById('$contentId');
-                        var date = '$date';
-                        var zoneId = {$slot['related_appointment']['zone_id']};
-                        
-                        if (collapseEl) {
-                            collapseEl.addEventListener('shown.bs.collapse', function() {
-                                fetch('get_appointments_modal.php', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/x-www-form-urlencoded',
-                                    },
-                                    body: 'appointment_date=' + date
-                                })
-                                    .then(function(response) {
-                                        if (!response.ok) throw new Error('Errore di rete');
-                                        return response.text();
-                                    })
-                                    .then(function(html) {
-                                        contentEl.innerHTML = html;
-                                    })
-                                    .catch(function(error) {
-                                        contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
-                                            '<p>Si è verificato un errore: ' + error.message + '</p>' +
-                                            '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
-                                            '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
-                                            '</button>' +
-                                        '</div>';
-                                    });
+        // Script inline per caricare i contenuti
+        echo "<script>
+            (function() {
+                var collapseEl = document.getElementById('$collapseId');
+                var contentEl = document.getElementById('$contentId');
+                var date = '$date';
+                var zoneId = {$slot['related_appointment']['zone_id']};
+                
+                if (collapseEl) {
+                    collapseEl.addEventListener('shown.bs.collapse', function() {
+                        fetch('get_appointments_modal.php', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                            },
+                            body: 'appointment_date=' + date
+                        })
+                            .then(function(response) {
+                                if (!response.ok) throw new Error('Errore di rete');
+                                return response.text();
+                            })
+                            .then(function(html) {
+                                contentEl.innerHTML = html;
+                            })
+                            .catch(function(error) {
+                                contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
+                                    '<p>Si è verificato un errore: ' + error.message + '</p>' +
+                                    '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
+                                    '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
+                                    '</button>' +
+                                '</div>';
                             });
-                        }
-                    })();
-                </script>";
+                    });
+                }
+            })();
+        </script>";
 
-                // Continue with the booking link...
-                $nameEncoded = !empty($name) ? urlencode($name) : '';
-                $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
-                $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
-                $addressEncoded = urlencode($address);
+        // Continue with the booking link...
+        $nameEncoded = !empty($name) ? urlencode($name) : '';
+        $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
+        $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
+        $addressEncoded = urlencode($address);
 
-                echo "<br><a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot_time}";
-                echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
-                echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-                echo "' class='btn btn-success mt-2 fw-bold'>Seleziona</a>";
+        echo "<br><a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot_time}";
+        echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
+        echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
+        echo "' class='btn btn-success mt-2 fw-bold'>Seleziona</a>";
 
-                echo "</div>";
-            }
-            echo "</center></div><hr>";
-        }else {
+        echo "</div>";
+    }
+    echo "</center></div><hr>";
+}else {
             echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
         }
                 // Continua con la logica esistente per le zone
@@ -1676,20 +1677,21 @@ if (!empty($available_slots_near_appointments)) {
                             } else {
                                 echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
                                 
-                                foreach ($next3Days as $date => $times) {
-                                    $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
-                                    
-                                    // MODIFICA: Verifica tutti gli appuntamenti per questa data in TUTTE le zone, non solo in questa zona specifica
-                                    $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
-                                                      WHERE appointment_date = ?"; // Rimosso il filtro per zone_id
-                                    $existingStmt = $conn->prepare($existingAppsSql);
-                                    $existingStmt->bind_param("s", $date); // Passato solo la data, non la zona
-                                    $existingStmt->execute();
-                                    $existingResult = $existingStmt->get_result();
-                                    $existingRow = $existingResult->fetch_assoc();
-                                    $hasExistingAppointments = ($existingRow['count'] > 0);
-                                    
-                                    echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$formattedDisplayDate}";
+foreach ($next3Days as $date => $times) {
+    $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
+    $giorno = giornoSettimana($date); // Aggiungiamo il giorno della settimana
+    
+    // MODIFICA: Verifica tutti gli appuntamenti per questa data in TUTTE le zone, non solo in questa zona specifica
+    $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
+                      WHERE appointment_date = ?"; // Rimosso il filtro per zone_id
+    $existingStmt = $conn->prepare($existingAppsSql);
+    $existingStmt->bind_param("s", $date); // Passato solo la data, non la zona
+    $existingStmt->execute();
+    $existingResult = $existingStmt->get_result();
+    $existingRow = $existingResult->fetch_assoc();
+    $hasExistingAppointments = ($existingRow['count'] > 0);
+    
+    echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$giorno} {$formattedDisplayDate}"; // Mostriamo il giorno della settimana
 
 // Add an indicator if there are existing appointments
 if ($hasExistingAppointments) {
