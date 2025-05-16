@@ -180,6 +180,14 @@ function calculateDistance($origin, $destination) {
  * @param float $radius_km Raggio in km (default 7)
  * @return array Array di appuntamenti vicini
  */
+/**
+ * Funzione per trovare appuntamenti vicini entro il raggio specificato
+ * @param string $user_address Indirizzo dell'utente
+ * @param float $user_latitude Latitudine dell'utente
+ * @param float $user_longitude Longitudine dell'utente
+ * @param float $radius_km Raggio in km (default 7)
+ * @return array Array di appuntamenti vicini
+ */
 function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7) {
     global $conn;
     $nearby_appointments = [];
@@ -218,7 +226,6 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 $debug_item['status'] = 'Escluso - Orario passato';
                 $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
-                $nearby_appointments[] = $row;
                 continue;
             }
 
@@ -248,7 +255,6 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 $debug_item['status'] = 'Escluso - Orario fuori limiti zona';
                 $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
-                $nearby_appointments[] = $row;
                 continue;
             }
 
@@ -258,7 +264,6 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 $debug_item['status'] = 'Saltato - Indirizzo vuoto';
                 $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
-                $nearby_appointments[] = $row;
                 continue;
             }
 
@@ -299,7 +304,6 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                     $debug_item['status'] = 'Geocodifica fallita';
                     $debug_item['excluded_reason'] = $row['excluded_reason'];
                     $debug_info[] = $debug_item;
-                    $nearby_appointments[] = $row;
                     continue;
                 }
             }
@@ -316,7 +320,6 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 $debug_item['status'] = 'Errore calcolo distanza';
                 $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
-                $nearby_appointments[] = $row;
                 continue;
             }
 
@@ -333,10 +336,12 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 $debug_item['excluded_reason'] = '';
                 $nearby_appointments[] = $row;
             } else {
+                // Non aggiungere appuntamenti fuori dal raggio all'array nearby_appointments
                 $row['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
                 $debug_item['status'] .= ' - Fuori raggio';
                 $debug_item['excluded_reason'] = $row['excluded_reason'];
-                $nearby_appointments[] = $row;
+                $debug_info[] = $debug_item;
+                continue; // Salta questo appuntamento
             }
             $debug_info[] = $debug_item;
         }
@@ -1496,11 +1501,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
         }
         $available_slots_near_appointments = [];
         
-        // Per ogni appuntamento trovato vicino, verifica slot disponibili
-        foreach ($nearby_appointments as $appointment) {
-            $slots = checkAvailableSlotsNearAppointment($appointment);
-            $available_slots_near_appointments = array_merge($available_slots_near_appointments, $slots);
-        }
+// Per ogni appuntamento trovato vicino, verifica slot disponibili
+foreach ($nearby_appointments as $appointment) {
+    // Aggiungi un controllo aggiuntivo per sicurezza
+    if (isset($appointment['distance']) && $appointment['distance'] > 7) {
+        error_log("Ignorato appuntamento ID: " . $appointment['id'] . " - Distanza: " . $appointment['distance'] . " km (superiore a 7 km)");
+        continue; // Salta appuntamenti con distanza > 7km
+    }
+    $slots = checkAvailableSlotsNearAppointment($appointment);
+    $available_slots_near_appointments = array_merge($available_slots_near_appointments, $slots);
+}
         
         // Mostra i risultati
         echo "<div class='container'><center><h2>Indirizzo: <span style='color:green; font-weight:700;'>{$address}</span></h2>";
