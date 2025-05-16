@@ -186,6 +186,7 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
     $debug_info = [];
     $today = date('Y-m-d');
     $now = date('H:i:s');
+    $durata_visita = 60 * 60; // 60 minuti in secondi
 
     $sql = "SELECT * FROM cp_appointments";
     $result = $conn->query($sql);
@@ -194,34 +195,37 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
         while ($row = $result->fetch_assoc()) {
             $appointment_id = $row['id'];
             $address = trim($row['address']);
+            $zone_id = $row['zone_id'];
             $debug_item = [
                 'id' => $appointment_id,
-                'zone_id' => $row['zone_id'],
+                'zone_id' => $zone_id,
                 'appointment_date' => $row['appointment_date'],
                 'appointment_time' => $row['appointment_time'],
                 'address' => $address,
+                'excluded_reason' => ''
             ];
 
             // Esclusione per data passata
             if ($row['appointment_date'] < $today) {
+                $row['excluded_reason'] = 'Data appuntamento precedente ad oggi';
                 $debug_item['status'] = 'Escluso - Data passata';
-                $debug_item['excluded_reason'] = 'Data appuntamento precedente ad oggi';
-                $row['excluded_reason'] = $debug_item['excluded_reason'];
+                $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
+                $nearby_appointments[] = $row;
                 continue;
             }
 
             // Esclusione per orario passato (solo per oggi)
             if ($row['appointment_date'] == $today && $row['appointment_time'] < $now) {
+                $row['excluded_reason'] = 'Orario appuntamento precedente all\'attuale';
                 $debug_item['status'] = 'Escluso - Orario passato';
-                $debug_item['excluded_reason'] = 'Orario appuntamento precedente all\'attuale';
-                $row['excluded_reason'] = $debug_item['excluded_reason'];
+                $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
+                $nearby_appointments[] = $row;
                 continue;
             }
 
-            // Ottieni limiti orari della zona (come in combined)
-            $zone_id = $row['zone_id'];
+            // Ottieni limiti orari della zona
             $zone_sql = "SELECT min_time, max_time FROM cp_zones WHERE id = ?";
             $zone_stmt = $conn->prepare($zone_sql);
             $zone_min_time = "00:00:00";
@@ -238,21 +242,26 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 $zone_stmt->close();
             }
 
+            // Calcola l'ultimo orario valido per il tipo di visita
+            $orario_massimo = date("H:i:s", strtotime($zone_max_time) - $durata_visita);
+
             // Esclusione per orario fuori limiti zona
-            if ($row['appointment_time'] < $zone_min_time || $row['appointment_time'] > $zone_max_time) {
+            if ($row['appointment_time'] < $zone_min_time || $row['appointment_time'] > $orario_massimo) {
+                $row['excluded_reason'] = "Orario {$row['appointment_time']} fuori dai limiti zona consentiti ($zone_min_time - $orario_massimo per durata visita)";
                 $debug_item['status'] = 'Escluso - Orario fuori limiti zona';
-                $debug_item['excluded_reason'] = "Orario {$row['appointment_time']} fuori dai limiti zona ($zone_min_time - $zone_max_time)";
-                $row['excluded_reason'] = $debug_item['excluded_reason'];
+                $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
+                $nearby_appointments[] = $row;
                 continue;
             }
 
             // Salta se l'indirizzo è vuoto
             if (empty($address)) {
+                $row['excluded_reason'] = 'Indirizzo vuoto';
                 $debug_item['status'] = 'Saltato - Indirizzo vuoto';
-                $debug_item['excluded_reason'] = 'Indirizzo vuoto';
-                $row['excluded_reason'] = $debug_item['excluded_reason'];
+                $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
+                $nearby_appointments[] = $row;
                 continue;
             }
 
@@ -289,10 +298,11 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                     $debug_item['status'] = 'Geocodificato';
                     $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
                 } else {
+                    $row['excluded_reason'] = 'Impossibile ottenere coordinate';
                     $debug_item['status'] = 'Geocodifica fallita';
-                    $debug_item['excluded_reason'] = 'Impossibile ottenere coordinate';
-                    $row['excluded_reason'] = $debug_item['excluded_reason'];
+                    $debug_item['excluded_reason'] = $row['excluded_reason'];
                     $debug_info[] = $debug_item;
+                    $nearby_appointments[] = $row;
                     continue;
                 }
             }
@@ -304,15 +314,15 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
             );
 
             if ($distance == -1) {
+                $row['excluded_reason'] = 'Errore calcolo distanza stradale';
                 error_log("Failed to calculate road distance for appointment ID: " . $appointment_id);
                 $debug_item['status'] = 'Errore calcolo distanza';
-                $debug_item['excluded_reason'] = 'Errore calcolo distanza stradale';
-                $row['excluded_reason'] = $debug_item['excluded_reason'];
+                $debug_item['excluded_reason'] = $row['excluded_reason'];
                 $debug_info[] = $debug_item;
+                $nearby_appointments[] = $row;
                 continue; // Skip this appointment if distance calculation failed
             }
 
-            /* DEBUG */
             $debug_item['distance'] = number_format($distance, 2) . " km";
 
             // Se la distanza è entro il raggio, aggiungi all'elenco
@@ -321,19 +331,19 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 $row['latitude'] = $coordinates['lat'];
                 $row['longitude'] = $coordinates['lng'];
                 $row['excluded_reason'] = ''; // Nessun motivo: appuntamento valido
-                $nearby_appointments[] = $row;
                 $debug_item['status'] .= ' - Entro raggio';
                 $debug_item['excluded_reason'] = '';
+                $nearby_appointments[] = $row;
             } else {
+                $row['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
                 $debug_item['status'] .= ' - Fuori raggio';
-                $debug_item['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
-                $row['excluded_reason'] = $debug_item['excluded_reason'];
+                $debug_item['excluded_reason'] = $row['excluded_reason'];
+                $nearby_appointments[] = $row;
             }
             $debug_info[] = $debug_item;
         }
     }
 
-    // Per debug globale
     global $address_comparison_debug;
     $address_comparison_debug = $debug_info;
 
