@@ -180,142 +180,109 @@ function calculateDistance($origin, $destination) {
  * @param float $radius_km Raggio in km (default 7)
  * @return array Array di appuntamenti vicini
  */
-function findNearbyAppointments($user_address, $user_latitude, $user_longitude, $radius_km = 7) {
+function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7) {
     global $conn;
-    $today = date('Y-m-d');
     $nearby_appointments = [];
     $debug_info = [];
 
-    // Recupera tutti gli appuntamenti futuri
-    $sql = "SELECT id, address, appointment_date, appointment_time, zone_id, patient_id, notes 
-            FROM cp_appointments 
-            WHERE appointment_date >= ? 
-            ORDER BY appointment_date, appointment_time";
-    $stmt = $conn->prepare($sql);
-    if (!$stmt) {
-        error_log("Database prepare failed: " . mysqli_error($conn));
-        return $nearby_appointments;
-    }
+    $sql = "SELECT * FROM cp_appointments";
+    $result = $conn->query($sql);
 
-    $stmt->bind_param("s", $today);
-    if (!$stmt->execute()) {
-        error_log("Execute failed: " . mysqli_error($conn));
-        return $nearby_appointments;
-    }
+    if ($result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $appointment_id = $row['id'];
+            $address = trim($row['address']);
+            $debug_item = [
+                'id' => $appointment_id,
+                'zone_id' => $row['zone_id'],
+                'appointment_date' => $row['appointment_date'],
+                'appointment_time' => $row['appointment_time'],
+                'address' => $address,
+            ];
 
-    $result = $stmt->get_result();
+            // Salta se l'indirizzo è vuoto
+            if (empty($address)) {
+                $debug_item['status'] = 'Saltato - Indirizzo vuoto';
+                $debug_item['excluded_reason'] = 'Indirizzo vuoto';
+                $debug_info[] = $debug_item;
+                continue;
+            }
 
-    if ($result->num_rows == 0) {
-        error_log("Nessun appuntamento futuro trovato.");
-        return $nearby_appointments;
-    }
-
-    // Per ogni appuntamento
-    while ($row = $result->fetch_assoc()) {
-        $appointment_id = $row['id'];
-        $address = $row['address'];
-
-        $debug_item = [
-            'id' => $appointment_id,
-            'address' => $address,
-            'coords' => 'Non geocodificato',
-            'distance' => 'Non calcolata',
-            'status' => '',
-            'error' => ''
-        ];
-
-        // Salta se l'indirizzo è vuoto
-        $debug_item['status'] = 'Saltato - Indirizzo vuoto';
-    $debug_item['excluded_reason'] = 'Indirizzo vuoto'; // <--- AGGIUNGI QUESTA RIGA
-    $debug_info[] = $debug_item;
-            continue;
-        }
-
-        // 1. Verifica se l'appuntamento è già in cache
-        $cache_sql = "SELECT appointment_id, latitude, longitude FROM address_cache WHERE appointment_id = ? LIMIT 1";
-        $cache_stmt = $conn->prepare($cache_sql);
-        $coordinates = null;
-
-        if ($cache_stmt) {
+            // Controlla la cache delle coordinate
+            $cache_sql = "SELECT latitude, longitude FROM cp_address_cache WHERE appointment_id = ?";
+            $cache_stmt = $conn->prepare($cache_sql);
             $cache_stmt->bind_param("i", $appointment_id);
             $cache_stmt->execute();
             $cache_result = $cache_stmt->get_result();
 
-            if ($cache_result->num_rows > 0) {
-                // Coordinate già in cache per questo appuntamento
+            if ($cache_result && $cache_result->num_rows > 0) {
                 $cache_row = $cache_result->fetch_assoc();
                 $coordinates = [
-                    'lat' => $cache_row['latitude'], 
+                    'lat' => $cache_row['latitude'],
                     'lng' => $cache_row['longitude']
                 ];
-                /* DEBUG*/
                 $debug_item['status'] = 'In cache';
                 $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
-                /**/
-            } else {
-                // 2. Nessuna cache, geocodifica l'indirizzo e salvalo
+            } else if ($cache_result) {
+                // Geocodifica l'indirizzo e salvalo
                 $coordinates = getCoordinatesFromAddress($address, $appointment_id);
-
                 if ($coordinates) {
-                    /* DEBUG */
                     $debug_item['status'] = 'Geocodificato';
                     $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
-                /**/
                 } else {
-                  /* DEBUG */
-                   $debug_item['status'] = 'Geocodifica fallita';
-$debug_item['excluded_reason'] = 'Impossibile ottenere coordinate';
-$debug_info[] = $debug_item;
-
-                   /* */
-                    continue; // Passa al prossimo appuntamento
+                    $debug_item['status'] = 'Geocodifica fallita';
+                    $debug_item['excluded_reason'] = 'Impossibile ottenere coordinate';
+                    $debug_info[] = $debug_item;
+                    continue;
                 }
+            } else {
+                $debug_item['status'] = 'Errore SQL cache';
+                $debug_item['excluded_reason'] = mysqli_error($conn);
+                $debug_info[] = $debug_item;
+                continue;
             }
-        } else {
+
+            // Calcola la distanza stradale
+            $distance = calculateRoadDistance(
+                $user_latitude, $user_longitude,
+                $coordinates['lat'], $coordinates['lng']
+            );
+
+            if ($distance == -1) {
+                $debug_item['status'] = 'Errore calcolo distanza';
+                $debug_item['excluded_reason'] = 'Errore calcolo distanza stradale';
+                $debug_info[] = $debug_item;
+                error_log("Failed to calculate road distance for appointment ID: " . $appointment_id);
+                continue;
+            }
+
             /* DEBUG */
-            $debug_item['status'] = 'Errore SQL cache';
-$debug_item['excluded_reason'] = mysqli_error($conn);
-$debug_info[] = $debug_item;
+            $debug_item['distance'] = number_format($distance, 2) . " km";
 
-            /**/
-            continue;
+            // Se la distanza è entro il raggio, aggiungi all'elenco
+            if ($distance <= $radius_km) {
+                $row['distance'] = $distance;
+                $row['latitude'] = $coordinates['lat'];
+                $row['longitude'] = $coordinates['lng'];
+                $nearby_appointments[] = $row;
+                /* DEBUG */
+                $debug_item['status'] .= ' - Entro raggio';
+                $debug_item['excluded_reason'] = '';
+            } else {
+                /* DEBUG */
+                $debug_item['status'] .= ' - Fuori raggio';
+                $debug_item['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
+            }
+            /* DEBUG */
+            $debug_info[] = $debug_item;
         }
-
-        // 3. Calcola la distanza stradale
-        $distance = calculateRoadDistance(
-            $user_latitude, $user_longitude,
-            $coordinates['lat'], $coordinates['lng']
-        );
-
-        if ($distance == -1) {
-            error_log("Failed to calculate road distance for appointment ID: " . $appointment_id);
-            continue; // Skip this appointment if distance calculation failed
-        }
-        
-        /* DEBUG
-        $debug_item['distance'] = number_format($distance, 2) . " km";
-        */
-        
-        // 4. Se la distanza è entro il raggio, aggiungi all'elenco
-        if ($distance <= $radius_km) {
-            $row['distance'] = $distance;
-            $row['latitude'] = $coordinates['lat'];
-            $row['longitude'] = $coordinates['lng'];
-            $nearby_appointments[] = $row;
-            /* DEBUG*/
-             $debug_item['status'] .= ' - Entro raggio';
-    $debug_item['excluded_reason'] = '';
-            /**/
-        } else {
-            /* DEBUG*/
-            $debug_item['status'] .= ' - Fuori raggio';
-    $debug_item['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
-           /* */
-        }
-        /* DEBUG */
-        $debug_info[] = $debug_item;
-       /* */
     }
+
+    // Per debug globale
+    global $address_comparison_debug;
+    $address_comparison_debug = $debug_info;
+
+
 
     // Ordina gli appuntamenti per distanza
     usort($nearby_appointments, function($a, $b) {
@@ -329,6 +296,8 @@ $debug_info[] = $debug_item;
     /**/
     return $nearby_appointments;
 }
+
+
 // Funzione per ottenere coordinate da un indirizzo
 function getCoordinatesFromAddress($address, $appointment_id = null) {
     global $conn;
@@ -1394,46 +1363,55 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
        
        
         // Funzione di debug per visualizzare i dettagli degli appuntamenti
-        function displayAppointmentDetails($appointments) {
-            echo "<div class='container'><center>";
-            echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
-            echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
-            echo "<thead><tr><th>ID</th><th>Zona</th><th>Data</th><th>Ora</th><th>Distanza</th><th>Primo Slot</th><th>Ultimo Slot</th><th>Motivo esclusione</th></tr></thead>";
-            echo "<tbody>";
-            
-            foreach ($appointments as $appointment) {
-                // Ottieni il primo e l'ultimo slot per questa zona e data
-                global $conn;
-                $zone_id = $appointment['zone_id'];
-                $date = $appointment['appointment_date'];
-                
-                $sql = "SELECT MIN(appointment_time) as first_time, MAX(appointment_time) as last_time 
-                        FROM cp_appointments 
-                        WHERE zone_id = ? AND appointment_date = ?";
-                $stmt = $conn->prepare($sql);
-                $stmt->bind_param("is", $zone_id, $date);
-                $stmt->execute();
-                $result = $stmt->get_result();
-                $row = $result->fetch_assoc();
-                
-                $first_time = $row['first_time'] ?: 'N/A';
-                $last_time = $row['last_time'] ?: 'N/A';
-                
-                echo "<tr>";
-                echo "<td>{$appointment['id']}</td>";
-                echo "<td>{$appointment['zone_id']}</td>";
-                echo "<td>{$appointment['appointment_date']}</td>";
-                echo "<td>{$appointment['appointment_time']}</td>";
-                echo "<td>" . number_format($appointment['distance'], 2) . " km</td>";
-                echo "<td>{$first_time}</td>";
-                echo "<td>{$last_time}</td>";
-                echo "<td>" . (isset($appointment['excluded_reason']) ? htmlspecialchars($appointment['excluded_reason']) : '') . "</td>";
-                echo "</tr>";
-            }
-            
-            echo "</tbody></table>";
-            echo "</center></div><hr>";
-        }
+function displayAppointmentDetails($appointments) {
+    echo "<div class='container'><center>";
+    echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
+    echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
+    echo "<thead><tr>
+        <th>ID</th>
+        <th>Zona</th>
+        <th>Data</th>
+        <th>Ora</th>
+        <th>Distanza</th>
+        <th>Primo Slot</th>
+        <th>Ultimo Slot</th>
+        <th>Motivo esclusione</th>
+    </tr></thead>";
+    echo "<tbody>";
+
+    foreach ($appointments as $appointment) {
+        // Ottieni il primo e l'ultimo slot per questa zona e data
+        global $conn;
+        $zone_id = $appointment['zone_id'];
+        $date = $appointment['appointment_date'];
+
+        $sql = "SELECT MIN(appointment_time) as first_time, MAX(appointment_time) as last_time 
+                FROM cp_appointments 
+                WHERE zone_id = ? AND appointment_date = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("is", $zone_id, $date);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+
+        $first_time = $row['first_time'] ?: 'N/A';
+        $last_time = $row['last_time'] ?: 'N/A';
+
+        echo "<tr>";
+        echo "<td>{$appointment['id']}</td>";
+        echo "<td>{$appointment['zone_id']}</td>";
+        echo "<td>{$appointment['appointment_date']}</td>";
+        echo "<td>{$appointment['appointment_time']}</td>";
+        echo "<td>" . (isset($appointment['distance']) ? number_format($appointment['distance'], 2) . " km" : '') . "</td>";
+        echo "<td>{$first_time}</td>";
+        echo "<td>{$last_time}</td>";
+        echo "<td>" . (isset($appointment['excluded_reason']) ? htmlspecialchars($appointment['excluded_reason']) : '') . "</td>";
+        echo "</tr>";
+    }
+
+    echo "</tbody></table>";
+    echo "</center></div><hr>";
+}
         
        
        
@@ -2013,7 +1991,7 @@ $(document).ready(function() {
     <h2>A quale indirizzo fare la visita?</h2>
     <div class="row justify-content-center">
         <div class="col-12 col-md-8 col-lg-6"> <!-- Sarà al 100% su mobile, ~60% su desktop -->
-            <form id="addressForm" method="POST" action="magic_address_calculate_v2.php" class="mb-4">
+            <form id="addressForm" method="POST" action="magic_address_calculate_V2.php" class="mb-4">
                 <div class="mb-3">
                     <label for="address" class="form-label fw-bold">Indirizzo:</label>
                     <input type="text" id="address" name="address" class="form-control" required>
@@ -2045,7 +2023,7 @@ $(document).ready(function() {
     <div class="container">
         <div id="appointmentForm" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
             <h2>Prenota Appuntamento</h2>
-            <form method="POST" action="magic_address_calculate_v2.php" class="pure-form pure-form-stacked">
+            <form method="POST" action="magic_address_calculate_V2.php" class="pure-form pure-form-stacked">
                 <input type="hidden" id="zone_id" name="zone_id">
                 <input type="hidden" id="date" name="date">
                 <input type="hidden" id="time" name="time">
