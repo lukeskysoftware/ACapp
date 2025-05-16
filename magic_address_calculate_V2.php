@@ -1508,71 +1508,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
        
        
         // Funzione di debug per visualizzare i dettagli degli appuntamenti
-function displayAppointmentDetails($appointments) {
-    echo "<div class='container'><center>";
-    echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
-    echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
-    echo "<thead><tr>
-        <th>ID</th>
-        <th>Zona</th>
-        <th>Data</th>
-        <th>Ora</th>
-        <th>Distanza</th>
-        <th>Primo Slot</th>
-        <th>Ultimo Slot</th>
-        <th>Motivo esclusione</th>
-    </tr></thead>";
-    echo "<tbody>";
 
-    foreach ($appointments as $appointment) {
-        global $conn;
-        $zone_id = $appointment['zone_id'];
-        $date = $appointment['appointment_date'];
-
-        $sql = "SELECT MIN(appointment_time) as first_time, MAX(appointment_time) as last_time 
-                FROM cp_appointments 
-                WHERE zone_id = ? AND appointment_date = ?";
-        $stmt = $conn->prepare($sql);
-        if (!$stmt) {
-            error_log("Errore prepare SQL: " . $conn->error . " - Query: $sql");
-            $first_time = 'N/A';
-            $last_time = 'N/A';
-        } else {
-            $stmt->bind_param("is", $zone_id, $date);
-            if ($stmt->execute()) {
-                $result = $stmt->get_result();
-                if ($result) {
-                    $row_time = $result->fetch_assoc();
-                    $first_time = $row_time['first_time'] ?: 'N/A';
-                    $last_time = $row_time['last_time'] ?: 'N/A';
-                } else {
-                    $first_time = 'N/A';
-                    $last_time = 'N/A';
-                }
-            } else {
-                error_log("Errore execute SQL: " . $stmt->error . " - Query: $sql");
-                $first_time = 'N/A';
-                $last_time = 'N/A';
-            }
-            $stmt->close();
-        }
-
-        echo "<tr>";
-        echo "<td>{$appointment['id']}</td>";
-        echo "<td>{$appointment['zone_id']}</td>";
-        echo "<td>{$appointment['appointment_date']}</td>";
-        echo "<td>{$appointment['appointment_time']}</td>";
-        echo "<td>" . (isset($appointment['distance']) ? number_format($appointment['distance'], 2) . " km" : '') . "</td>";
-        echo "<td>{$first_time}</td>";
-        echo "<td>{$last_time}</td>";
-        // Qui stampa SEMPRE il motivo esclusione, anche se vuoto
-        echo "<td>" . (isset($appointment['excluded_reason']) ? htmlspecialchars($appointment['excluded_reason']) : '') . "</td>";
-        echo "</tr>";
-    }
-
-    echo "</tbody></table>";
-    echo "</center></div><hr>";
-}
        
         // Mostra appuntamenti trovati nel raggio (opzionale, per debug)
         if (!empty($nearby_appointments)) {
