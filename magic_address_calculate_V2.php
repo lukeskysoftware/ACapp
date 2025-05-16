@@ -211,6 +211,12 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
             // Controlla la cache delle coordinate
             $cache_sql = "SELECT latitude, longitude FROM cp_address_cache WHERE appointment_id = ?";
             $cache_stmt = $conn->prepare($cache_sql);
+            if (!$cache_stmt) {
+                $debug_item['status'] = 'Errore prepare SQL cache';
+                $debug_item['excluded_reason'] = $conn->error;
+                $debug_info[] = $debug_item;
+                continue;
+            }
             $cache_stmt->bind_param("i", $appointment_id);
             $cache_stmt->execute();
             $cache_result = $cache_stmt->get_result();
@@ -221,12 +227,14 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                     'lat' => $cache_row['latitude'],
                     'lng' => $cache_row['longitude']
                 ];
+                /* DEBUG */
                 $debug_item['status'] = 'In cache';
                 $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
             } else if ($cache_result) {
                 // Geocodifica l'indirizzo e salvalo
                 $coordinates = getCoordinatesFromAddress($address, $appointment_id);
                 if ($coordinates) {
+                    /* DEBUG */
                     $debug_item['status'] = 'Geocodificato';
                     $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
                 } else {
@@ -237,29 +245,29 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 }
             } else {
                 $debug_item['status'] = 'Errore SQL cache';
-                $debug_item['excluded_reason'] = mysqli_error($conn);
+                $debug_item['excluded_reason'] = $conn->error;
                 $debug_info[] = $debug_item;
                 continue;
             }
 
-            // Calcola la distanza stradale
+            // 3. Calcola la distanza stradale
             $distance = calculateRoadDistance(
                 $user_latitude, $user_longitude,
                 $coordinates['lat'], $coordinates['lng']
             );
 
             if ($distance == -1) {
+                error_log("Failed to calculate road distance for appointment ID: " . $appointment_id);
                 $debug_item['status'] = 'Errore calcolo distanza';
                 $debug_item['excluded_reason'] = 'Errore calcolo distanza stradale';
                 $debug_info[] = $debug_item;
-                error_log("Failed to calculate road distance for appointment ID: " . $appointment_id);
-                continue;
+                continue; // Skip this appointment if distance calculation failed
             }
-
+            
             /* DEBUG */
             $debug_item['distance'] = number_format($distance, 2) . " km";
-
-            // Se la distanza è entro il raggio, aggiungi all'elenco
+            
+            // 4. Se la distanza è entro il raggio, aggiungi all'elenco
             if ($distance <= $radius_km) {
                 $row['distance'] = $distance;
                 $row['latitude'] = $coordinates['lat'];
@@ -282,18 +290,6 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
     global $address_comparison_debug;
     $address_comparison_debug = $debug_info;
 
-
-
-    // Ordina gli appuntamenti per distanza
-    usort($nearby_appointments, function($a, $b) {
-        return $a['distance'] <=> $b['distance'];
-    });
-
-    // Salva le informazioni di debug in una variabile globale
-    /* DEBUG*/
-    global $address_comparison_debug;
-    $address_comparison_debug = $debug_info;
-    /**/
     return $nearby_appointments;
 }
 
@@ -1395,11 +1391,22 @@ function displayAppointmentDetails($appointments) {
             $last_time = 'N/A';
         } else {
             $stmt->bind_param("is", $zone_id, $date);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $row = $result->fetch_assoc();
-            $first_time = $row['first_time'] ?: 'N/A';
-            $last_time = $row['last_time'] ?: 'N/A';
+            if ($stmt->execute()) {
+                $result = $stmt->get_result();
+                if ($result) {
+                    $row = $result->fetch_assoc();
+                    $first_time = $row['first_time'] ?: 'N/A';
+                    $last_time = $row['last_time'] ?: 'N/A';
+                } else {
+                    $first_time = 'N/A';
+                    $last_time = 'N/A';
+                }
+            } else {
+                error_log("Errore execute SQL: " . $stmt->error . " - Query: $sql");
+                $first_time = 'N/A';
+                $last_time = 'N/A';
+            }
+            $stmt->close();
         }
 
         echo "<tr>";
@@ -1417,8 +1424,6 @@ function displayAppointmentDetails($appointments) {
     echo "</tbody></table>";
     echo "</center></div><hr>";
 }
-        
-       
        
         // Mostra appuntamenti trovati nel raggio (opzionale, per debug)
         if (!empty($nearby_appointments)) {
