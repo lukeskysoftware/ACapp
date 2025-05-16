@@ -368,6 +368,7 @@ function giornoSettimana($data) {
 }
 
 // Per la tabella dettagli appuntamenti
+// Per la tabella dettagli appuntamenti
 function displayAppointmentDetails($appointments) {
     echo "<div class='container'><center>";
     echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
