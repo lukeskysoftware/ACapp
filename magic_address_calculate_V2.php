@@ -225,9 +225,9 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
         ];
 
         // Salta se l'indirizzo è vuoto
-        if (empty($address)) {
-            $debug_item['status'] = 'Saltato - Indirizzo vuoto';
-            $debug_info[] = $debug_item;
+        $debug_item['status'] = 'Saltato - Indirizzo vuoto';
+    $debug_item['excluded_reason'] = 'Indirizzo vuoto'; // <--- AGGIUNGI QUESTA RIGA
+    $debug_info[] = $debug_item;
             continue;
         }
 
@@ -257,25 +257,27 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
                 $coordinates = getCoordinatesFromAddress($address, $appointment_id);
 
                 if ($coordinates) {
-                    /* DEBUG
+                    /* DEBUG */
                     $debug_item['status'] = 'Geocodificato';
                     $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
-                */
+                /**/
                 } else {
-                  /* DEBUG
-                    $debug_item['status'] = 'Geocodifica fallita';
-                    $debug_item['error'] = 'Impossibile ottenere coordinate';
-                    $debug_info[] = $debug_item;
-                    */
+                  /* DEBUG */
+                   $debug_item['status'] = 'Geocodifica fallita';
+$debug_item['excluded_reason'] = 'Impossibile ottenere coordinate';
+$debug_info[] = $debug_item;
+
+                   /* */
                     continue; // Passa al prossimo appuntamento
                 }
             }
         } else {
-            /* DEBUG
+            /* DEBUG */
             $debug_item['status'] = 'Errore SQL cache';
-            $debug_item['error'] = mysqli_error($conn);
-            $debug_info[] = $debug_item;
-            */
+$debug_item['excluded_reason'] = mysqli_error($conn);
+$debug_info[] = $debug_item;
+
+            /**/
             continue;
         }
 
@@ -300,17 +302,19 @@ function findNearbyAppointments($user_address, $user_latitude, $user_longitude, 
             $row['latitude'] = $coordinates['lat'];
             $row['longitude'] = $coordinates['lng'];
             $nearby_appointments[] = $row;
-            /* DEBUG
-            $debug_item['status'] .= ' - Entro raggio';
-            */
+            /* DEBUG*/
+             $debug_item['status'] .= ' - Entro raggio';
+    $debug_item['excluded_reason'] = '';
+            /**/
         } else {
-            /* DEBUG
+            /* DEBUG*/
             $debug_item['status'] .= ' - Fuori raggio';
-            */
+    $debug_item['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
+           /* */
         }
-        /* DEBUG
+        /* DEBUG */
         $debug_info[] = $debug_item;
-        */
+       /* */
     }
 
     // Ordina gli appuntamenti per distanza
@@ -1394,7 +1398,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
             echo "<div class='container'><center>";
             echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
             echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
-            echo "<thead><tr><th>ID</th><th>Zona</th><th>Data</th><th>Ora</th><th>Distanza</th><th>Primo Slot</th><th>Ultimo Slot</th></tr></thead>";
+            echo "<thead><tr><th>ID</th><th>Zona</th><th>Data</th><th>Ora</th><th>Distanza</th><th>Primo Slot</th><th>Ultimo Slot</th><th>Motivo esclusione</th></tr></thead>";
             echo "<tbody>";
             
             foreach ($appointments as $appointment) {
@@ -1423,6 +1427,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
                 echo "<td>" . number_format($appointment['distance'], 2) . " km</td>";
                 echo "<td>{$first_time}</td>";
                 echo "<td>{$last_time}</td>";
+                echo "<td>" . (isset($appointment['excluded_reason']) ? htmlspecialchars($appointment['excluded_reason']) : '') . "</td>";
                 echo "</tr>";
             }
             
