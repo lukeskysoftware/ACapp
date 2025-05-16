@@ -188,8 +188,16 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
     $now = date('H:i:s');
     $durata_visita = 60 * 60; // 60 minuti in secondi
 
-    $sql = "SELECT * FROM cp_appointments";
-    $result = $conn->query($sql);
+    // MODIFICA: query solo appuntamenti da oggi in poi
+    $sql = "SELECT * FROM cp_appointments WHERE appointment_date >= ?";
+    $stmt = $conn->prepare($sql);
+    if (!$stmt) {
+        // Se la prepare fallisce, ritorna vuoto
+        return [];
+    }
+    $stmt->bind_param("s", $today);
+    $stmt->execute();
+    $result = $stmt->get_result();
 
     if ($result->num_rows > 0) {
         while ($row = $result->fetch_assoc()) {
@@ -204,16 +212,6 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 'address' => $address,
                 'excluded_reason' => ''
             ];
-
-            // Esclusione per data passata
-            if ($row['appointment_date'] < $today) {
-                $row['excluded_reason'] = 'Data appuntamento precedente ad oggi';
-                $debug_item['status'] = 'Escluso - Data passata';
-                $debug_item['excluded_reason'] = $row['excluded_reason'];
-                $debug_info[] = $debug_item;
-                $nearby_appointments[] = $row;
-                continue;
-            }
 
             // Esclusione per orario passato (solo per oggi)
             if ($row['appointment_date'] == $today && $row['appointment_time'] < $now) {
