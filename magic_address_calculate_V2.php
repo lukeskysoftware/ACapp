@@ -2003,7 +2003,7 @@ $(document).ready(function() {
     <h2>A quale indirizzo fare la visita?</h2>
     <div class="row justify-content-center">
         <div class="col-12 col-md-8 col-lg-6"> <!-- Sarà al 100% su mobile, ~60% su desktop -->
-            <form id="addressForm" method="POST" action="combined_address_calculate_v2.php" class="mb-4">
+            <form id="addressForm" method="POST" action="magic_address_calculate_v2.php" class="mb-4">
                 <div class="mb-3">
                     <label for="address" class="form-label fw-bold">Indirizzo:</label>
                     <input type="text" id="address" name="address" class="form-control" required>
@@ -2035,7 +2035,7 @@ $(document).ready(function() {
     <div class="container">
         <div id="appointmentForm" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
             <h2>Prenota Appuntamento</h2>
-            <form method="POST" action="combined_address_calculate_v2.php" class="pure-form pure-form-stacked">
+            <form method="POST" action="magic_address_calculate_v2.php" class="pure-form pure-form-stacked">
                 <input type="hidden" id="zone_id" name="zone_id">
                 <input type="hidden" id="date" name="date">
                 <input type="hidden" id="time" name="time">
