@@ -280,39 +280,39 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                     $debug_item['status'] = 'In cache';
                     $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
                     
-                    // NUOVA FUNZIONALITÀ: Se l'appuntamento ha zone_id = 0, verifica a quale zona appartiene
+                    // Se zona = 0, determina la zona corretta
                     if ($zone_id == 0 && $coordinates) {
-                        $correct_zone_id = 0;
-                        $zones = getZonesFromCoordinates($coordinates['lat'], $coordinates['lng']);
-                        foreach ($zones as $zone) {
-                            $zone_center = [$zone['latitude'], $zone['longitude']];
-                            $app_coords = [$coordinates['lat'], $coordinates['lng']];
-                            $distance_to_zone = calculateDistance($app_coords, $zone_center);
+                        // Ottieni tutte le zone
+                        $all_zones_sql = "SELECT id, latitude, longitude, radius_km FROM cp_zones";
+                        $all_zones_stmt = $conn->prepare($all_zones_sql);
+                        if ($all_zones_stmt && $all_zones_stmt->execute()) {
+                            $all_zones_result = $all_zones_stmt->get_result();
+                            $all_zones = $all_zones_result->fetch_all(MYSQLI_ASSOC);
                             
-                            if ($distance_to_zone <= $zone['radius_km']) {
-                                $correct_zone_id = $zone['id'];
-                                error_log("Appuntamento ID: $appointment_id con indirizzo: $address appartiene alla zona: {$zone['name']} (ID: {$zone['id']})");
-                                break;
-                            }
-                        }
-                        
-                        // Se abbiamo trovato una zona, aggiorniamo l'appuntamento
-                        if ($correct_zone_id > 0) {
-                            $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
-                            $update_stmt = $conn->prepare($update_sql);
-                            if ($update_stmt) {
-                                $update_stmt->bind_param("ii", $correct_zone_id, $appointment_id);
-                                if ($update_stmt->execute()) {
-                                    // Aggiorna il valore nel record corrente per continuare con la logica corretta
-                                    $zone_id = $correct_zone_id;
-                                    $row['zone_id'] = $correct_zone_id;
-                                    $debug_item['zone_id'] = $correct_zone_id;
-                                    error_log("Aggiornata zona per appuntamento ID: $appointment_id da 0 a $correct_zone_id");
-                                } else {
-                                    error_log("Errore nell'aggiornamento della zona per l'appuntamento ID: $appointment_id: " . $update_stmt->error);
+                            // Determina se l'indirizzo è in una zona
+                            foreach ($all_zones as $zone) {
+                                $zone_center = [$zone['latitude'], $zone['longitude']];
+                                $app_location = [$coordinates['lat'], $coordinates['lng']];
+                                $distance_to_zone = calculateDistance($app_location, $zone_center);
+                                
+                                if ($distance_to_zone <= $zone['radius_km']) {
+                                    // Aggiorna l'appuntamento con la zona corretta
+                                    $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
+                                    $update_stmt = $conn->prepare($update_sql);
+                                    if ($update_stmt) {
+                                        $correct_zone_id = $zone['id'];
+                                        $update_stmt->bind_param("ii", $correct_zone_id, $appointment_id);
+                                        if ($update_stmt->execute()) {
+                                            $zone_id = $correct_zone_id;
+                                            $row['zone_id'] = $correct_zone_id;
+                                            error_log("Zona corretta per appuntamento $appointment_id: $correct_zone_id");
+                                        }
+                                        $update_stmt->close();
+                                    }
+                                    break;
                                 }
-                                $update_stmt->close();
                             }
+                            $all_zones_stmt->close();
                         }
                     }
                 }
@@ -327,39 +327,39 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                     $debug_item['status'] = 'Geocodificato';
                     $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
                     
-                    // Se l'appuntamento ha zone_id = 0, verifica a quale zona appartiene
+                    // Se zona = 0, determina la zona corretta
                     if ($zone_id == 0) {
-                        $correct_zone_id = 0;
-                        $zones = getZonesFromCoordinates($coordinates['lat'], $coordinates['lng']);
-                        foreach ($zones as $zone) {
-                            $zone_center = [$zone['latitude'], $zone['longitude']];
-                            $app_coords = [$coordinates['lat'], $coordinates['lng']];
-                            $distance_to_zone = calculateDistance($app_coords, $zone_center);
+                        // Ottieni tutte le zone
+                        $all_zones_sql = "SELECT id, latitude, longitude, radius_km FROM cp_zones";
+                        $all_zones_stmt = $conn->prepare($all_zones_sql);
+                        if ($all_zones_stmt && $all_zones_stmt->execute()) {
+                            $all_zones_result = $all_zones_stmt->get_result();
+                            $all_zones = $all_zones_result->fetch_all(MYSQLI_ASSOC);
                             
-                            if ($distance_to_zone <= $zone['radius_km']) {
-                                $correct_zone_id = $zone['id'];
-                                error_log("Appuntamento ID: $appointment_id con indirizzo: $address appartiene alla zona: {$zone['name']} (ID: {$zone['id']})");
-                                break;
-                            }
-                        }
-                        
-                        // Se abbiamo trovato una zona, aggiorniamo l'appuntamento
-                        if ($correct_zone_id > 0) {
-                            $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
-                            $update_stmt = $conn->prepare($update_sql);
-                            if ($update_stmt) {
-                                $update_stmt->bind_param("ii", $correct_zone_id, $appointment_id);
-                                if ($update_stmt->execute()) {
-                                    // Aggiorna il valore nel record corrente per continuare con la logica corretta
-                                    $zone_id = $correct_zone_id;
-                                    $row['zone_id'] = $correct_zone_id;
-                                    $debug_item['zone_id'] = $correct_zone_id;
-                                    error_log("Aggiornata zona per appuntamento ID: $appointment_id da 0 a $correct_zone_id");
-                                } else {
-                                    error_log("Errore nell'aggiornamento della zona per l'appuntamento ID: $appointment_id: " . $update_stmt->error);
+                            // Determina se l'indirizzo è in una zona
+                            foreach ($all_zones as $zone) {
+                                $zone_center = [$zone['latitude'], $zone['longitude']];
+                                $app_location = [$coordinates['lat'], $coordinates['lng']];
+                                $distance_to_zone = calculateDistance($app_location, $zone_center);
+                                
+                                if ($distance_to_zone <= $zone['radius_km']) {
+                                    // Aggiorna l'appuntamento con la zona corretta
+                                    $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
+                                    $update_stmt = $conn->prepare($update_sql);
+                                    if ($update_stmt) {
+                                        $correct_zone_id = $zone['id'];
+                                        $update_stmt->bind_param("ii", $correct_zone_id, $appointment_id);
+                                        if ($update_stmt->execute()) {
+                                            $zone_id = $correct_zone_id;
+                                            $row['zone_id'] = $correct_zone_id;
+                                            error_log("Zona corretta per appuntamento $appointment_id: $correct_zone_id");
+                                        }
+                                        $update_stmt->close();
+                                    }
+                                    break;
                                 }
-                                $update_stmt->close();
                             }
+                            $all_zones_stmt->close();
                         }
                     }
                 } else {
