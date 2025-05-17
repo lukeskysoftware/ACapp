@@ -1649,6 +1649,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
         $available_slots_near_appointments = [];
         
 // Per ogni appuntamento trovato vicino, verifica slot disponibili
+$available_slots_near_appointments = [];
+
 foreach ($nearby_appointments as $appointment) {
     // Salta appuntamenti con motivo di esclusione
     if (!empty($appointment['excluded_reason'])) {
@@ -1661,30 +1663,40 @@ foreach ($nearby_appointments as $appointment) {
     }
     
     $slots = checkAvailableSlotsNearAppointment($appointment);
-    $available_slots_near_appointments = array_merge($available_slots_near_appointments, $slots);
+    
+    // Filtra gli slot per includere solo quelli non esclusi
+    $valid_slots = array_filter($slots, function($slot) {
+        return !isset($slot['excluded']) || $slot['excluded'] === false;
+    });
+    
+    $available_slots_near_appointments = array_merge($available_slots_near_appointments, $valid_slots);
 }
         
-        // Mostra i risultati
-        echo "<div class='container'><center><h2>Indirizzo: <span style='color:green; font-weight:700;'>{$address}</span></h2>";
-        echo "<p>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</p></center></div><hr>";
+// Mostra i risultati
+echo "<div class='container'><center><h2>Indirizzo: <span style='color:green; font-weight:700;'>{$address}</span></h2>";
+echo "<p>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</p></center></div><hr>";
        
        
-        // Funzione di debug per visualizzare i dettagli degli appuntamenti
+// Funzione di debug per visualizzare i dettagli degli appuntamenti
 
        
-        // Mostra appuntamenti trovati nel raggio (opzionale, per debug)
-        if (!empty($nearby_appointments)) {
-            echo "<div class='container'><center>";
-            echo "<h3>Appuntamenti trovati nel raggio di 7km: " . count($nearby_appointments) . "</h3>";
-            echo "</center></div>";
-            displayAppointmentDetails($nearby_appointments);
-        }
+// Mostra appuntamenti trovati nel raggio (opzionale, per debug)
+if (!empty($nearby_appointments)) {
+    echo "<div class='container'><center>";
+    echo "<h3>Appuntamenti trovati nel raggio di 7km: " . count($nearby_appointments) . "</h3>";
+    echo "</center></div>";
+    displayAppointmentDetails($nearby_appointments);
+}
         
        
 // Codice per la visualizzazione degli slot disponibili
 if (!empty($available_slots_near_appointments)) {
     echo "<div class='container'><center>";
     echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
+    
+    // Contatore degli slot visualizzati
+    $displayed_slots_count = 0;
+    
     foreach ($available_slots_near_appointments as $slot) {
         $slot_date = date('d/m/Y', strtotime($slot['date']));
         
@@ -1786,11 +1798,19 @@ if (!empty($available_slots_near_appointments)) {
         echo "' class='btn btn-success mt-2 fw-bold'>Seleziona</a>";
 
         echo "</div>";
+        
+        // Incrementa il contatore degli slot visualizzati
+        $displayed_slots_count++;
     }
+    
+    if ($displayed_slots_count == 0) {
+        echo "<p>Nessuno slot disponibile dopo il filtraggio.</p>";
+    }
+    
     echo "</center></div><hr>";
-}else {
-            echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
-        }
+} else {
+    echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
+}
                 // Continua con la logica esistente per le zone
                 $zones = getZonesFromCoordinates($latitude, $longitude);
                 $origin = [$latitude, $longitude];
