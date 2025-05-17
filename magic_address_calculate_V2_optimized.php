@@ -39,30 +39,57 @@ setlocale(LC_TIME, 'it_IT.UTF-8');
  * @param float $dest_lng Longitudine della destinazione
  * @return float Distanza in km, -1 in caso di errore
  */
+/**
+ * Funzione migliorata per calcolare la distanza stradale tra coordinate
+ */
 function calculateRoadDistance($originLat, $originLng, $destinationLat, $destinationLng) {
     global $conn;
 
-    // $cacheKey = "distance_" . $originLat . "_" . $originLng . "_" . $destinationLat . "_" . $destinationLng;
-    // The cache key is now distributed across multiple columns.
-
-    // Check if the distance is already cached
-    $sql = "SELECT distance FROM distance_cache WHERE origin_lat = ? AND origin_lng = ? AND dest_lat = ? AND dest_lng = ?";
-    $stmt = $conn->prepare($sql);
-
-    if ($stmt === false) {
-        error_log("Errore nella preparazione della query (cache check): " . $conn->error);
+    // Verificare che le coordinate siano numeri validi
+    if (!is_numeric($originLat) || !is_numeric($originLng) || 
+        !is_numeric($destinationLat) || !is_numeric($destinationLng)) {
+        error_log("calculateRoadDistance: Coordinate non valide: [{$originLat}, {$originLng}] -> [{$destinationLat}, {$destinationLng}]");
         return false;
     }
 
-    $stmt->bind_param("dddd", $originLat, $originLng, $destinationLat, $destinationLng);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    // Normalizzazione dei valori a float con 6 decimali di precisione
+    $originLat = round((float)$originLat, 6);
+    $originLng = round((float)$originLng, 6);
+    $destinationLat = round((float)$destinationLat, 6);
+    $destinationLng = round((float)$destinationLng, 6);
 
-    if ($row = $result->fetch_assoc()) {
-        return (float)$row['distance']; // Return cached distance
+    // Verifica se è un calcolo di distanza dallo stesso punto
+    if (abs($originLat - $destinationLat) < 0.0000001 && abs($originLng - $destinationLng) < 0.0000001) {
+        error_log("calculateRoadDistance: Origine e destinazione coincidono, distanza 0 km");
+        return 0;
     }
 
-    // Retrieve Google Maps API key from config table
+    // Verifica se la distanza è già in cache (in entrambe le direzioni)
+    $sql = "SELECT distance FROM distance_cache 
+            WHERE (ABS(origin_lat - ?) < 0.000001 AND ABS(origin_lng - ?) < 0.000001 
+                 AND ABS(dest_lat - ?) < 0.000001 AND ABS(dest_lng - ?) < 0.000001)
+            OR (ABS(origin_lat - ?) < 0.000001 AND ABS(origin_lng - ?) < 0.000001 
+                AND ABS(dest_lat - ?) < 0.000001 AND ABS(dest_lng - ?) < 0.000001)";
+    
+    $stmt = $conn->prepare($sql);
+    if ($stmt === false) {
+        error_log("calculateRoadDistance: Errore preparazione query cache: " . $conn->error);
+        return false;
+    }
+    
+    $stmt->bind_param("dddddddd", 
+                      $originLat, $originLng, $destinationLat, $destinationLng,
+                      $destinationLat, $destinationLng, $originLat, $originLng);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($row = $result->fetch_assoc()) {
+        error_log("calculateRoadDistance: Distanza recuperata dalla cache: {$row['distance']} km");
+        return (float)$row['distance'];
+    }
+
+    // Non trovato in cache, chiama l'API di Google Maps
+    $apiKey = '';
     $sql = "SELECT value FROM config WHERE name = 'GOOGLE_MAPS_API_KEY'";
     $result = $conn->query($sql);
 
@@ -70,59 +97,67 @@ function calculateRoadDistance($originLat, $originLng, $destinationLat, $destina
         $row = $result->fetch_assoc();
         $apiKey = $row['value'];
     } else {
-        error_log("Errore: Impossibile recuperare la chiave API di Google Maps.");
+        error_log("calculateRoadDistance: Errore nel recupero della chiave API di Google Maps");
         return false;
     }
 
     $origins = $originLat . "," . $originLng;
     $destinations = $destinationLat . "," . $destinationLng;
 
-    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins=" . urlencode($origins) . "&destinations=" . urlencode($destinations) . "&key=" . $apiKey;
+    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins=" . urlencode($origins) . 
+           "&destinations=" . urlencode($destinations) . "&key=" . $apiKey;
 
-    // Log the URL
-    error_log("Distance Matrix API URL: " . $url);
+    error_log("calculateRoadDistance: Chiamata API Google Maps Distance Matrix");
 
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15); // Timeout di 15 secondi per assicurare una risposta
 
     $response = curl_exec($ch);
-
-    // Log the entire JSON response
-    error_log("Distance Matrix API Response: " . $response);
-
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    error_log("Distance Matrix API HTTP Code: " . $httpCode);
-
+    
     if ($response === false) {
-        error_log('Errore cURL: ' . curl_error($ch));
+        $error_message = curl_error($ch);
         curl_close($ch);
+        error_log("calculateRoadDistance: Errore cURL durante chiamata API: " . $error_message);
         return false;
     }
 
     curl_close($ch);
-
     $data = json_decode($response, true);
 
-    if ($data['status'] == 'OK') {
-        $distance = $data['rows'][0]['elements'][0]['distance']['value'] / 1000; // in km
-
-        // Cache the distance
-        $sql = "INSERT INTO distance_cache (origin_lat, origin_lng, dest_lat, dest_lng, distance) VALUES (?, ?, ?, ?, ?)";
+    if ($data['status'] == 'OK' && isset($data['rows'][0]['elements'][0]['status']) && 
+        $data['rows'][0]['elements'][0]['status'] == 'OK' && 
+        isset($data['rows'][0]['elements'][0]['distance']['value'])) {
+        
+        $distance = $data['rows'][0]['elements'][0]['distance']['value'] / 1000; // converti da metri a km
+        error_log("calculateRoadDistance: Distanza calcolata da API Google: {$distance} km");
+        
+        // Salva in cache per uso futuro
+        $sql = "INSERT INTO distance_cache (origin_lat, origin_lng, dest_lat, dest_lng, distance) 
+                VALUES (?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
-
-        if ($stmt === false) {
-            error_log("Errore nella preparazione della query (cache insert): " . $conn->error);
-            return false;
+        if ($stmt) {
+            $stmt->bind_param("ddddd", $originLat, $originLng, $destinationLat, $destinationLng, $distance);
+            if ($stmt->execute()) {
+                error_log("calculateRoadDistance: Distanza salvata in cache con successo");
+            } else {
+                error_log("calculateRoadDistance: Errore nell'inserimento nella cache: " . $stmt->error);
+            }
         }
-
-        $stmt->bind_param("ddddd", $originLat, $originLng, $destinationLat, $destinationLng, $distance);
-        $stmt->execute();
-
+        
         return $distance;
     } else {
-        error_log("Errore nell'API Distance Matrix: " . $data['status'] . " - " . $data['error_message']);
+        // Gestione errore API
+        $status = $data['status'] ?? 'Sconosciuto';
+        $element_status = isset($data['rows'][0]['elements'][0]['status']) ? 
+                         $data['rows'][0]['elements'][0]['status'] : 'Sconosciuto';
+        
+        error_log("calculateRoadDistance: Errore API Google. Status: {$status}, Element status: {$element_status}");
+        error_log("calculateRoadDistance: Risposta API: " . print_r($data, true));
+        
         return false;
     }
 }
@@ -175,6 +210,107 @@ function calculateDistance($origin, $destination) {
     return $estimatedRoadDistance;
 }
 
+function precalculateDistancesForDate($date) {
+    global $conn;
+    $stats = [
+        'total_appointments' => 0,
+        'pairs_processed' => 0,
+        'calculated' => 0,
+        'from_cache' => 0,
+        'errors' => 0
+    ];
+    
+    error_log("precalculateDistancesForDate: Precalcolo distanze per appuntamenti del {$date}");
+    
+    // Ottieni tutti gli appuntamenti per la data specificata
+    $sql = "SELECT id, address FROM cp_appointments WHERE appointment_date = ? AND address != ''";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("s", $date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    $appointments = [];
+    while ($row = $result->fetch_assoc()) {
+        $coords = getCoordinatesForAppointment($row['id'], $row['address']);
+        if ($coords) {
+            $appointments[] = [
+                'id' => $row['id'],
+                'address' => $row['address'],
+                'lat' => $coords['lat'],
+                'lng' => $coords['lng']
+            ];
+        }
+    }
+    
+    $count = count($appointments);
+    $stats['total_appointments'] = $count;
+    error_log("precalculateDistancesForDate: Trovati {$count} appuntamenti validi con coordinate per il {$date}");
+    
+    // Calcola tutte le distanze tra coppie di appuntamenti
+    for ($i = 0; $i < $count; $i++) {
+        for ($j = $i + 1; $j < $count; $j++) {
+            $stats['pairs_processed']++;
+            
+            $app1 = $appointments[$i];
+            $app2 = $appointments[$j];
+            
+            // Verifica se già in cache
+            $sql = "SELECT COUNT(*) as count FROM distance_cache 
+                   WHERE (ABS(origin_lat - ?) < 0.000001 AND ABS(origin_lng - ?) < 0.000001 
+                         AND ABS(dest_lat - ?) < 0.000001 AND ABS(dest_lng - ?) < 0.000001)
+                   OR (ABS(origin_lat - ?) < 0.000001 AND ABS(origin_lng - ?) < 0.000001 
+                       AND ABS(dest_lat - ?) < 0.000001 AND ABS(dest_lng - ?) < 0.000001)";
+            
+            $cache_stmt = $conn->prepare($sql);
+            $cache_stmt->bind_param("dddddddd", 
+                $app1['lat'], $app1['lng'], $app2['lat'], $app2['lng'],
+                $app2['lat'], $app2['lng'], $app1['lat'], $app1['lng']
+            );
+            $cache_stmt->execute();
+            $cache_row = $cache_stmt->get_result()->fetch_assoc();
+            
+            if ($cache_row['count'] > 0) {
+                $stats['from_cache']++;
+                continue;
+            }
+            
+            // Calcola e salva la distanza
+            $distance = calculateRoadDistance($app1['lat'], $app1['lng'], $app2['lat'], $app2['lng']);
+            if ($distance !== false) {
+                $stats['calculated']++;
+                error_log("precalculateDistancesForDate: Calcolata distanza {$distance} km tra App ID {$app1['id']} e {$app2['id']}");
+            } else {
+                $stats['errors']++;
+                error_log("precalculateDistancesForDate: Errore calcolo distanza tra App ID {$app1['id']} e {$app2['id']}");
+            }
+            
+            // Breve pausa per rispettare limiti API
+            usleep(200000); // 200ms
+        }
+    }
+    
+    error_log("precalculateDistancesForDate: Completato - Appuntamenti: {$stats['total_appointments']}, " . 
+              "Coppie: {$stats['pairs_processed']}, Calcolate: {$stats['calculated']}, " . 
+              "Da cache: {$stats['from_cache']}, Errori: {$stats['errors']}");
+    
+    return $stats;
+}
+
+// Esegui un aggiornamento automatico per la data odierna e futura
+$auto_update_date = isset($_GET['preload_dates']) ? $_GET['preload_dates'] : false;
+if ($auto_update_date) {
+    $date = date('Y-m-d');
+    error_log("Avvio precalcolo distanze per la data odierna: {$date}");
+    precalculateDistancesForDate($date);
+    
+    // Opzionalmente, calcola anche per domani
+    $tomorrow = date('Y-m-d', strtotime('+1 day'));
+    error_log("Avvio precalcolo distanze per domani: {$tomorrow}");
+    precalculateDistancesForDate($tomorrow);
+    
+    echo json_encode(['status' => 'success', 'message' => "Precalcolo distanze completato per {$date} e {$tomorrow}"]);
+    exit;
+}
 /**
  * Funzione per trovare appuntamenti vicini entro il raggio specificato.
  * Marca gli appuntamenti con un motivo di esclusione se non sono validi come riferimenti.
@@ -188,13 +324,15 @@ function calculateDistance($origin, $destination) {
  */
 function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7) {
     global $conn;
-    $appointments_evaluated = []; // Array per contenere tutti gli appuntamenti valutati
+    $appointments_evaluated = []; 
     $debug_info_collection = []; 
     $today = date('Y-m-d');
     $now = date('H:i:s');
 
+    error_log("findNearbyAppointments: Ricerca appuntamenti vicini a [{$user_latitude}, {$user_longitude}] nel raggio di {$radius_km} km");
+
     // Considera solo appuntamenti futuri o odierni
-    $sql = "SELECT * FROM cp_appointments WHERE appointment_date >= ?";
+    $sql = "SELECT * FROM cp_appointments WHERE appointment_date >= ? ORDER BY appointment_date, appointment_time";
     $stmt = $conn->prepare($sql);
     if (!$stmt) {
         error_log("findNearbyAppointments: Errore preparazione query principale: " . $conn->error);
@@ -203,29 +341,36 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
     $stmt->bind_param("s", $today);
     $stmt->execute();
     $result = $stmt->get_result();
+    $total_appointments = $result->num_rows;
+    
+    error_log("findNearbyAppointments: Trovati {$total_appointments} appuntamenti futuri o odierni");
 
-    if ($result->num_rows > 0) {
+    if ($total_appointments > 0) {
+        $processed = 0;
         while ($db_row = $result->fetch_assoc()) {
-            $current_appointment = $db_row; // Lavora su una copia per poterla modificare
+            $processed++;
+            $current_appointment = $db_row;
             $appointment_id = $current_appointment['id'];
-            $zone_id = $current_appointment['zone_id']; // Può essere 0 inizialmente
+            $zone_id = $current_appointment['zone_id'];
             $app_time = $current_appointment['appointment_time'];
             $app_date = $current_appointment['appointment_date'];
             $address = trim($current_appointment['address']);
             
-            $current_appointment['excluded_reason'] = ''; // Inizializza motivo esclusione
+            $current_appointment['excluded_reason'] = '';
 
-            $debug_item = [ /* ... setup iniziale del debug item ... */ ];
+            // Log dello stato di avanzamento ogni 10 appuntamenti
+            if ($processed % 10 == 0 || $processed == $total_appointments) {
+                error_log("findNearbyAppointments: Processati {$processed}/{$total_appointments} appuntamenti");
+            }
 
             // Check 1: Orario passato (solo per oggi)
             if ($app_date == $today && strtotime($app_time) < strtotime($now)) {
                 $current_appointment['excluded_reason'] = 'Rif. appuntamento: Orario già passato oggi.';
                 $appointments_evaluated[] = $current_appointment;
-                error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (passato).");
                 continue;
             }
 
-            // Check 2: Validità dell'appuntamento rispetto agli slot della sua zona (se zone_id > 0)
+            // Check 2: Validità dell'appuntamento rispetto agli slot della sua zona
             if ($zone_id != 0) {
                 $zone_min_slot = null; $zone_max_slot = null;
                 $slots_sql = "SELECT MIN(time) as earliest, MAX(time) as latest FROM cp_slots WHERE zone_id = ?";
@@ -236,7 +381,7 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                     $slots_res = $slots_stmt->get_result();
                     if ($slots_row = $slots_res->fetch_assoc()) {
                         $zone_min_slot = $slots_row['earliest'];
-                        $zone_max_slot = $slots_row['latest']; // Questo è l'inizio dell'ultimo slot
+                        $zone_max_slot = $slots_row['latest'];
                     }
                     $slots_stmt->close();
                 }
@@ -245,76 +390,72 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                     if (strtotime($app_time) < strtotime($zone_min_slot) || strtotime($app_time) > strtotime($zone_max_slot)) {
                         $current_appointment['excluded_reason'] = "Rif. appuntamento: Orario {$app_time} fuori dagli slot operativi della zona {$zone_id} ({$zone_min_slot} - {$zone_max_slot}).";
                         $appointments_evaluated[] = $current_appointment;
-                        error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (fuori slot zona).");
                         continue;
                     }
-                } else { // zone_id != 0 ma non ci sono slot configurati per essa in cp_slots
+                } else {
                     $current_appointment['excluded_reason'] = "Rif. appuntamento: Zona ID {$zone_id} non ha slot configurati in cp_slots.";
                     $appointments_evaluated[] = $current_appointment;
-                    error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (zona senza slot).");
                     continue;
                 }
             }
-            // Se zone_id è 0, il controllo sugli slot verrà fatto (se necessario) dopo la geocodifica e l'eventuale assegnazione di una zona.
 
             // Check 3: Indirizzo vuoto
             if (empty($address)) {
                 $current_appointment['excluded_reason'] = 'Rif. appuntamento: Indirizzo mancante.';
                 $appointments_evaluated[] = $current_appointment;
-                error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (indirizzo vuoto).");
                 continue;
             }
 
-            // Check 4: Geocodifica
-            $coordinates = getCoordinatesFromAddress($address, $appointment_id); // Assicurati che questa funzione esista
+            // Check 4: Ottieni coordinate (prima dalla cache, poi da Google Maps se necessario)
+            $coordinates = getCoordinatesForAppointment($appointment_id, $address);
+            
             if (!$coordinates) {
-                $current_appointment['excluded_reason'] = 'Rif. appuntamento: Impossibile geocodificare l\'indirizzo.';
+                $current_appointment['excluded_reason'] = 'Rif. appuntamento: Impossibile recuperare coordinate.';
                 $appointments_evaluated[] = $current_appointment;
-                error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (geocodifica fallita).");
                 continue;
             }
+            
             $current_appointment['latitude'] = $coordinates['lat'];
             $current_appointment['longitude'] = $coordinates['lng'];
 
-            // Check 4.5: Se zone_id era 0, tenta di determinarla e ri-controllare gli slot.
-            // Questa parte è complessa e potrebbe richiedere una ristrutturazione o un flag per rieseguire il check 2.
-            // Per ora, la saltiamo per mantenere la modifica più contenuta, ma è un punto di miglioramento.
-            // if ($original_zone_id_was_zero && $current_appointment['zone_id'] != 0) { /* ... logica per ri-check 2 ... */ }
-
-
-            // Check 5: Calcolo distanza stradale dell'appuntamento di riferimento dalla posizione dell'utente
+            // Check 5: Calcolo distanza stradale (sempre dalla API Google Maps)
             $distance = calculateRoadDistance($user_latitude, $user_longitude, $coordinates['lat'], $coordinates['lng']);
-            if ($distance === false || $distance < 0) {
+            
+            if ($distance === false) {
                 $current_appointment['excluded_reason'] = 'Rif. appuntamento: Errore API calcolo distanza.';
                 $appointments_evaluated[] = $current_appointment;
-                error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (errore API distanza).");
                 continue;
             }
+            
             $current_appointment['distance'] = $distance;
 
-            // Check 6: Distanza dell'appuntamento di riferimento rispetto al raggio di ricerca dell'utente
-            // Questo è un motivo di esclusione cruciale per non generare slot adiacenti.
+            // Check 6: Distanza rispetto al raggio di ricerca
             if ($distance > $radius_km) {
                 $current_appointment['excluded_reason'] = "Rif. appuntamento: Distanza dal luogo di ricerca (" . number_format($distance, 1) . " km) supera il raggio impostato (" . $radius_km . " km).";
-                // L'appuntamento viene aggiunto alla lista per essere visualizzato come escluso,
-                // ma la logica chiamante non dovrebbe usarlo per checkAvailableSlotsNearAppointment.
+                error_log("findNearbyAppointments: App. ID {$appointment_id} - Distanza {$distance} km > raggio {$radius_km} km");
+            } else {
+                error_log("findNearbyAppointments: App. ID {$appointment_id} - Distanza {$distance} km ENTRO raggio {$radius_km} km");
             }
             
-            // Se nessun 'excluded_reason' è stato impostato fino ad ora, l'appuntamento è valido come riferimento.
-            // Se è stato impostato (es. dal check 6), verrà comunque aggiunto con quel motivo.
             $appointments_evaluated[] = $current_appointment;
         }
     }
 
-    // Ordina gli appuntamenti valutati per data e ora
+    // Ordinamento per data e ora
     usort($appointments_evaluated, function($a, $b) {
         $adate = $a['appointment_date'] . ' ' . $a['appointment_time'];
         $bdate = $b['appointment_date'] . ' ' . $b['appointment_time'];
         return strcmp($adate, $bdate);
     });
 
-    global $address_comparison_debug; // Se usi questa variabile globale
-    $address_comparison_debug = $debug_info_collection; // Popola $debug_info_collection come necessario
+    $valid_appointments = count(array_filter($appointments_evaluated, function($app) {
+        return empty($app['excluded_reason']);
+    }));
+    
+    error_log("findNearbyAppointments: Processati totali {$total_appointments}, valutati {$total_appointments}, validi entro il raggio: {$valid_appointments}");
+
+    global $address_comparison_debug;
+    $address_comparison_debug = $debug_info_collection;
 
     return $appointments_evaluated;
 }
@@ -495,110 +636,211 @@ function displayProposedSlots($appointments) {
 }
 
 // Funzione per ottenere coordinate da un indirizzo
-function getCoordinatesFromAddress($address, $appointment_id = null) {
+/**
+ * Funzione migliorata per recuperare le coordinate di un indirizzo
+ * PRIORITÀ: 1. Cerca per appointment_id nella address_cache
+ *           2. Cerca per indirizzo nella address_cache
+ *           3. Solo se non trovato, chiedi a Google Maps
+ */
+function getCoordinatesForAppointment($appointment_id, $address = null) {
     global $conn;
     
-    // Log dell'operazione
-    error_log("Tentativo di geocodifica per indirizzo: " . $address);
-
-    // Controlla se abbiamo già le coordinate per questo indirizzo
-    $sql = "SELECT latitude, longitude FROM address_cache WHERE address = ? LIMIT 1";
+    if (empty($appointment_id)) {
+        error_log("getCoordinatesForAppointment: ID appuntamento mancante");
+        return null;
+    }
+    
+    error_log("getCoordinatesForAppointment: Cerco coordinate per appuntamento ID: $appointment_id");
+    
+    // 1. Prima cerca nella cache usando l'ID appuntamento
+    $sql = "SELECT latitude, longitude FROM address_cache WHERE appointment_id = ? LIMIT 1";
     $stmt = $conn->prepare($sql);
     if ($stmt) {
-        $stmt->bind_param("s", $address);
+        $stmt->bind_param("i", $appointment_id);
         $stmt->execute();
         $result = $stmt->get_result();
+        
         if ($row = $result->fetch_assoc()) {
-            // Se abbiamo l'ID appuntamento, aggiorniamo la cache
-            if ($appointment_id) {
-                $insertSql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
-                             VALUES (?, ?, ?, ?) 
-                             ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
-                $insertStmt = $conn->prepare($insertSql);
-                if ($insertStmt) {
-                    $insertStmt->bind_param("isdd", $appointment_id, $address, $row['latitude'], $row['longitude']);
-                    $insertStmt->execute();
-                }
-            }
-            error_log("Coordinate recuperate dalla cache per: " . $address);
+            error_log("getCoordinatesForAppointment: Coordinate trovate in cache per appointment_id=$appointment_id: [{$row['latitude']}, {$row['longitude']}]");
             return ['lat' => $row['latitude'], 'lng' => $row['longitude']];
         }
     }
+    
+    // Se non abbiamo l'indirizzo, dobbiamo recuperarlo
+    if (empty($address)) {
+        $sql = "SELECT address FROM cp_appointments WHERE id = ? LIMIT 1";
+        $stmt = $conn->prepare($sql);
+        if ($stmt) {
+            $stmt->bind_param("i", $appointment_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            if ($row = $result->fetch_assoc()) {
+                $address = $row['address'];
+            } else {
+                error_log("getCoordinatesForAppointment: Impossibile trovare indirizzo per appointment_id=$appointment_id");
+                return null;
+            }
+        }
+    }
+    
+    // 2. Cerca nella cache usando l'indirizzo
+    if (!empty($address)) {
+        $sql = "SELECT latitude, longitude FROM address_cache WHERE address = ? LIMIT 1";
+        $stmt = $conn->prepare($sql);
+        if ($stmt) {
+            $stmt->bind_param("s", $address);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if ($row = $result->fetch_assoc()) {
+                // Trovate coordinate, aggiorna la cache con appointment_id
+                error_log("getCoordinatesForAppointment: Coordinate trovate in cache per indirizzo: [{$row['latitude']}, {$row['longitude']}]");
+                
+                // Aggiorna la cache con il legame appointment_id -> address
+                $updateSql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
+                             VALUES (?, ?, ?, ?) 
+                             ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
+                $updateStmt = $conn->prepare($updateSql);
+                if ($updateStmt) {
+                    $updateStmt->bind_param("isdd", $appointment_id, $address, $row['latitude'], $row['longitude']);
+                    $updateStmt->execute();
+                    error_log("getCoordinatesForAppointment: Aggiornato legame in cache tra appointment_id=$appointment_id e indirizzo");
+                }
+                
+                return ['lat' => $row['latitude'], 'lng' => $row['longitude']];
+            }
+        }
+    }
+    
+    // 3. Solo se non troviamo in cache, chiedi a Google Maps
+    error_log("getCoordinatesForAppointment: Coordinate non trovate in cache, chiedo a Google Maps per address: $address");
+    return getCoordinatesFromAddress($address, $appointment_id);
+}
 
-    // Recupera la chiave API dalla tabella config
+/**
+ * Funzione per calcolare la distanza stradale usando esclusivamente l'API di Google
+ * con caching ottimizzato per evitare chiamate ripetute per le stesse coordinate
+ *//*
+function calculateRoadDistance($originLat, $originLng, $destinationLat, $destinationLng) {
+    global $conn;
+
+    // Verificare che le coordinate siano numeri validi
+    if (!is_numeric($originLat) || !is_numeric($originLng) || 
+        !is_numeric($destinationLat) || !is_numeric($destinationLng)) {
+        error_log("calculateRoadDistance: Coordinate non valide: [{$originLat}, {$originLng}] -> [{$destinationLat}, {$destinationLng}]");
+        return false;
+    }
+
+    // Normalizzazione dei valori a float con 6 decimali di precisione
+    $originLat = round((float)$originLat, 6);
+    $originLng = round((float)$originLng, 6);
+    $destinationLat = round((float)$destinationLat, 6);
+    $destinationLng = round((float)$destinationLng, 6);
+
+    // Verifica se è un calcolo di distanza dallo stesso punto
+    if (abs($originLat - $destinationLat) < 0.0000001 && abs($originLng - $destinationLng) < 0.0000001) {
+        error_log("calculateRoadDistance: Origine e destinazione coincidono, distanza 0 km");
+        return 0;
+    }
+
+    // Verifica se la distanza è già in cache (in entrambe le direzioni)
+    $sql = "SELECT distance FROM distance_cache 
+            WHERE (ABS(origin_lat - ?) < 0.000001 AND ABS(origin_lng - ?) < 0.000001 
+                 AND ABS(dest_lat - ?) < 0.000001 AND ABS(dest_lng - ?) < 0.000001)
+            OR (ABS(origin_lat - ?) < 0.000001 AND ABS(origin_lng - ?) < 0.000001 
+                AND ABS(dest_lat - ?) < 0.000001 AND ABS(dest_lng - ?) < 0.000001)";
+    
+    $stmt = $conn->prepare($sql);
+    if ($stmt === false) {
+        error_log("calculateRoadDistance: Errore preparazione query cache: " . $conn->error);
+        return false;
+    }
+    
+    $stmt->bind_param("dddddddd", 
+                      $originLat, $originLng, $destinationLat, $destinationLng,
+                      $destinationLat, $destinationLng, $originLat, $originLng);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($row = $result->fetch_assoc()) {
+        error_log("calculateRoadDistance: Distanza recuperata dalla cache: {$row['distance']} km");
+        return (float)$row['distance'];
+    }
+
+    // Non trovato in cache, chiama l'API di Google Maps
     $apiKey = '';
     $sql = "SELECT value FROM config WHERE name = 'GOOGLE_MAPS_API_KEY'";
-    $result = mysqli_query($conn, $sql);
-    if ($result && mysqli_num_rows($result) > 0) {
-        $row = mysqli_fetch_assoc($result);
+    $result = $conn->query($sql);
+
+    if ($result->num_rows > 0) {
+        $row = $result->fetch_assoc();
         $apiKey = $row['value'];
     } else {
-        error_log('Errore nel recupero della chiave API di Google Maps: ' . mysqli_error($conn));
-        return null;
+        error_log("calculateRoadDistance: Errore nel recupero della chiave API di Google Maps");
+        return false;
     }
-    
-    if (empty($apiKey)) {
-        error_log("API key non trovata per la geocodifica");
-        return null;
-    }
-    
-    $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
-    
-    // Usa cURL invece di file_get_contents
+
+    $origins = $originLat . "," . $originLng;
+    $destinations = $destinationLat . "," . $destinationLng;
+
+    $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins=" . urlencode($origins) . 
+           "&destinations=" . urlencode($destinations) . "&key=" . $apiKey;
+
+    error_log("calculateRoadDistance: Chiamata API Google Maps Distance Matrix");
+
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_USERAGENT, 'PHP Geocoding Application');
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15); // Timeout di 15 secondi per assicurare una risposta
+
     $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     
     if ($response === false) {
-        error_log("Errore cURL durante la chiamata all'API di geocodifica: " . curl_error($ch));
+        $error_message = curl_error($ch);
         curl_close($ch);
-        return null;
+        error_log("calculateRoadDistance: Errore cURL durante chiamata API: " . $error_message);
+        return false;
     }
-    
+
     curl_close($ch);
-    
     $data = json_decode($response, true);
-    
-    if ($data['status'] == 'OK') {
-        $lat = $data['results'][0]['geometry']['location']['lat'];
-        $lng = $data['results'][0]['geometry']['location']['lng'];
+
+    if ($data['status'] == 'OK' && isset($data['rows'][0]['elements'][0]['status']) && 
+        $data['rows'][0]['elements'][0]['status'] == 'OK' && 
+        isset($data['rows'][0]['elements'][0]['distance']['value'])) {
         
-        // Salva nella cache
-        if ($appointment_id) {
-            $sql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
-                   VALUES (?, ?, ?, ?) 
-                   ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
-            $stmt = $conn->prepare($sql);
-            if ($stmt) {
-                $stmt->bind_param("isdd", $appointment_id, $address, $lat, $lng);
-                if (!$stmt->execute()) {
-                    error_log("Errore nell'inserimento nella cache: " . $stmt->error);
-                } else {
-                    error_log("Cache aggiornata con successo per appointment_id=$appointment_id");
-                }
-            }
-        } else {
-            // Cache senza appointment_id (per indirizzi temporanei)
-            $sql = "INSERT INTO address_cache (address, latitude, longitude) 
-                   VALUES (?, ?, ?)";
-            $stmt = $conn->prepare($sql);
-            if ($stmt) {
-                $stmt->bind_param("sdd", $address, $lat, $lng);
-                $stmt->execute();
+        $distance = $data['rows'][0]['elements'][0]['distance']['value'] / 1000; // converti da metri a km
+        error_log("calculateRoadDistance: Distanza calcolata da API Google: {$distance} km");
+        
+        // Salva in cache per uso futuro
+        $sql = "INSERT INTO distance_cache (origin_lat, origin_lng, dest_lat, dest_lng, distance) 
+                VALUES (?, ?, ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        if ($stmt) {
+            $stmt->bind_param("ddddd", $originLat, $originLng, $destinationLat, $destinationLng, $distance);
+            if ($stmt->execute()) {
+                error_log("calculateRoadDistance: Distanza salvata in cache con successo");
+            } else {
+                error_log("calculateRoadDistance: Errore nell'inserimento nella cache: " . $stmt->error);
             }
         }
         
-        error_log("Geocodifica riuscita per: " . $address);
-        return ['lat' => $lat, 'lng' => $lng];
+        return $distance;
     } else {
-        // Errore nella risposta API
-        error_log("Errore geocodifica per " . $address . ": " . $data['status'] . " - " . ($data['error_message'] ?? ''));
-        return null;
+        // Gestione errore API
+        $status = $data['status'] ?? 'Sconosciuto';
+        $element_status = isset($data['rows'][0]['elements'][0]['status']) ? 
+                         $data['rows'][0]['elements'][0]['status'] : 'Sconosciuto';
+        
+        error_log("calculateRoadDistance: Errore API Google. Status: {$status}, Element status: {$element_status}");
+        error_log("calculateRoadDistance: Risposta API: " . print_r($data, true));
+        
+        return false;
     }
 }
+*/
 
 // Function to get zones from coordinates
 function getZonesFromCoordinates($latitude, $longitude) {
