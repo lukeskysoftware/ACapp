@@ -387,12 +387,26 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 }
 
                 if ($zone_min_slot && $zone_max_slot) {
-                    if (strtotime($app_time) < strtotime($zone_min_slot) || strtotime($app_time) > strtotime($zone_max_slot)) {
-                        $current_appointment['excluded_reason'] = "Rif. appuntamento: Orario {$app_time} fuori dagli slot operativi della zona {$zone_id} ({$zone_min_slot} - {$zone_max_slot}).";
-                        $appointments_evaluated[] = $current_appointment;
-                        continue;
-                    }
-                } else {
+    if (strtotime($app_time) < strtotime($zone_min_slot) || strtotime($app_time) > strtotime($zone_max_slot)) {
+        $current_appointment['excluded_reason'] = "Rif. appuntamento: Orario {$app_time} fuori dagli slot operativi della zona {$zone_id} ({$zone_min_slot} - {$zone_max_slot}).";
+        
+        // Aggiungi queste righe per calcolare comunque la distanza
+        if (!empty($address)) {
+            $coordinates = getCoordinatesForAppointment($appointment_id, $address);
+            if ($coordinates) {
+                $current_appointment['latitude'] = $coordinates['lat'];
+                $current_appointment['longitude'] = $coordinates['lng'];
+                $distance = calculateRoadDistance($user_latitude, $user_longitude, $coordinates['lat'], $coordinates['lng']);
+                if ($distance !== false) {
+                    $current_appointment['distance'] = $distance;
+                }
+            }
+        }
+        
+        $appointments_evaluated[] = $current_appointment;
+        continue;
+    }
+} else {
                     $current_appointment['excluded_reason'] = "Rif. appuntamento: Zona ID {$zone_id} non ha slot configurati in cp_slots.";
                     $appointments_evaluated[] = $current_appointment;
                     continue;
@@ -1636,6 +1650,111 @@ if ($nextAppointment && !empty($nextAppointment['address'])) {
 
 // Se tutti i controlli sono passati, l'appuntamento è disponibile
 return true;
+}
+// Funzione per ottenere coordinate da un indirizzo
+function getCoordinatesFromAddress($address, $appointment_id = null) {
+    global $conn;
+    
+    // Log dell'operazione
+    error_log("Tentativo di geocodifica per indirizzo: " . $address);
+
+    // Controlla se abbiamo già le coordinate per questo indirizzo
+    $sql = "SELECT latitude, longitude FROM address_cache WHERE address = ? LIMIT 1";
+    $stmt = $conn->prepare($sql);
+    if ($stmt) {
+        $stmt->bind_param("s", $address);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($row = $result->fetch_assoc()) {
+            // Se abbiamo l'ID appuntamento, aggiorniamo la cache
+            if ($appointment_id) {
+                $insertSql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
+                             VALUES (?, ?, ?, ?) 
+                             ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
+                $insertStmt = $conn->prepare($insertSql);
+                if ($insertStmt) {
+                    $insertStmt->bind_param("isdd", $appointment_id, $address, $row['latitude'], $row['longitude']);
+                    $insertStmt->execute();
+                }
+            }
+            error_log("Coordinate recuperate dalla cache per: " . $address);
+            return ['lat' => $row['latitude'], 'lng' => $row['longitude']];
+        }
+    }
+
+    // Recupera la chiave API dalla tabella config
+    $apiKey = '';
+    $sql = "SELECT value FROM config WHERE name = 'GOOGLE_MAPS_API_KEY'";
+    $result = mysqli_query($conn, $sql);
+    if ($result && mysqli_num_rows($result) > 0) {
+        $row = mysqli_fetch_assoc($result);
+        $apiKey = $row['value'];
+    } else {
+        error_log('Errore nel recupero della chiave API di Google Maps: ' . mysqli_error($conn));
+        return null;
+    }
+    
+    if (empty($apiKey)) {
+        error_log("API key non trovata per la geocodifica");
+        return null;
+    }
+    
+    $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
+    
+    // Usa cURL invece di file_get_contents
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'PHP Geocoding Application');
+    $response = curl_exec($ch);
+    
+    if ($response === false) {
+        error_log("Errore cURL durante la chiamata all'API di geocodifica: " . curl_error($ch));
+        curl_close($ch);
+        return null;
+    }
+    
+    curl_close($ch);
+    
+    $data = json_decode($response, true);
+    
+    if ($data['status'] == 'OK') {
+        $lat = $data['results'][0]['geometry']['location']['lat'];
+        $lng = $data['results'][0]['geometry']['location']['lng'];
+        
+        // Salva nella cache
+        if ($appointment_id) {
+            $sql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
+                   VALUES (?, ?, ?, ?) 
+                   ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
+            $stmt = $conn->prepare($sql);
+            if ($stmt) {
+                $stmt->bind_param("isdd", $appointment_id, $address, $lat, $lng);
+                if (!$stmt->execute()) {
+                    error_log("Errore nell'inserimento nella cache: " . $stmt->error);
+                } else {
+                    error_log("Cache aggiornata con successo per appointment_id=$appointment_id");
+                }
+            }
+        } else {
+            // Cache senza appointment_id (per indirizzi temporanei)
+            $sql = "INSERT INTO address_cache (address, latitude, longitude) 
+                   VALUES (?, ?, ?)";
+            $stmt = $conn->prepare($sql);
+            if ($stmt) {
+                $stmt->bind_param("sdd", $address, $lat, $lng);
+                $stmt->execute();
+            }
+        }
+        
+        error_log("Geocodifica riuscita per: " . $address);
+        return ['lat' => $lat, 'lng' => $lng];
+    } else {
+        // Errore nella risposta API
+        error_log("Errore geocodifica per " . $address . ": " . $data['status'] . " - " . ($data['error_message'] ?? ''));
+        return null;
+    }
 }
 
 // Helper function to get coordinates from address
