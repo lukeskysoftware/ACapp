@@ -1742,519 +1742,359 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                             throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
                         }
                     }
-                    // Gestione del POST per la ricerca di appuntamenti
+                   
+                   
+                  
+// Gestione del POST per la ricerca di appuntamenti
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
-    // Verifica che latitude e longitude siano presenti e validi prima di procedere
+    // Verifica preliminare delle coordinate
     if (!isset($_POST['latitude']) || !isset($_POST['longitude']) || 
         empty($_POST['latitude']) || empty($_POST['longitude'])) {
         
-        echo '<div class="container"><div class="alert alert-danger">';
-        echo '<h3><i class="bi bi-exclamation-triangle-fill"></i> Errore</h3>';
-        echo '<p>Impossibile procedere senza coordinate geografiche.</p>';
+        // Interrompi l'output buffering se attivo e mostra errore
+        if (ob_get_level() > 0) {
+            ob_end_clean(); 
+        }
+        echo '<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Errore</title>';
+        echo '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body>';
+        echo '<div class="container mt-5"><div class="alert alert-danger">';
+        echo '<h3><i class="bi bi-exclamation-triangle-fill"></i> Errore di Input</h3>';
+        echo '<p>Impossibile procedere senza coordinate geografiche valide.</p>';
         echo '<p>Per favore, torna indietro e seleziona un indirizzo dal menu a discesa per ottenere le coordinate.</p>';
-        echo '<p><a href="javascript:history.back()" class="btn btn-primary">Torna indietro</a></p>';
-        echo '</div></div>';
+        echo '<p><a href="javascript:history.back()" class="btn btn-primary mt-2">Torna Indietro</a></p>';
+        echo '</div></div></body></html>';
         exit;
     }
 
-    header('Content-Type: text/html; charset=UTF-8');
-    $address = $_POST['address'];
-    $latitude = $_POST['latitude'];
-    $longitude = $_POST['longitude'];
-    $name = isset($_POST['name']) ? $_POST['name'] : '';
-    $surname = isset($_POST['surname']) ? $_POST['surname'] : '';
-    $phone = isset($_POST['phone']) ? $_POST['phone'] : '';
-    // Debugging: Log the received POST data
-    error_log("Received POST data: address={$address}, latitude={$latitude}, longitude={$longitude}, name={$name}, surname={$surname}, phone={$phone}");
+    header('Content-Type: text/html; charset=UTF-8'); // Imposta l'header qui una volta sola
+
+    $address_utente = trim($_POST['address']);
+    $latitude_utente = (float)$_POST['latitude'];
+    $longitude_utente = (float)$_POST['longitude'];
+    
+    // Recupera e sanifica display_radius_km
+    $display_radius_km = isset($_POST['display_radius']) ? (int)$_POST['display_radius'] : 7;
+    if ($display_radius_km <= 0) {
+        $display_radius_km = 7; // Default se non valido
+    }
+
+    // Recupera gli altri dati del form
+    $name_utente = isset($_POST['name']) ? trim($_POST['name']) : '';
+    $surname_utente = isset($_POST['surname']) ? trim($_POST['surname']) : '';
+    $phone_utente = isset($_POST['phone']) ? trim($_POST['phone']) : '';
+
+    error_log("--- INIZIO NUOVA RICERCA POST ---");
+    error_log("Dati Utente: Indirizzo='{$address_utente}', Lat={$latitude_utente}, Lng={$longitude_utente}, RaggioDisplay={$display_radius_km}");
+    error_log("Info Paziente: Nome='{$name_utente}', Cognome='{$surname_utente}', Tel='{$phone_utente}'");
 
     try {
-        // Prima cerca appuntamenti vicini entro 7km
-        $nearby_appointments = findNearbyAppointments($latitude, $longitude, 7);
-        
-        // Verifica se l'indirizzo corrente ha già un appuntamento
-        $existingAppointmentForAddress = null;
+        // Eventuale logica per avviso appuntamento esistente SULLO STESSO INDIRIZZO UTENTE
+        // (Puoi inserire qui la tua logica originale da riga 1466 a 1568 se desideri mantenerla)
+        // Esempio:
+        /*
         $checkAddressSql = "SELECT a.id, a.appointment_date, a.appointment_time, p.name, p.surname 
-                          FROM cp_appointments a
-                          JOIN cp_patients p ON a.patient_id = p.id
-                          WHERE a.address = ? AND a.appointment_date >= CURDATE()
-                          ORDER BY a.appointment_date, a.appointment_time
-                          LIMIT 1";
+                              FROM cp_appointments a JOIN cp_patients p ON a.patient_id = p.id
+                              WHERE a.address = ? AND a.appointment_date >= CURDATE() ORDER BY a.appointment_date, a.appointment_time LIMIT 1";
         $checkAddressStmt = $conn->prepare($checkAddressSql);
-        $checkAddressStmt->bind_param("s", $address);
-        $checkAddressStmt->execute();
-        $existingResult = $checkAddressStmt->get_result();
-        
-        if ($existingResult->num_rows > 0) {
-            $existingAppointmentForAddress = $existingResult->fetch_assoc();
+        if ($checkAddressStmt) {
+            $checkAddressStmt->bind_param("s", $address_utente);
+            $checkAddressStmt->execute();
+            $existingResult = $checkAddressStmt->get_result();
+            if ($existingAppointmentForAddress = $existingResult->fetch_assoc()) {
+                // ... (codice per mostrare l'alert e i pulsanti come nell'originale) ...
+                // Se mostri l'alert, potresti voler fare un 'exit;' o strutturare diversamente il flusso
+            }
+            $checkAddressStmt->close();
         }
-        
-        // Mostra l'avviso se esiste già un appuntamento per questo indirizzo
-        if ($existingAppointmentForAddress) {
-            $appDate = date('d/m/Y', strtotime($existingAppointmentForAddress['appointment_date']));
-            $appTime = date('H:i', strtotime($existingAppointmentForAddress['appointment_time']));
-            $appId = $existingAppointmentForAddress['id'];
-            $patientName = $existingAppointmentForAddress['name'] . ' ' . $existingAppointmentForAddress['surname'];
-            
-            echo "<div class='container' style='margin-bottom: 30px;'>";
-            echo "<div class='alert alert-danger' style='font-size: 1.2em; padding: 20px; text-align: center;'>";
-            echo "<h3 style='color: #721c24;'><i class='bi bi-exclamation-triangle-fill'></i> ATTENZIONE: Per questo indirizzo esiste già un appuntamento!</h3>";
-            echo "<p>Paziente: <strong>{$patientName}</strong></p>";
-            echo "<p>Data: <strong>{$appDate}</strong> alle <strong>{$appTime}</strong></p>";
-            
-            // Pulsante Vedi Agenda
-            echo "<button class='btn btn-info btn-lg' type='button' data-bs-toggle='collapse' data-bs-target='#existingAppAgenda' aria-expanded='false' aria-controls='existingAppAgenda' style='margin-right: 10px;'>";
-            echo "<i class='bi bi-calendar'></i> Vedi Agenda";
-            echo "</button>";
-            
-            // Pulsante Modifica Appuntamento che reindirizza alla pagina corretta
-            echo "<a href='manage_appointments.php?find_appointment={$appId}' class='btn btn-warning btn-lg'>";
-            echo "<i class='bi bi-pencil-square'></i> Modifica Appuntamento";
-            echo "</a>";
-            
-            // Div collassabile per l'agenda
-            echo "<div class='collapse mt-3' id='existingAppAgenda'>";
-            echo "<div class='card card-body' id='existingAppAgendaContent'>";
-            echo "<div class='text-center'>";
-            echo "<div class='spinner-border text-primary' role='status'>";
-            echo "<span class='visually-hidden'>Caricamento appuntamenti...</span>";
-            echo "</div>";
-            echo "<p>Caricamento appuntamenti...</p>";
-            echo "</div>";
-            echo "</div>";
-            echo "</div>";
-            
-            echo "</div></div>";
-            
-            // Script per caricare dinamicamente l'agenda e aprire la finestra di modifica
-            echo "<script>
-            document.addEventListener('DOMContentLoaded', function() {
-                // Funzione per caricare l'agenda quando si clicca su 'Vedi Agenda'
-                const agendaElement = document.querySelector('#existingAppAgenda');
-                if (agendaElement) {
-                    agendaElement.addEventListener('shown.bs.collapse', function() {
-                        fetch('get_appointments_modal.php', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            },
-                            body: 'appointment_date=" . $existingAppointmentForAddress['appointment_date'] . "'
-                        })
-                        .then(function(response) {
-                            if (!response.ok) throw new Error('Errore di rete');
-                            return response.text();
-                        })
-                        .then(function(html) {
-                            document.getElementById('existingAppAgendaContent').innerHTML = html;
-                        })
-                        .catch(function(error) {
-                            document.getElementById('existingAppAgendaContent').innerHTML = '<div class=\"alert alert-danger\"><p>Si è verificato un errore: ' + error.message + '</p></div>';
-                        });
-                    });
-                }
-            });
+        */
 
-                
-                // Funzione per aprire la pagina di modifica dell'appuntamento
-                function openModifyAppointment(appointmentId) {
-                    // Prima creiamo un form nascosto
-                    var form = document.createElement('form');
-                    form.method = 'POST';
-                    form.action = 'manage_appointments.php';
-                    form.style.display = 'none';
-                    
-                    // Aggiungiamo un campo nascosto con l'ID dell'appuntamento
-                    var input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = 'open_edit_appointment';
-                    input.value = appointmentId;
-                    form.appendChild(input);
-                    
-                    // Aggiungiamo il form al body e lo inviamo
-                    document.body.appendChild(form);
-                    form.submit();
-                }
-            </script>";
+        // Inizio output HTML per i risultati
+        echo "<div class='container mt-4' style='text-align:left;'>";
+        echo "<div class='card mb-4'><div class='card-body'>";
+        echo "<h2 class='card-title text-center mb-3'>Risultati Ricerca per: <span style='color:green; font-weight:bold;'>{$address_utente}</span></h2>";
+        echo "<p class='text-center'>Coordinate Geolocalizzate: Latitudine {$latitude_utente}, Longitudine {$longitude_utente}<br>";
+        echo "Raggio di Ricerca/Visualizzazione Impostato: <strong>{$display_radius_km} km</strong></p>";
+        echo "</div></div><hr>";
+
+        $slots_proposti_con_priorita = [];
+
+        // -------- FASE A: Slot Adiacenti ad Appuntamenti Esistenti (Massima Priorità) --------
+        error_log("FASE A: Inizio ricerca slot adiacenti.");
+        
+        // Trova appuntamenti di riferimento (RefApp) VICINI all'indirizzo dell'UTENTE entro $display_radius_km.
+        // findNearbyAppointments deve restituire anche le coordinate degli appuntamenti trovati.
+        $appuntamenti_riferimento_vicini_utente = findNearbyAppointments($latitude_utente, $longitude_utente, $display_radius_km);
+        
+        if (empty($appuntamenti_riferimento_vicini_utente)) {
+            error_log("FASE A: Nessun appuntamento di riferimento trovato vicino all'utente entro {$display_radius_km}km.");
+        } else {
+            error_log("FASE A: Trovati " . count($appuntamenti_riferimento_vicini_utente) . " appuntamenti di riferimento vicini all'utente.");
+             // displayAppointmentDetails($appuntamenti_riferimento_vicini_utente, []); // Utile per debug vedere i rif. trovati
         }
-        $available_slots_near_appointments = [];
-        
-// Per ogni appuntamento trovato vicino, verifica slot disponibili
-$available_slots_near_appointments = [];
 
-foreach ($nearby_appointments as $appointment) {
-    // Salta appuntamenti con motivo di esclusione
-    if (!empty($appointment['excluded_reason'])) {
-        continue;
-    }
-    
-    // Salta appuntamenti con distanza superiore a 7km (controllo aggiuntivo per sicurezza)
-    if (isset($appointment['distance']) && $appointment['distance'] > 7) {
-        continue;
-    }
-    
-    $slots = checkAvailableSlotsNearAppointment($appointment);
-    
-    // Filtra gli slot per includere solo quelli non esclusi
-    $valid_slots = array_filter($slots, function($slot) {
-        return !isset($slot['excluded']) || $slot['excluded'] === false;
-    });
-    
-    $available_slots_near_appointments = array_merge($available_slots_near_appointments, $valid_slots);
-}
-        
-// Mostra i risultati
-echo "<div class='container'><center><h2>Indirizzo: <span style='color:green; font-weight:700;'>{$address}</span></h2>";
-echo "<p>Coordinate dell'indirizzo: Latitudine={$latitude}, Longitudine={$longitude}</p></center></div><hr>";
-       
-       
-// Funzione di debug per visualizzare i dettagli degli appuntamenti
+        foreach ($appuntamenti_riferimento_vicini_utente as $ref_app) {
+            $ref_app_id_log = $ref_app['id'] ?? 'N/D';
+            if (!empty($ref_app['excluded_reason'])) {
+                error_log("FASE A: RefApp ID {$ref_app_id_log} escluso da findNearbyAppointments: {$ref_app['excluded_reason']}");
+                continue;
+            }
+            if (!isset($ref_app['zone_id']) || $ref_app['zone_id'] == 0) {
+                 error_log("FASE A: RefApp ID {$ref_app_id_log} saltato: zone_id è 0 o mancante.");
+                continue;
+            }
+            if (!isset($ref_app['latitude']) || !isset($ref_app['longitude']) || empty($ref_app['latitude']) || empty($ref_app['longitude'])) {
+                error_log("FASE A: RefApp ID {$ref_app_id_log} saltato: coordinate mancanti o non valide.");
+                continue;
+            }
+            if (!isset($ref_app['appointment_date']) || !isset($ref_app['appointment_time'])) {
+                error_log("FASE A: RefApp ID {$ref_app_id_log} saltato: data o ora appuntamento mancanti.");
+                continue;
+            }
 
-       
-// Mostra appuntamenti trovati nel raggio (opzionale, per debug)
-if (!empty($nearby_appointments)) {
-    echo "<div class='container'><center>";
-    echo "<h3>Appuntamenti trovati nel raggio di 7km: " . count($nearby_appointments) . "</h3>";
-    echo "</center></div>";
-    displayAppointmentDetails($nearby_appointments);
-}
-        
-       
-// Codice per la visualizzazione degli slot disponibili
-if (!empty($available_slots_near_appointments)) {
-    echo "<div class='container'><center>";
-    echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
-    
-    // Contatore degli slot visualizzati
-    $displayed_slots_count = 0;
-    
-    foreach ($available_slots_near_appointments as $slot) {
-        $slot_date = date('d/m/Y', strtotime($slot['date']));
-        
-        // Definizione del giorno della settimana (alternativa a giornoSettimana())
-        $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-        $ts = strtotime($slot['date']);
-        $giorno = $giorni[date('w', $ts)];
-        
-        $slot_time = date('H:i', strtotime($slot['time']));
-        $distance = number_format($slot['related_appointment']['distance'], 1);
-        $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
-        
-        echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
-        echo "<h4>{$giorno} {$slot_date} {$slot_time}</h4>";
-        echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
-        echo "{$slot['related_appointment']['address']}<br>";
-        echo "<small>Distanza: {$distance} km</small></p>";
-        
-        // Aggiungi le informazioni di debug sull'indirizzo precedente/successivo
-        if (isset($slot['debug_info']) && !empty($slot['debug_info'])) {
-            $debug = $slot['debug_info'];
-            if ($slot['type'] == 'before' && isset($debug['prev_address'])) {
-                echo "<p><small>Rispetto all'indirizzo precedente: " . $debug['prev_address'] . "<br>";
-                echo "Distanza: " . number_format($debug['distance'], 1) . " km</small></p>";
-            } elseif ($slot['type'] == 'after' && isset($debug['next_address'])) {
-                echo "<p><small>Rispetto all'indirizzo successivo: " . $debug['next_address'] . "<br>";
-                echo "Distanza: " . number_format($debug['distance'], 1) . " km</small></p>";
+
+            error_log("FASE A: Analizzo RefApp ID {$ref_app_id_log} ({$ref_app['address']}) per slot adiacenti.");
+            $slot_adiacenti_a_ref = checkAvailableSlotsNearRef_v2(
+                $ref_app,                 // Dati completi del RefApp, incluse le sue coordinate
+                $latitude_utente,         // Latitudine del NUOVO appuntamento utente
+                $longitude_utente,        // Longitudine del NUOVO appuntamento utente
+                MAX_OPERATOR_HOP_KM       // Max distanza tra app. operatore
+            );
+
+            if (empty($slot_adiacenti_a_ref)) {
+                error_log("FASE A: Nessuno slot (prima/dopo) calcolato da checkAvailableSlotsNearRef_v2 per RefApp ID {$ref_app_id_log}.");
+            }
+
+            foreach ($slot_adiacenti_a_ref as $slot_info) {
+                $slot_date_log = $slot_info['date'] ?? 'N/D';
+                $slot_time_log = $slot_info['time'] ?? 'N/D';
+
+                if (!$slot_info['excluded']) {
+                    $travel_dist_new_slot = $slot_info['actual_travel_distance_for_new_slot'];
+                    
+                    if ($travel_dist_new_slot !== false && $travel_dist_new_slot >= 0 && $travel_dist_new_slot <= $display_radius_km) {
+                        $slots_proposti_con_priorita[] = [
+                            'slot_details'      => $slot_info, // Contiene date, time, type, related_appointment_details, etc.
+                            'priority_score'    => (float)$travel_dist_new_slot, // Più basso è meglio
+                            'travel_distance'   => (float)$travel_dist_new_slot, // Distanza specifica di questo slot proposto
+                            'source'            => 'adjacent_to_existing'
+                        ];
+                        error_log("FASE A: Slot ADIACENTE VALIDO per RefApp ID {$ref_app_id_log}: Data {$slot_date_log} Ora {$slot_time_log}, Tipo {$slot_info['type']}, Distanza Viaggio Op: " . number_format($travel_dist_new_slot, 2) . "km");
+                    } else {
+                         error_log("FASE A: Slot ADIACENTE per RefApp ID {$ref_app_id_log} (Data {$slot_date_log} Ora {$slot_time_log}) ESCLUSO: Distanza Viaggio Op. (" . ($travel_dist_new_slot === false ? 'Errore' : number_format($travel_dist_new_slot,2)) . "km) > RaggioDisplay ({$display_radius_km}km) o errore calcolo distanza.");
+                    }
+                } else {
+                     error_log("FASE A: Slot ADIACENTE per RefApp ID {$ref_app_id_log} (Data {$slot_date_log} Ora {$slot_time_log}) ESCLUSO da checkAvailableSlotsNearRef_v2: {$slot_info['excluded_reason']}");
+                }
             }
         }
+        error_log("FASE A: Fine ricerca slot adiacenti. Trovati " . count(array_filter($slots_proposti_con_priorita, function($s){ return $s['source'] == 'adjacent_to_existing'; })) . " slot adiacenti validi.");
 
-        // Aggiungi il pulsante "Vedi agenda" 
-        $date = $slot['date'];
-        // Crea un ID univoco per il collapsible
-        $collapseId = "collapse-slot-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $slot['related_appointment']['zone_id'];
-        $contentId = "agenda-content-slot-" . $collapseId;
-
-        echo "<button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
-            <i class='bi bi-calendar'></i> Vedi agenda
-        </button>";
-
-        // Aggiunta del div collassabile per i contenuti dell'agenda
-        echo "<div class='collapse mb-3 mt-2' id='$collapseId'>
-            <div class='card card-body agenda-details' id='$contentId'>
-                <div class='text-center'>
-                    <div class='spinner-border text-primary' role='status'>
-                        <span class='visually-hidden'>Caricamento appuntamenti...</span>
-                    </div>
-                    <p>Caricamento appuntamenti...</p>
-                </div>
-            </div>
-        </div>";
-
-        // Script inline per caricare i contenuti
-        echo "<script>
-            (function() {
-                var collapseEl = document.getElementById('$collapseId');
-                var contentEl = document.getElementById('$contentId');
-                var date = '$date';
-                var zoneId = {$slot['related_appointment']['zone_id']};
-                
-                if (collapseEl) {
-                    collapseEl.addEventListener('shown.bs.collapse', function() {
-                        fetch('get_appointments_modal.php', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                            },
-                            body: 'appointment_date=' + date
-                        })
-                            .then(function(response) {
-                                if (!response.ok) throw new Error('Errore di rete');
-                                return response.text();
-                            })
-                            .then(function(html) {
-                                contentEl.innerHTML = html;
-                            })
-                            .catch(function(error) {
-                                contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
-                                    '<p>Si è verificato un errore: ' + error.message + '</p>' +
-                                    '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
-                                    '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
-                                    '</button>' +
-                                '</div>';
-                            });
-                    });
-                }
-            })();
-        </script>";
-
-        // Continue with the booking link...
-        $nameEncoded = !empty($name) ? urlencode($name) : '';
-        $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
-        $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
-        $addressEncoded = urlencode($address);
-
-        echo "<br><a href='book_appointment.php?zone_id={$slot['related_appointment']['zone_id']}&date={$slot['date']}&time={$slot_time}";
-        echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
-        echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-        echo "' class='btn btn-success mt-2 fw-bold'>Seleziona</a>";
-
-        echo "</div>";
+        // -------- FASE B: Slot Basati sulla Logica di Zona (Priorità Secondaria) --------
+        error_log("FASE B: Inizio ricerca slot di zona.");
+        $zona_utente = getZoneForCoordinates($latitude_utente, $longitude_utente); // Tua nuova funzione
         
-        // Incrementa il contatore degli slot visualizzati
-        $displayed_slots_count++;
-    }
-    
-    if ($displayed_slots_count == 0) {
-        echo "<p>Nessuno slot disponibile dopo il filtraggio.</p>";
-    }
-    
-    echo "</center></div><hr>";
-} else {
-    echo "<div class='container'><center><p>Nessun appuntamento trovato entro 7km con slot disponibili.</p></center></div><hr>";
-}
-                // Continua con la logica esistente per le zone
-                $zones = getZonesFromCoordinates($latitude, $longitude);
-                $origin = [$latitude, $longitude];
-        
-                // Debugging: Log the origin coordinates
-                error_log("Origin coordinates: lat={$latitude}, lng={$longitude}");
-        
-                $zonesFound = false;
-                $zoneNames = [];
-                foreach ($zones as $zone) {
-                    $destination = [$zone['latitude'], $zone['longitude']];
-                    $distance = calculateDistance($origin, $destination);
-                    $difference = $distance - $zone['radius_km'];
-        
-                    // Hidden div for calculations
-                    echo "<div style='display:none;'>Zona: {$zone['name']}<br>";
-                    echo "Coordinate della zona: Latitudine={$zone['latitude']}, Longitudine={$zone['longitude']}<br>";
-                    echo "Distanza: {$distance} km<br>";
-                    echo "Raggio: {$zone['radius_km']} km<br>";
-                    echo "Differenza: {$difference} km<br></div>";
-        
-                    if ($distance <= $zone['radius_km']) {
-                        $zonesFound = true;
-                        $zoneNames[] = $zone['name'];
-                        $slots = getSlotsForZone($zone['id']);
-                        if (!empty($slots)) {
-                            $next3Days = getNext3AppointmentDates($slots, $zone['id'], $latitude, $longitude);
-                            
-                            // Diamo feedback all'utente se non ci sono date disponibili
-                            if (empty($next3Days)) {
-                                echo "<div class='container'><center>";
-                                echo "<p style='color:red;'>Non sono state trovate date con slot disponibili per la zona {$zone['name']}.</p>";
-                                echo "</center></div>";
-                            } else {
-                                echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
-                                
-foreach ($next3Days as $date => $times) {
-$formattedDisplayDate = strftime('%d %B %Y', strtotime($date));
-$giorno = giornoSettimana($date);  // Usiamo la funzione esistente
-
-
-
-    
-    // MODIFICA: Verifica tutti gli appuntamenti per questa data in TUTTE le zone, non solo in questa zona specifica
-    $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
-                      WHERE appointment_date = ?"; // Rimosso il filtro per zone_id
-    $existingStmt = $conn->prepare($existingAppsSql);
-    $existingStmt->bind_param("s", $date); // Passato solo la data, non la zona
-    $existingStmt->execute();
-    $existingResult = $existingStmt->get_result();
-    $existingRow = $existingResult->fetch_assoc();
-    $hasExistingAppointments = ($existingRow['count'] > 0);
-    
-echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$giorno} {$formattedDisplayDate}";
-
-// Add an indicator if there are existing appointments
-if ($hasExistingAppointments) {
-    echo " <span style='font-size:80%; color:#ff9900;'>(ci sono altri appuntamenti in questa data)</span>";
-    
-    // Crea un ID univoco per il collapsible
-    $collapseId = "collapse-" . preg_replace('/[^a-zA-Z0-9]/', '', $date) . "-" . $zone['id'];
-    $contentId = "agenda-content-" . $collapseId;
-    
-    // Mostra il pulsante "Vedi agenda" SOLO se ci sono appuntamenti
-    echo " <button class='btn btn-sm btn-outline-primary' type='button' data-bs-toggle='collapse' data-bs-target='#$collapseId' aria-expanded='false' aria-controls='$collapseId'>
-        <i class='bi bi-calendar'></i> Vedi agenda
-    </button>";
-    
-    // Aggiunta del div collassabile per i contenuti dell'agenda
-    echo "</p>";
-    echo "<div class='collapse mb-3' id='$collapseId'>
-        <div class='card card-body agenda-details' id='$contentId'>
-            <div class='text-center'>
-                <div class='spinner-border text-primary' role='status'>
-                    <span class='visually-hidden'>Caricamento appuntamenti...</span>
-                </div>
-                <p>Caricamento appuntamenti...</p>
-            </div>
-        </div>
-    </div>";
-    
-    // Script inline per caricare i contenuti
-    echo "<script>
-        (function() {
-            var collapseEl = document.getElementById('$collapseId');
-            var contentEl = document.getElementById('$contentId');
-            var date = '$date';
-            var zoneId = {$zone['id']};
+        if ($zona_utente) {
+            $zone_id_log = $zona_utente['id'] ?? 'N/D';
+            $zone_name_log = $zona_utente['name'] ?? 'N/D';
+            $dist_center_log = isset($zona_utente['distance_from_user_address']) ? number_format($zona_utente['distance_from_user_address'], 2)."km" : "N/A";
+            error_log("FASE B: Utente ricade in Zona ID {$zone_id_log} ('{$zone_name_log}'). Distanza dal centro zona: {$dist_center_log}.");
             
-            if (collapseEl) {
-                collapseEl.addEventListener('shown.bs.collapse', function() {
-                    fetch('get_appointments_modal.php', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: 'appointment_date=' + date
-                    })
-                        .then(function(response) {
-                            if (!response.ok) throw new Error('Errore di rete');
-                            return response.text();
-                        })
-                        .then(function(html) {
-                            contentEl.innerHTML = html;
-                        })
-                        .catch(function(error) {
-                            contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
-                                '<p>Si è verificato un errore: ' + error.message + '</p>' +
-                                '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
-                                '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
-                                '</button>' +
-                            '</div>';
-                        });
-                });
-            }
-        })();
-    </script>";
-} else {
-    // Chiudi il paragrafo se non ci sono appuntamenti
-    echo "</p>";
-    // Non inserire nessuno script qui perché le variabili non sono definite
-}
+            $slot_config_zona = getSlotsForZone($zona_utente['id']); // Tua funzione esistente
+            if (!empty($slot_config_zona)) {
+                error_log("FASE B: Trovata configurazione slot per Zona ID {$zone_id_log}. Chiamo getNextAppointmentDatesForZone.");
+                $date_disponibili_zona = getNextAppointmentDatesForZone(
+                    $slot_config_zona, 
+                    $zona_utente['id'], 
+                    $latitude_utente, 
+                    $longitude_utente,
+                    MAX_OPERATOR_HOP_KM,
+                    4 // Cerca per 4 settimane
+                );
 
-// Rimuovi queste righe duplicate che stanno causando gli errori
-// echo "</p>";
-// echo "<div class='collapse mb-3' id='$collapseId'>
-//     <div class='card card-body agenda-details' id='$contentId'>
-//         <div class='text-center'>
-//             <div class='spinner-border text-primary' role='status'>
-//                 <span class='visually-hidden'>Caricamento appuntamenti...</span>
-//             </div>
-//             <p>Caricamento appuntamenti...</p>
-//         </div>
-//     </div>
-// </div>";
+                if (empty($date_disponibili_zona)) {
+                    error_log("FASE B: Nessuna data/ora disponibile restituita da getNextAppointmentDatesForZone per Zona ID {$zone_id_log}.");
+                }
 
-// Rimuovi anche questo script che usa le variabili non definite
-// echo "<script>
-//     (function() {
-//         var collapseEl = document.getElementById('$collapseId');
-//         var contentEl = document.getElementById('$contentId');
-//         var date = '$date';
-//         var zoneId = {$zone['id']};
-//         
-//         if (collapseEl) {
-//             collapseEl.addEventListener('shown.bs.collapse', function() {
-//                 fetch('get_appointments_modal.php', {
-//                     method: 'POST',
-//                     headers: {
-//                         'Content-Type': 'application/x-www-form-urlencoded',
-//                     },
-//                     body: 'appointment_date=' + date
-//                 })
-//                     .then(function(response) {
-//                         if (!response.ok) throw new Error('Errore di rete');
-//                         return response.text();
-//                     })
-//                     .then(function(html) {
-//                         contentEl.innerHTML = html;
-//                     })
-//                     .catch(function(error) {
-//                         contentEl.innerHTML = '<div class=\"alert alert-danger\">' +
-//                             '<p>Si è verificato un errore: ' + error.message + '</p>' +
-//                             '<button class=\"btn btn-sm btn-outline-danger\" onclick=\"reloadAgenda(\\'$contentId\\', \\'$date\\', ' + zoneId + ')\">' +
-//                             '<i class=\"bi bi-arrow-clockwise\"></i> Riprova' +
-//                             '</button>' +
-//                         '</div>';
-//                     });
-//             });
-//         }
-//     })();
-// </script>";
-                                    
-                                    echo "</p>";
-                                    if (empty($times)) {
-                                        echo "<p>Nessuna fascia oraria disponibile per questa data.</p>";
-                                    } else {
-                                        echo "<p>Fasce orarie disponibili: ";
-                                        foreach ($times as $time) {
-                                            $formattedTime = date('H:i', strtotime($time)); // Remove seconds
-                                            
-                                            $nameEncoded = !empty($name) ? urlencode($name) : '';
-                                            $surnameEncoded = !empty($surname) ? urlencode($surname) : '';
-                                            $phoneEncoded = !empty($phone) ? urlencode($phone) : '';
-                                            $addressEncoded = urlencode($address);
-                                            
-                                            echo "<a href='book_appointment.php?zone_id={$zone['id']}&date={$date}&time={$formattedTime}";
-                                            echo "&address={$addressEncoded}&latitude={$latitude}&longitude={$longitude}";
-                                            echo "&name={$nameEncoded}&surname={$surnameEncoded}&phone={$phoneEncoded}";
-                                            echo "' class='btn btn-success m-1 fw-bold'>{$formattedTime}</a>";
-                                        }
-                                        echo "</p>";
-                                    }
-                                }
-                                echo "</center></div>";
-                            }
-                            echo "</center></div><hr>";
-                        } else {
-                            // Non mostrare nulla per zone senza slot configurati
-                        }
+                foreach ($date_disponibili_zona as $date => $times) {
+                    foreach ($times as $time) {
+                        // Prepara i dettagli per related_appointment_details in modo che corrispondano alla struttura attesa
+                        $related_details_zona = [
+                            'id' => null, // Nessun appuntamento di riferimento specifico
+                            'address' => 'N/A - Slot di Zona',
+                            'zone_id' => $zona_utente['id'],
+                            'name' => $zona_utente['name'], // Nome della zona
+                            'latitude' => $zona_utente['zone_lat'] ?? null, // Lat del centro zona
+                            'longitude' => $zona_utente['zone_lng'] ?? null, // Lng del centro zona
+                            'appointment_time' => null, // Non pertinente per slot di zona
+                            'appointment_date' => null  // Non pertinente per slot di zona
+                        ];
+
+                        $slots_proposti_con_priorita[] = [
+                            'slot_details' => [
+                                'date' => $date, 
+                                'time' => $time, 
+                                'type' => 'zone_based',
+                                'related_appointment_details' => $related_details_zona, // Dettagli della zona
+                                'excluded' => false, 
+                                'excluded_reason' => '',
+                                'actual_travel_distance_for_new_slot' => null // Non è un viaggio diretto operatore per questo slot
+                            ],
+                            'priority_score' => 1000 + (float)($zona_utente['distance_from_user_address'] ?? 0), 
+                            'travel_distance' => null, 
+                            'source' => 'zone_logic'
+                        ];
+                        error_log("FASE B: Slot di ZONA VALIDO: Data {$date} Ora {$time} per Zona {$zone_name_log}");
                     }
                 }
-                
-                if ($zonesFound) {
-                    $zoneText = implode(', ', $zoneNames);
-                    echo "<div class='container'><center><p style='margin-top:2rem; font-size:120%; font-weight:700;'>L'indirizzo appartiene alla zona <span style='color:green;'>{$zoneText}</span>.</p></center></div>";
-                } else {
-                    echo "<div class='container'><center><p>L'indirizzo non si trova in nessuna zona.</p></center></div>";
-                }
-            } catch (Exception $e) {
-                error_log("Exception: " . $e->getMessage());
-                echo 'Si è verificato un errore: ' . $e->getMessage();
+            } else {
+                 error_log("FASE B: Nessuna configurazione slot (da cp_slots) trovata per Zona ID {$zone_id_log}.");
             }
-            exit;
+        } else {
+            error_log("FASE B: Indirizzo utente non ricade in nessuna zona definita.");
         }
+        error_log("FASE B: Fine ricerca slot di zona. Trovati " . count(array_filter($slots_proposti_con_priorita, function($s){ return $s['source'] == 'zone_logic'; })) . " slot di zona validi.");
+        
+        // -------- FASE C: Ordinamento e Visualizzazione --------
+        echo "<div class='container mt-3' style='text-align:left;'>"; // Contenitore per i risultati degli slot
+        if (!empty($slots_proposti_con_priorita)) {
+            error_log("FASE C: Inizio ordinamento e visualizzazione. Totale slot proposti prima dell'ordinamento: " . count($slots_proposti_con_priorita));
+            usort($slots_proposti_con_priorita, function($a, $b) {
+                // Prima confronta priority_score
+                if ($a['priority_score'] != $b['priority_score']) {
+                    return $a['priority_score'] <=> $b['priority_score'];
+                }
+                // Se priority_score è uguale, confronta per data e ora
+                $datetime_a_str = ($a['slot_details']['date'] ?? '') . ' ' . ($a['slot_details']['time'] ?? '');
+                $datetime_b_str = ($b['slot_details']['date'] ?? '') . ' ' . ($b['slot_details']['time'] ?? '');
+                $datetime_a = strtotime($datetime_a_str);
+                $datetime_b = strtotime($datetime_b_str);
+                return $datetime_a <=> $datetime_b;
+            });
+            error_log("FASE C: Ordinamento completato.");
+
+            echo "<h3 class='text-center mb-3'>Proposte di Appuntamento Ordinate per Priorità</h3>";
+            
+            $count_displayed = 0;
+            foreach ($slots_proposti_con_priorita as $item) {
+                $slot = $item['slot_details']; // Questo è l'array che contiene 'date', 'time', 'type', 'related_appointment_details', etc.
+                
+                // Sanity checks
+                if (!isset($slot['date']) || !isset($slot['time']) || !isset($slot['related_appointment_details'])) {
+                    error_log("FASE C: Slot saltato per dati mancanti: " . json_encode($item));
+                    continue;
+                }
+
+                $slot_date_formatted = date('d/m/Y', strtotime($slot['date']));
+                $giorni_settimana = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+                $giorno_str = $giorni_settimana[date('w', strtotime($slot['date']))];
+                $slot_time_formatted = date('H:i', strtotime($slot['time']));
+
+                echo "<div class='card mb-3 shadow-sm'>";
+                echo "<div class='card-body'>";
+                echo "<h4 class='card-title'>{$giorno_str} {$slot_date_formatted} ore {$slot_time_formatted}</h4>";
+
+                $related_details = $slot['related_appointment_details']; // Dettagli dell'app. di riferimento o della zona
+                $current_zone_id_for_slot = $related_details['zone_id'] ?? 'N/D_Zona'; // Zona del RefApp o Zona Utente
+
+                if ($item['source'] == 'adjacent_to_existing') {
+                    $ref_app_time_formatted = isset($related_details['appointment_time']) ? date('H:i', strtotime($related_details['appointment_time'])) : 'N/D';
+                    $slot_type_desc = ($slot['type'] == 'before') ? "Prima dell'app. delle {$ref_app_time_formatted} in" : "Dopo l'app. delle {$ref_app_time_formatted} in";
+                    echo "<p class='card-text'><strong>{$slot_type_desc}</strong>: " . htmlspecialchars($related_details['address'] ?? 'Indirizzo non disponibile') . "<br>";
+                    echo "<span style='color: #28a745; font-weight:bold;'>Distanza viaggio operatore per questo slot: " . number_format($item['travel_distance'], 1) . " km.</span><br>";
+                    echo "<small class='text-muted'>Rif. App. ID: " . htmlspecialchars($related_details['id'] ?? 'N/D') . " / Zona Slot: " . htmlspecialchars($current_zone_id_for_slot) . "</small></p>";
+                } elseif ($item['source'] == 'zone_logic') {
+                    echo "<p class='card-text'><strong>Slot standard per la Zona</strong>: " . htmlspecialchars($related_details['name'] ?? 'Nome zona N/D') . "<br>";
+                    echo "<small class='text-muted'>Score Priorità (debug): {$item['priority_score']} / Zona Slot: " . htmlspecialchars($current_zone_id_for_slot) . "</small></p>";
+                }
+                
+                // Pulsante Vedi Agenda
+                $unique_suffix = preg_replace('/[^a-zA-Z0-9]/', '', $slot['date'] . $slot['time'] . $current_zone_id_for_slot) . rand(1000,9999);
+                $collapseId = "agenda_collapse_" . $unique_suffix;
+                $contentId = "agenda_content_" . $unique_suffix;
+
+                echo "<button class='btn btn-sm btn-outline-info mt-1 me-2' type='button' data-bs-toggle='collapse' data-bs-target='#{$collapseId}' aria-expanded='false' aria-controls='{$collapseId}'><i class='bi bi-calendar3'></i> Vedi Agenda del Giorno</button>";
+                
+                // Link di prenotazione
+                $nameEnc = urlencode($name_utente); 
+                $surnameEnc = urlencode($surname_utente); 
+                $phoneEnc = urlencode($phone_utente);
+                $addressEnc = urlencode($address_utente); // Indirizzo del nuovo appuntamento (quello dell'utente)
+
+                $booking_link = "book_appointment.php?zone_id=" . urlencode($current_zone_id_for_slot) . 
+                                "&date=" . urlencode($slot['date']) . 
+                                "&time=" . urlencode($slot_time_formatted) . 
+                                "&address=" . $addressEnc . 
+                                "&latitude=" . urlencode($latitude_utente) . 
+                                "&longitude=" . urlencode($longitude_utente) . 
+                                "&name=" . $nameEnc . 
+                                "&surname=" . $surnameEnc . 
+                                "&phone=" . $phoneEnc . 
+                                "&display_radius=" . urlencode($display_radius_km);
+
+                echo "<a href='{$booking_link}' class='btn btn-success mt-1 fw-bold'><i class='bi bi-check-circle'></i> Seleziona Questo Slot</a>";
+                
+                echo "<div class='collapse mt-2' id='{$collapseId}'><div class='card card-body bg-light' id='{$contentId}'><div class='text-center'><div class='spinner-border spinner-border-sm text-primary' role='status'></div> <span>Caricamento agenda...</span></div></div></div>";
+                
+                // Script per caricare l'agenda (assicurati che get_appointments_modal.php esista e funzioni)
+                echo "<script>
+                (function() {
+                    var cEl = document.getElementById('{$collapseId}');
+                    var tEl = document.getElementById('{$contentId}');
+                    if(cEl && tEl) { // Aggiunto controllo per tEl
+                        cEl.addEventListener('shown.bs.collapse', function () {
+                            tEl.innerHTML = \"<div class='text-center'><div class='spinner-border spinner-border-sm text-primary' role='status'></div> <span>Caricamento agenda...</span></div>\"; // Reset al caricamento
+                            fetch('get_appointments_modal.php', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                                body: 'appointment_date={$slot['date']}' // Passa la data corretta
+                            }).then(response => {
+                                if (!response.ok) throw new Error('Network response was not ok: ' + response.statusText);
+                                return response.text();
+                            }).then(html => {
+                                tEl.innerHTML = html;
+                            }).catch(e => {
+                                console.error('Errore caricamento agenda:', e);
+                                tEl.innerHTML = '<div class=\"alert alert-warning alert-sm\">Errore caricamento agenda: ' + e.message + '</div>';
+                            });
+                        });
+                    }
+                })();
+                </script>";
+                echo "</div></div>"; // Fine card-body e card
+                $count_displayed++;
+            }
+            if ($count_displayed == 0) {
+                 error_log("FASE C: Nessuno slot è stato effettivamente visualizzato dopo i controlli nel loop.");
+                 echo "<div class='alert alert-warning text-center'>Nessuno slot compatibile è stato trovato dopo tutti i filtri. Prova ad aumentare il raggio di visualizzazione.</div>";
+            }
+        } else {
+            error_log("FASE C: Nessuno slot proposto in totale (array vuoto).");
+            echo "<div class='alert alert-info text-center'><strong>Nessuno slot disponibile trovato con i criteri specificati.</strong><br>Prova ad aumentare il raggio di visualizzazione o controlla in un altro momento.</div>";
+        }
+        echo "</div>"; // Fine container principale dei risultati degli slot
+
+    } catch (Exception $e) {
+        error_log("--- ECCEZIONE CATTURATA nel blocco POST principale ---");
+        error_log("Messaggio: " . $e->getMessage());
+        error_log("File: " . $e->getFile() . " Riga: " . $e->getLine());
+        error_log("Stack Trace:\n" . $e->getTraceAsString());
+        // Pulisci l'output buffer se c'è un'eccezione per non mescolare HTML
+        if (ob_get_level() > 0) {
+            ob_end_clean(); 
+        }
+        echo '<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><title>Errore Applicazione</title>';
+        echo '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet"></head><body>';
+        echo '<div class="container mt-5"><div class="alert alert-danger"><h3><i class="bi bi-bug-fill"></i> Si è verificato un errore critico nell\'applicazione</h3>';
+        echo '<p>Dettagli dell\'errore: ' . htmlspecialchars($e->getMessage()) . '</p>';
+        echo '<p>L\'incidente è stato registrato. Ti preghiamo di riprovare più tardi o contattare l\'assistenza.</p>';
+        echo '<p><a href="' . htmlspecialchars($_SERVER['PHP_SELF']) . '" class="btn btn-secondary mt-2">Torna alla Pagina di Ricerca</a></p>';
+        echo '</div></div></body></html>';
+
+    }
+    error_log("--- FINE RICERCA POST ---");
+    exit; // Termina lo script dopo aver gestito la richiesta POST e prodotto l'output
+} // Fine del blocco POST principale (`if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address']))`)
+
         
         if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone']) && isset($_POST['address'])) {
             header('Content-Type: text/html; charset=UTF-8');
