@@ -331,7 +331,7 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
     echo "<h3>Dettagli degli appuntamenti di riferimento considerati:</h3>";
     
     echo "<style>
-        /* ... (stili CSS della risposta precedente, assicurati siano qui) ... */
+        /* ... stili CSS esistenti ... */
         .appointment-details-table {
             margin: 0 auto; width: 100%; max-width: 1200px; font-size: 13px;
             border-collapse: collapse; table-layout: auto;
@@ -346,6 +346,7 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
         .col-time { width: 10%; } .col-distance { width: 10%; } .col-limits { width: 26%; }
         .col-reason { width: 30%; }
         .highlight-no-adjacent-slots td { color: #007bff; /* Blu per evidenziare */ }
+        .blue-text { color: #007bff; /* Blu per evidenziare il testo specifico */ }
     </style>";
 
     echo "<table class='pure-table pure-table-bordered appointment-details-table'>";
@@ -374,36 +375,59 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
                 });
 
                 $bookable_adjacent_found = false;
-                $adjacent_exclusion_reasons = [];
-                $slot_before_details = "Prima: N/D";
-                $slot_after_details = "Dopo: N/D";
-
-                foreach ($related_slots_for_this_ref as $adj_slot) {
-                    if (isset($adj_slot['excluded']) && !$adj_slot['excluded']) {
-                        $bookable_adjacent_found = true;
-                        break; 
-                    }
-                    // Raccogli i motivi di esclusione degli slot adiacenti
-                    $type = isset($adj_slot['type']) ? ucfirst($adj_slot['type']) : 'Sconosciuto';
-                    $time = isset($adj_slot['time']) ? $adj_slot['time'] : 'N/D';
-                    $reason = isset($adj_slot['excluded_reason']) && $adj_slot['excluded_reason'] ? $adj_slot['excluded_reason'] : 'Non specificato';
+                
+                if (empty($related_slots_for_this_ref)) {
+                    // Se non sono stati valutati slot adiacenti
+                    $zone_id = isset($ref_app['zone_id']) ? $ref_app['zone_id'] : 0;
                     
-                    if (strtolower($type) == 'before') {
-                        $slot_before_details = "Prima ({$time}): Escluso - " . htmlspecialchars($reason);
-                    } elseif (strtolower($type) == 'after') {
-                        $slot_after_details = "Dopo ({$time}): Escluso - " . htmlspecialchars($reason);
+                    if ($zone_id == 0) {
+                        $display_reason = "<span class='blue-text'>Non utilizzabile: zona non definita (ID zona = 0)</span>";
+                    } else {
+                        // Verifica se esistono slot per questa zona
+                        $slots_sql = "SELECT COUNT(*) as count FROM cp_slots WHERE zone_id = ?";
+                        $slots_stmt = $conn->prepare($slots_sql);
+                        $slots_stmt->bind_param("i", $zone_id);
+                        $slots_stmt->execute();
+                        $slots_result = $slots_stmt->get_result();
+                        $slots_row = $slots_result->fetch_assoc();
+                        
+                        if ($slots_row['count'] == 0) {
+                            $display_reason = "<span class='blue-text'>Non utilizzabile: nessun orario operativo configurato per la zona {$zone_id}</span>";
+                        } else {
+                            $display_reason = "<span class='blue-text'>Non utilizzabile: verifica limiti orari della zona {$zone_id}</span>";
+                        }
                     }
-                }
-
-                if ($bookable_adjacent_found) {
-                    $display_reason = 'Rif. valido, slot adiacenti potenzialmente disponibili.';
+                    
+                    $row_class = 'highlight-no-adjacent-slots'; 
                 } else {
-                    // Nessuno slot adiacente prenotabile trovato per questo riferimento valido
-                    $display_reason = "Rif. valido, ma nessun slot adiacente prenotabile. <br>Dettagli: {$slot_before_details}; <br>{$slot_after_details}";
-                    if (empty($related_slots_for_this_ref)) { // Caso in cui checkAvailableSlotsNearAppointment non è stato chiamato o ha restituito vuoto
-                         $display_reason = "Rif. valido, ma non sono stati valutati slot adiacenti (o zona ID 0 / limiti slot non trovati in checkAvailableSlotsNearAppointment).";
+                    // Ci sono slot adiacenti valutati
+                    $motivi_esclusione = [];
+                    
+                    foreach ($related_slots_for_this_ref as $adj_slot) {
+                        if (isset($adj_slot['excluded']) && !$adj_slot['excluded']) {
+                            $bookable_adjacent_found = true;
+                            break;
+                        } else if (isset($adj_slot['excluded_reason']) && !empty($adj_slot['excluded_reason'])) {
+                            // Formato: "Tipo (HH:MM): Motivo"
+                            $type = isset($adj_slot['type']) ? ucfirst($adj_slot['type']) : 'Slot';
+                            $time = isset($adj_slot['time']) ? date('H:i', strtotime($adj_slot['time'])) : '';
+                            $reason = $adj_slot['excluded_reason'];
+                            $motivi_esclusione[] = "{$type} ({$time}): {$reason}";
+                        }
                     }
-                    $row_class = 'highlight-no-adjacent-slots'; // Applica classe per colore blu
+                    
+                    if ($bookable_adjacent_found) {
+                        $display_reason = 'Rif. valido, slot adiacenti disponibili.';
+                    } else {
+                        if (!empty($motivi_esclusione)) {
+                            $display_reason = "<span class='blue-text'>Motivi esclusione degli slot adiacenti:</span><br>";
+                            $display_reason .= "<span class='blue-text'>" . implode("<br>", $motivi_esclusione) . "</span>";
+                            $row_class = 'highlight-no-adjacent-slots';
+                        } else {
+                            $display_reason = "<span class='blue-text'>Slot adiacenti non disponibili (motivo non specificato)</span>";
+                            $row_class = 'highlight-no-adjacent-slots';
+                        }
+                    }
                 }
             }
 
@@ -417,7 +441,7 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
                     $slots_limit_stmt->bind_param("i", $zone_id);
                     $slots_limit_stmt->execute();
                     $slots_limit_result = $slots_limit_stmt->get_result();
-                    if ($slots_row = $slots_limit_result->fetch_assoc()) {
+                    if ($slots_row = $slots_limit_result->fetch_assoc()) {å
                         if ($slots_row['earliest_slot'] !== null && $slots_row['latest_slot'] !== null) {
                             $display_limits_text = htmlspecialchars("Slot da {$slots_row['earliest_slot']} a {$slots_row['latest_slot']}");
                         } else { $display_limits_text = htmlspecialchars("Default (Nessuno slot per Zona {$zone_id})"); }
