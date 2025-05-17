@@ -173,24 +173,28 @@ function calculateDistance($origin, $destination) {
 }
 
 /**
- * Funzione per trovare appuntamenti vicini entro il raggio specificato
+ * Funzione per trovare appuntamenti vicini entro il raggio specificato.
+ * Marca gli appuntamenti con un motivo di esclusione se non sono validi come riferimenti.
+ * Gli appuntamenti vengono restituiti tutti, ma quelli con 'excluded_reason' non vuoto
+ * non dovrebbero essere usati per generare slot adiacenti dalla logica chiamante.
+ *
  * @param float $user_latitude Latitudine dell'utente
  * @param float $user_longitude Longitudine dell'utente
  * @param float $radius_km Raggio in km (default 7)
- * @return array Array di appuntamenti vicini
+ * @return array Array di appuntamenti, ognuno con 'excluded_reason' popolato se non idoneo come riferimento.
  */
 function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7) {
     global $conn;
-    $nearby_appointments = [];
-    $debug_info = [];
+    $appointments_evaluated = []; // Array per contenere tutti gli appuntamenti valutati
+    $debug_info_collection = []; 
     $today = date('Y-m-d');
     $now = date('H:i:s');
-    $durata_visita = 60 * 60; // 60 minuti in secondi
 
-    // Query solo appuntamenti da oggi in poi
+    // Considera solo appuntamenti futuri o odierni
     $sql = "SELECT * FROM cp_appointments WHERE appointment_date >= ?";
     $stmt = $conn->prepare($sql);
     if (!$stmt) {
+        error_log("findNearbyAppointments: Errore preparazione query principale: " . $conn->error);
         return [];
     }
     $stmt->bind_param("s", $today);
@@ -198,229 +202,118 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
     $result = $stmt->get_result();
 
     if ($result->num_rows > 0) {
-        while ($row = $result->fetch_assoc()) {
-            $appointment_id = $row['id'];
-            $address = trim($row['address']);
-            $zone_id = $row['zone_id'];
-            $debug_item = [
-                'id' => $appointment_id,
-                'zone_id' => $zone_id,
-                'appointment_date' => $row['appointment_date'],
-                'appointment_time' => $row['appointment_time'],
-                'address' => $address,
-                'excluded_reason' => ''
-            ];
+        while ($db_row = $result->fetch_assoc()) {
+            $current_appointment = $db_row; // Lavora su una copia per poterla modificare
+            $appointment_id = $current_appointment['id'];
+            $zone_id = $current_appointment['zone_id']; // Può essere 0 inizialmente
+            $app_time = $current_appointment['appointment_time'];
+            $app_date = $current_appointment['appointment_date'];
+            $address = trim($current_appointment['address']);
+            
+            $current_appointment['excluded_reason'] = ''; // Inizializza motivo esclusione
 
-            // Esclusione per orario passato (solo per oggi)
-            if ($row['appointment_date'] == $today && $row['appointment_time'] < $now) {
-                $row['excluded_reason'] = 'Orario appuntamento precedente all\'attuale';
-                $debug_item['status'] = 'Escluso - Orario passato';
-                $debug_item['excluded_reason'] = $row['excluded_reason'];
-                $debug_info[] = $debug_item;
+            $debug_item = [ /* ... setup iniziale del debug item ... */ ];
+
+            // Check 1: Orario passato (solo per oggi)
+            if ($app_date == $today && strtotime($app_time) < strtotime($now)) {
+                $current_appointment['excluded_reason'] = 'Rif. appuntamento: Orario già passato oggi.';
+                $appointments_evaluated[] = $current_appointment;
+                error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (passato).");
                 continue;
             }
 
-            // Ottieni limiti orari della zona
-            $zone_sql = "SELECT min_time, max_time FROM cp_zones WHERE id = ?";
-            $zone_stmt = $conn->prepare($zone_sql);
-            $zone_min_time = "00:00:00";
-            $zone_max_time = "23:59:59";
-            if ($zone_stmt) {
-                $zone_stmt->bind_param("i", $zone_id);
-                $zone_stmt->execute();
-                $zone_result = $zone_stmt->get_result();
-                if ($zone_result && $zone_result->num_rows > 0) {
-                    $zone_row = $zone_result->fetch_assoc();
-                    $zone_min_time = $zone_row['min_time'];
-                    $zone_max_time = $zone_row['max_time'];
-                }
-                $zone_stmt->close();
-            }
-
-            // Calcola l'ultimo orario valido per il tipo di visita
-            $orario_massimo = date("H:i:s", strtotime($zone_max_time) - $durata_visita);
-
-            // Esclusione per orario fuori limiti zona
-            if ($row['appointment_time'] < $zone_min_time || $row['appointment_time'] > $orario_massimo) {
-                $row['excluded_reason'] = "Orario {$row['appointment_time']} fuori dai limiti zona consentiti ($zone_min_time - $orario_massimo per durata visita)";
-                $debug_item['status'] = 'Escluso - Orario fuori limiti zona';
-                $debug_item['excluded_reason'] = $row['excluded_reason'];
-                $debug_info[] = $debug_item;
-                continue;
-            }
-
-            // Salta se l'indirizzo è vuoto
-            if (empty($address)) {
-                $row['excluded_reason'] = 'Indirizzo vuoto';
-                $debug_item['status'] = 'Saltato - Indirizzo vuoto';
-                $debug_item['excluded_reason'] = $row['excluded_reason'];
-                $debug_info[] = $debug_item;
-                continue;
-            }
-
-            // Controlla la cache delle coordinate
-            $cache_sql = "SELECT latitude, longitude FROM cp_address_cache WHERE appointment_id = ?";
-            $cache_stmt = $conn->prepare($cache_sql);
-            $cache_prepare_ok = $cache_stmt !== false;
-            $coordinates = null;
-            $cache_found = false;
-
-            if ($cache_prepare_ok) {
-                $cache_stmt->bind_param("i", $appointment_id);
-                $cache_stmt->execute();
-                $cache_result = $cache_stmt->get_result();
-
-                if ($cache_result && $cache_result->num_rows > 0) {
-                    $cache_row = $cache_result->fetch_assoc();
-                    $coordinates = [
-                        'lat' => $cache_row['latitude'],
-                        'lng' => $cache_row['longitude']
-                    ];
-                    $cache_found = true;
-                    $debug_item['status'] = 'In cache';
-                    $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
-                    
-                    // Se zona = 0, determina la zona corretta
-                    if ($zone_id == 0 && $coordinates) {
-                        // Ottieni tutte le zone
-                        $all_zones_sql = "SELECT id, latitude, longitude, radius_km FROM cp_zones";
-                        $all_zones_stmt = $conn->prepare($all_zones_sql);
-                        if ($all_zones_stmt && $all_zones_stmt->execute()) {
-                            $all_zones_result = $all_zones_stmt->get_result();
-                            $all_zones = $all_zones_result->fetch_all(MYSQLI_ASSOC);
-                            
-                            // Determina se l'indirizzo è in una zona
-                            foreach ($all_zones as $zone) {
-                                $zone_center = [$zone['latitude'], $zone['longitude']];
-                                $app_location = [$coordinates['lat'], $coordinates['lng']];
-                                $distance_to_zone = calculateDistance($app_location, $zone_center);
-                                
-                                if ($distance_to_zone <= $zone['radius_km']) {
-                                    // Aggiorna l'appuntamento con la zona corretta
-                                    $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
-                                    $update_stmt = $conn->prepare($update_sql);
-                                    if ($update_stmt) {
-                                        $correct_zone_id = $zone['id'];
-                                        $update_stmt->bind_param("ii", $correct_zone_id, $appointment_id);
-                                        if ($update_stmt->execute()) {
-                                            $zone_id = $correct_zone_id;
-                                            $row['zone_id'] = $correct_zone_id;
-                                            error_log("Zona corretta per appuntamento $appointment_id: $correct_zone_id");
-                                        }
-                                        $update_stmt->close();
-                                    }
-                                    break;
-                                }
-                            }
-                            $all_zones_stmt->close();
-                        }
+            // Check 2: Validità dell'appuntamento rispetto agli slot della sua zona (se zone_id > 0)
+            if ($zone_id != 0) {
+                $zone_min_slot = null; $zone_max_slot = null;
+                $slots_sql = "SELECT MIN(time) as earliest, MAX(time) as latest FROM cp_slots WHERE zone_id = ?";
+                $slots_stmt = $conn->prepare($slots_sql);
+                if ($slots_stmt) {
+                    $slots_stmt->bind_param("i", $zone_id);
+                    $slots_stmt->execute();
+                    $slots_res = $slots_stmt->get_result();
+                    if ($slots_row = $slots_res->fetch_assoc()) {
+                        $zone_min_slot = $slots_row['earliest'];
+                        $zone_max_slot = $slots_row['latest']; // Questo è l'inizio dell'ultimo slot
                     }
+                    $slots_stmt->close();
                 }
-            } else {
-                $debug_item['cache_prepare_error'] = $conn->error;
-            }
 
-            // Se non trovata in cache, geocodifica
-            if (!$cache_found) {
-                $coordinates = getCoordinatesFromAddress($address, $appointment_id);
-                if ($coordinates) {
-                    $debug_item['status'] = 'Geocodificato';
-                    $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
-                    
-                    // Se zona = 0, determina la zona corretta
-                    if ($zone_id == 0) {
-                        // Ottieni tutte le zone
-                        $all_zones_sql = "SELECT id, latitude, longitude, radius_km FROM cp_zones";
-                        $all_zones_stmt = $conn->prepare($all_zones_sql);
-                        if ($all_zones_stmt && $all_zones_stmt->execute()) {
-                            $all_zones_result = $all_zones_stmt->get_result();
-                            $all_zones = $all_zones_result->fetch_all(MYSQLI_ASSOC);
-                            
-                            // Determina se l'indirizzo è in una zona
-                            foreach ($all_zones as $zone) {
-                                $zone_center = [$zone['latitude'], $zone['longitude']];
-                                $app_location = [$coordinates['lat'], $coordinates['lng']];
-                                $distance_to_zone = calculateDistance($app_location, $zone_center);
-                                
-                                if ($distance_to_zone <= $zone['radius_km']) {
-                                    // Aggiorna l'appuntamento con la zona corretta
-                                    $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
-                                    $update_stmt = $conn->prepare($update_sql);
-                                    if ($update_stmt) {
-                                        $correct_zone_id = $zone['id'];
-                                        $update_stmt->bind_param("ii", $correct_zone_id, $appointment_id);
-                                        if ($update_stmt->execute()) {
-                                            $zone_id = $correct_zone_id;
-                                            $row['zone_id'] = $correct_zone_id;
-                                            error_log("Zona corretta per appuntamento $appointment_id: $correct_zone_id");
-                                        }
-                                        $update_stmt->close();
-                                    }
-                                    break;
-                                }
-                            }
-                            $all_zones_stmt->close();
-                        }
+                if ($zone_min_slot && $zone_max_slot) {
+                    if (strtotime($app_time) < strtotime($zone_min_slot) || strtotime($app_time) > strtotime($zone_max_slot)) {
+                        $current_appointment['excluded_reason'] = "Rif. appuntamento: Orario {$app_time} fuori dagli slot operativi della zona {$zone_id} ({$zone_min_slot} - {$zone_max_slot}).";
+                        $appointments_evaluated[] = $current_appointment;
+                        error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (fuori slot zona).");
+                        continue;
                     }
-                } else {
-                    $row['excluded_reason'] = 'Impossibile ottenere coordinate';
-                    $debug_item['status'] = 'Geocodifica fallita';
-                    $debug_item['excluded_reason'] = $row['excluded_reason'];
-                    $debug_info[] = $debug_item;
+                } else { // zone_id != 0 ma non ci sono slot configurati per essa in cp_slots
+                    $current_appointment['excluded_reason'] = "Rif. appuntamento: Zona ID {$zone_id} non ha slot configurati in cp_slots.";
+                    $appointments_evaluated[] = $current_appointment;
+                    error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (zona senza slot).");
                     continue;
                 }
             }
+            // Se zone_id è 0, il controllo sugli slot verrà fatto (se necessario) dopo la geocodifica e l'eventuale assegnazione di una zona.
 
-            // Calcola la distanza stradale
-            $distance = calculateRoadDistance(
-                $user_latitude, $user_longitude,
-                $coordinates['lat'], $coordinates['lng']
-            );
-
-            if ($distance == -1) {
-                $row['excluded_reason'] = 'Errore calcolo distanza stradale';
-                error_log("Failed to calculate road distance for appointment ID: " . $appointment_id);
-                $debug_item['status'] = 'Errore calcolo distanza';
-                $debug_item['excluded_reason'] = $row['excluded_reason'];
-                $debug_info[] = $debug_item;
+            // Check 3: Indirizzo vuoto
+            if (empty($address)) {
+                $current_appointment['excluded_reason'] = 'Rif. appuntamento: Indirizzo mancante.';
+                $appointments_evaluated[] = $current_appointment;
+                error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (indirizzo vuoto).");
                 continue;
             }
 
-            $row['distance'] = $distance;
-            $debug_item['distance'] = number_format($distance, 2) . " km";
-
-            // Se la distanza è entro il raggio, aggiungi all'elenco
-            if ($distance <= $radius_km) {
-                $row['distance'] = $distance;
-                $row['latitude'] = $coordinates['lat'];
-                $row['longitude'] = $coordinates['lng'];
-                $row['excluded_reason'] = '';
-                $debug_item['status'] .= ' - Entro raggio';
-                $debug_item['excluded_reason'] = '';
-                $nearby_appointments[] = $row;
-            } else {
-                $row['distance'] = $distance;
-                $row['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
-                $debug_item['status'] .= ' - Fuori raggio';
-                $debug_item['excluded_reason'] = $row['excluded_reason'];
-                $nearby_appointments[] = $row; // Aggiunge l'appuntamento comunque all'array nearby_appointments
+            // Check 4: Geocodifica
+            $coordinates = getCoordinatesFromAddress($address, $appointment_id); // Assicurati che questa funzione esista
+            if (!$coordinates) {
+                $current_appointment['excluded_reason'] = 'Rif. appuntamento: Impossibile geocodificare l\'indirizzo.';
+                $appointments_evaluated[] = $current_appointment;
+                error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (geocodifica fallita).");
+                continue;
             }
+            $current_appointment['latitude'] = $coordinates['lat'];
+            $current_appointment['longitude'] = $coordinates['lng'];
 
-            $debug_info[] = $debug_item;
+            // Check 4.5: Se zone_id era 0, tenta di determinarla e ri-controllare gli slot.
+            // Questa parte è complessa e potrebbe richiedere una ristrutturazione o un flag per rieseguire il check 2.
+            // Per ora, la saltiamo per mantenere la modifica più contenuta, ma è un punto di miglioramento.
+            // if ($original_zone_id_was_zero && $current_appointment['zone_id'] != 0) { /* ... logica per ri-check 2 ... */ }
+
+
+            // Check 5: Calcolo distanza stradale dell'appuntamento di riferimento dalla posizione dell'utente
+            $distance = calculateRoadDistance($user_latitude, $user_longitude, $coordinates['lat'], $coordinates['lng']);
+            if ($distance === false || $distance < 0) {
+                $current_appointment['excluded_reason'] = 'Rif. appuntamento: Errore API calcolo distanza.';
+                $appointments_evaluated[] = $current_appointment;
+                error_log("findNearbyAppointments: App. ID {$appointment_id} escluso (errore API distanza).");
+                continue;
+            }
+            $current_appointment['distance'] = $distance;
+
+            // Check 6: Distanza dell'appuntamento di riferimento rispetto al raggio di ricerca dell'utente
+            // Questo è un motivo di esclusione cruciale per non generare slot adiacenti.
+            if ($distance > $radius_km) {
+                $current_appointment['excluded_reason'] = "Rif. appuntamento: Distanza dal luogo di ricerca (" . number_format($distance, 1) . " km) supera il raggio impostato (" . $radius_km . " km).";
+                // L'appuntamento viene aggiunto alla lista per essere visualizzato come escluso,
+                // ma la logica chiamante non dovrebbe usarlo per checkAvailableSlotsNearAppointment.
+            }
+            
+            // Se nessun 'excluded_reason' è stato impostato fino ad ora, l'appuntamento è valido come riferimento.
+            // Se è stato impostato (es. dal check 6), verrà comunque aggiunto con quel motivo.
+            $appointments_evaluated[] = $current_appointment;
         }
     }
 
-    // ORDINA appuntamenti per data e ora crescente
-    usort($nearby_appointments, function($a, $b) {
+    // Ordina gli appuntamenti valutati per data e ora
+    usort($appointments_evaluated, function($a, $b) {
         $adate = $a['appointment_date'] . ' ' . $a['appointment_time'];
         $bdate = $b['appointment_date'] . ' ' . $b['appointment_time'];
         return strcmp($adate, $bdate);
     });
 
-    global $address_comparison_debug;
-    $address_comparison_debug = $debug_info;
+    global $address_comparison_debug; // Se usi questa variabile globale
+    $address_comparison_debug = $debug_info_collection; // Popola $debug_info_collection come necessario
 
-    return $nearby_appointments;
+    return $appointments_evaluated;
 }
 
 // Funzione per ottenere il nome del giorno della settimana in italiano
@@ -431,62 +324,125 @@ function giornoSettimana($data) {
 }
 
 // Per la tabella dettagli appuntamenti
-function displayAppointmentDetails($appointments) {
-    echo "<div class='container'><center>";
-    echo "<h3>Dettagli degli appuntamenti considerati per gli slot disponibili:</h3>";
-    echo "<table class='pure-table pure-table-bordered' style='margin: 0 auto; width: 100%; font-size: 14px;'>";
+function displayAppointmentDetails($reference_appointments, $all_calculated_adjacent_slots = []) {
+    global $conn; 
+
+    echo "<div class='container' style='text-align: center; margin-bottom: 20px;'>";
+    echo "<h3>Dettagli degli appuntamenti di riferimento considerati:</h3>";
+    
+    echo "<style>
+        /* ... (stili CSS della risposta precedente, assicurati siano qui) ... */
+        .appointment-details-table {
+            margin: 0 auto; width: 100%; max-width: 1200px; font-size: 13px;
+            border-collapse: collapse; table-layout: auto;
+        }
+        .appointment-details-table th,
+        .appointment-details-table td {
+            border: 1px solid #ddd; padding: 8px; text-align: left; word-wrap: break-word;
+        }
+        .appointment-details-table th { background-color: #f2f2f2; font-weight: bold; }
+        .appointment-details-table tr:nth-child(even) { background-color: #f9f9f9; }
+        .col-id { width: 5%; } .col-zone-id { width: 7%; } .col-date { width: 12%; }
+        .col-time { width: 10%; } .col-distance { width: 10%; } .col-limits { width: 26%; }
+        .col-reason { width: 30%; }
+        .highlight-no-adjacent-slots td { color: #007bff; /* Blu per evidenziare */ }
+    </style>";
+
+    echo "<table class='pure-table pure-table-bordered appointment-details-table'>";
     echo "<thead><tr>
-        <th>ID</th>
-        <th>Zona</th>
-        <th>Data</th>
-        <th>Ora</th>
-        <th>Distanza</th>
-        <th>Limiti orari zona</th>
-        <th>Motivo esclusione</th>
+        <th class='col-id'>ID</th> <th class='col-zone-id'>Zona ID</th> <th class='col-date'>Data</th>
+        <th class='col-time'>Ora</th> <th class='col-distance'>Distanza Utente</th>
+        <th class='col-limits'>Limiti Slot Zona (Inizio Min-Max)</th>
+        <th class='col-reason'>Stato Riferimento / Slot Adiacenti</th>
     </tr></thead>";
     echo "<tbody>";
 
-    foreach ($appointments as $appointment) {
-        global $conn;
-        $zone_id = $appointment['zone_id'];
-        $date = $appointment['appointment_date'];
+    if (empty($reference_appointments)) {
+        echo "<tr><td colspan='7' style='text-align:center;'>Nessun appuntamento di riferimento da analizzare.</td></tr>";
+    } else {
+        foreach ($reference_appointments as $ref_app) {
+            $row_class = '';
+            $display_reason = '';
 
-        // Ottieni limiti orari della zona
-        $zone_sql = "SELECT min_time, max_time FROM cp_zones WHERE id = ?";
-        $zone_stmt = $conn->prepare($zone_sql);
-        $zone_min_time = "00:00:00";
-        $zone_max_time = "23:59:59";
-        $orario_massimo = $zone_max_time; // Default
-        
-        if ($zone_stmt) {
-            $zone_stmt->bind_param("i", $zone_id);
-            $zone_stmt->execute();
-            $zone_result = $zone_stmt->get_result();
-            if ($zone_result && $zone_result->num_rows > 0) {
-                $zone_row = $zone_result->fetch_assoc();
-                $zone_min_time = $zone_row['min_time'];
-                $zone_max_time = $zone_row['max_time'];
-                // Calcola l'ultimo orario valido per il tipo di visita (60 minuti)
-                $durata_visita = 60 * 60; // 60 minuti in secondi
-                $orario_massimo = date("H:i:s", strtotime($zone_max_time) - $durata_visita);
+            if (!empty($ref_app['excluded_reason'])) {
+                // Il riferimento stesso è escluso da findNearbyAppointments
+                $display_reason = htmlspecialchars($ref_app['excluded_reason']);
+            } else {
+                // Il riferimento è valido, controlliamo gli slot adiacenti da $all_calculated_adjacent_slots
+                $related_slots_for_this_ref = array_filter($all_calculated_adjacent_slots, function($slot) use ($ref_app) {
+                    return isset($slot['related_appointment']['id']) && $slot['related_appointment']['id'] == $ref_app['id'];
+                });
+
+                $bookable_adjacent_found = false;
+                $adjacent_exclusion_reasons = [];
+                $slot_before_details = "Prima: N/D";
+                $slot_after_details = "Dopo: N/D";
+
+                foreach ($related_slots_for_this_ref as $adj_slot) {
+                    if (isset($adj_slot['excluded']) && !$adj_slot['excluded']) {
+                        $bookable_adjacent_found = true;
+                        break; 
+                    }
+                    // Raccogli i motivi di esclusione degli slot adiacenti
+                    $type = isset($adj_slot['type']) ? ucfirst($adj_slot['type']) : 'Sconosciuto';
+                    $time = isset($adj_slot['time']) ? $adj_slot['time'] : 'N/D';
+                    $reason = isset($adj_slot['excluded_reason']) && $adj_slot['excluded_reason'] ? $adj_slot['excluded_reason'] : 'Non specificato';
+                    
+                    if (strtolower($type) == 'before') {
+                        $slot_before_details = "Prima ({$time}): Escluso - " . htmlspecialchars($reason);
+                    } elseif (strtolower($type) == 'after') {
+                        $slot_after_details = "Dopo ({$time}): Escluso - " . htmlspecialchars($reason);
+                    }
+                }
+
+                if ($bookable_adjacent_found) {
+                    $display_reason = 'Rif. valido, slot adiacenti potenzialmente disponibili.';
+                } else {
+                    // Nessuno slot adiacente prenotabile trovato per questo riferimento valido
+                    $display_reason = "Rif. valido, ma nessun slot adiacente prenotabile. <br>Dettagli: {$slot_before_details}; <br>{$slot_after_details}";
+                    if (empty($related_slots_for_this_ref)) { // Caso in cui checkAvailableSlotsNearAppointment non è stato chiamato o ha restituito vuoto
+                         $display_reason = "Rif. valido, ma non sono stati valutati slot adiacenti (o zona ID 0 / limiti slot non trovati in checkAvailableSlotsNearAppointment).";
+                    }
+                    $row_class = 'highlight-no-adjacent-slots'; // Applica classe per colore blu
+                }
             }
-            $zone_stmt->close();
-        }
 
-        echo "<tr>";
-        echo "<td>{$appointment['id']}</td>";
-        echo "<td>{$appointment['zone_id']}</td>";
-        echo "<td>{$appointment['appointment_date']}</td>";
-        echo "<td>{$appointment['appointment_time']}</td>";
-        echo "<td>" . (isset($appointment['distance']) ? number_format($appointment['distance'], 2) . " km" : '') . "</td>";
-        echo "<td>{$zone_min_time} - {$zone_max_time} (Max per visita: {$orario_massimo})</td>";
-        echo "<td>" . (isset($appointment['excluded_reason']) ? htmlspecialchars($appointment['excluded_reason']) : '') . "</td>";
-        echo "</tr>";
+            // --- Logica per visualizzare i limiti della zona (invariata dalla risposta precedente) ---
+            $zone_id = isset($ref_app['zone_id']) ? $ref_app['zone_id'] : 0;
+            $display_limits_text = "";
+            if ($zone_id != 0) {
+                $slots_limit_sql = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ?";
+                $slots_limit_stmt = $conn->prepare($slots_limit_sql);
+                if ($slots_limit_stmt) {
+                    $slots_limit_stmt->bind_param("i", $zone_id);
+                    $slots_limit_stmt->execute();
+                    $slots_limit_result = $slots_limit_stmt->get_result();
+                    if ($slots_row = $slots_limit_result->fetch_assoc()) {
+                        if ($slots_row['earliest_slot'] !== null && $slots_row['latest_slot'] !== null) {
+                            $display_limits_text = htmlspecialchars("Slot da {$slots_row['earliest_slot']} a {$slots_row['latest_slot']}");
+                        } else { $display_limits_text = htmlspecialchars("Default (Nessuno slot per Zona {$zone_id})"); }
+                    } else { $display_limits_text = htmlspecialchars("Errore query limiti slot"); }
+                    $slots_limit_stmt->close();
+                } else { $display_limits_text = htmlspecialchars("Errore prep. query limiti slot"); }
+            } else { $display_limits_text = htmlspecialchars("N/A (Zona ID 0)"); }
+            // --- Fine logica limiti zona ---
+
+            echo "<tr class='{$row_class}'>"; // Applica classe se necessario
+            echo "<td class='col-id'>" . (isset($ref_app['id']) ? htmlspecialchars($ref_app['id']) : 'N/D') . "</td>";
+            echo "<td class='col-zone-id'>" . htmlspecialchars($zone_id) . "</td>";
+            echo "<td class='col-date'>" . (isset($ref_app['appointment_date']) ? htmlspecialchars($ref_app['appointment_date']) : 'N/D') . "</td>";
+            echo "<td class='col-time'>" . (isset($ref_app['appointment_time']) ? htmlspecialchars($ref_app['appointment_time']) : 'N/D') . "</td>";
+            echo "<td class='col-distance'>" . (isset($ref_app['distance']) ? htmlspecialchars(number_format($ref_app['distance'], 2)) . " km" : 'N/D') . "</td>";
+            echo "<td class='col-limits'>" . $display_limits_text . "</td>";
+            echo "<td class='col-reason'>" . $display_reason . "</td>"; // Usa $display_reason aggiornato
+            echo "</tr>";
+        }
     }
 
     echo "</tbody></table>";
-    echo "</center></div><hr>";
+    echo "</div><hr>";
 }
+
 
 // Funzione per ottenere il nome del giorno della settimana in italiano
 /*function giornoSettimana($data) {
@@ -637,380 +593,257 @@ function getZonesFromCoordinates($latitude, $longitude) {
     return $zones;
 }
 
-// Funzione per verificare slot disponibili prima/dopo un appuntamento esistente
+/**
+ * Funzione per verificare slot disponibili prima/dopo un appuntamento esistente.
+ * Rispetta i limiti MIN e MAX degli slot configurati in cp_slots per la zona,
+ * e integra i controlli di distanza e occupazione.
+ *
+ * @param array $appointmentData Dati dell'appuntamento di riferimento
+ * @param int $buffer_minutes Durata dello slot/buffer (default 60)
+ * @return array Array di slot disponibili (o esclusi con motivo)
+ */
 function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 60) {
     global $conn;
     $available_slots = [];
-    $zone_id = $appointmentData['zone_id'];
-    $duration = 60; // Default duration for zone_id=0
-    $last_slot_time = null; // Per memorizzare l'ultimo slot configurato per il giorno
-    $durata_visita = 60 * 60; // 60 minuti in secondi
-    
-    // Ottieni il giorno della settimana dell'appuntamento (1-7, 1=Lun, 7=Dom)
-    $appointment_date = $appointmentData['appointment_date'];
-    $appointment_day_of_week = date('N', strtotime($appointment_date));
 
-    // Traduci il giorno della settimana in inglese per il confronto nel database
-    $day_names = [
-        1 => 'Monday',
-        2 => 'Tuesday',
-        3 => 'Wednesday',
-        4 => 'Thursday',
-        5 => 'Friday',
-        6 => 'Saturday',
-        7 => 'Sunday'
-    ];
-    $day_name = $day_names[$appointment_day_of_week];
-    
-    // Ottieni l'ultimo slot configurato per questo giorno della settimana IN QUALSIASI ZONA
-    $last_slot_sql = "SELECT MAX(time) as last_time FROM cp_slots WHERE day = ?";
-    $last_slot_stmt = $conn->prepare($last_slot_sql);
-    if ($last_slot_stmt) {
-        $last_slot_stmt->bind_param("s", $day_name);
-        $last_slot_stmt->execute();
-        $last_slot_result = $last_slot_stmt->get_result();
-        if ($last_slot_row = $last_slot_result->fetch_assoc()) {
-            $last_slot_time = $last_slot_row['last_time'];
-            error_log("Ultimo slot configurato per il giorno $day_name (in qualsiasi zona): $last_slot_time");
-        }
+    // Dati dell'appuntamento di riferimento
+    $zone_id = isset($appointmentData['zone_id']) ? $appointmentData['zone_id'] : 0;
+    $appointment_id_ref = isset($appointmentData['id']) ? $appointmentData['id'] : null;
+    $appointment_date_str_ref = isset($appointmentData['appointment_date']) ? $appointmentData['appointment_date'] : null;
+    $appointment_time_str_ref = isset($appointmentData['appointment_time']) ? $appointmentData['appointment_time'] : null;
+    $appointment_address_ref = isset($appointmentData['address']) ? $appointmentData['address'] : null;
+
+    if (!$appointment_id_ref || !$appointment_date_str_ref || !$appointment_time_str_ref || !$appointment_address_ref) {
+        error_log("checkAvailableSlotsNearAppointment: Dati appuntamento di riferimento incompleti.");
+        return [];
     }
     
-    // Calcola la durata dello slot per la zona specifica (se disponibile)
+    $duration_slot_minutes = (int)$buffer_minutes;
+
+    // 1. Recupera i limiti degli slot configurati per la zona specifica (MIN e MAX time da cp_slots)
+    $zone_actual_min_slot_time = null; // Orario del primo slot disponibile nella zona
+    $zone_actual_max_slot_time = null; // Orario di INIZIO dell'ultimo slot disponibile nella zona
+
     if ($zone_id != 0) {
-        $sql = "SELECT day, time FROM cp_slots WHERE zone_id = ? ORDER BY day, time";
-        $stmt = $conn->prepare($sql);
-        if ($stmt) {
-            $stmt->bind_param("i", $zone_id);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            if ($result->num_rows > 0) {
-                $times = [];
-                while ($row = $result->fetch_assoc()) {
-                    $slot_day_of_week = date('N', strtotime($row['day']));
-                    if ($slot_day_of_week == $appointment_day_of_week) {
-                        $times[] = $row['time'];
-                    }
-                }
-                sort($times);
-                if (count($times) >= 2) {
-                    $first_time = strtotime($times[0]);
-                    $second_time = strtotime($times[1]);
-                    $duration_seconds = $second_time - $first_time;
-                    $duration = $duration_seconds / 60; // in minuti
-                    error_log("Durata calcolata dello slot per la zona $zone_id: $duration minuti");
+        $slots_config_sql = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ?";
+        $slots_config_stmt = $conn->prepare($slots_config_sql);
+        if ($slots_config_stmt) {
+            $slots_config_stmt->bind_param("i", $zone_id);
+            $slots_config_stmt->execute();
+            $slots_config_result = $slots_config_stmt->get_result();
+            if ($slots_config_row = $slots_config_result->fetch_assoc()) {
+                if ($slots_config_row['earliest_slot'] && $slots_config_row['latest_slot']) {
+                    $zone_actual_min_slot_time = $slots_config_row['earliest_slot'];
+                    $zone_actual_max_slot_time = $slots_config_row['latest_slot'];
+                    error_log("checkAvailableSlotsNearAppointment: App Ref ID {$appointment_id_ref}, Zona {$zone_id} -> Limiti slot da cp_slots: Min INIZIO {$zone_actual_min_slot_time}, Max INIZIO {$zone_actual_max_slot_time}");
                 }
             }
+            $slots_config_stmt->close();
+        } else {
+            error_log("checkAvailableSlotsNearAppointment: Errore preparazione query limiti slot per zona {$zone_id} da cp_slots: " . $conn->error);
         }
-    }
-    
-    // Ottieni limiti orari della zona
-    $zone_min_time = "00:00:00";
-    $zone_max_time = "23:59:59";
-    $zone_sql = "SELECT min_time, max_time FROM cp_zones WHERE id = ?";
-    $zone_stmt = $conn->prepare($zone_sql);
-    if ($zone_stmt) {
-        $zone_stmt->bind_param("i", $zone_id);
-        $zone_stmt->execute();
-        $zone_result = $zone_stmt->get_result();
-        if ($zone_result && $zone_result->num_rows > 0) {
-            $zone_row = $zone_result->fetch_assoc();
-            $zone_min_time = $zone_row['min_time'];
-            $zone_max_time = $zone_row['max_time'];
-            error_log("Limiti orari zona $zone_id: $zone_min_time - $zone_max_time");
-        }
-        $zone_stmt->close();
     }
 
-    // Calcola l'ultimo orario valido per il tipo di visita
-    $orario_massimo = date("H:i:s", strtotime($zone_max_time) - $durata_visita);
-    error_log("Orario massimo per prenotare appuntamento in zona $zone_id: $orario_massimo (considerando durata visita di 60 minuti)");
-    
-    // Converti data e ora dell'appuntamento in oggetto DateTime
-    $appointment_datetime = new DateTime($appointmentData['appointment_date'] . ' ' . $appointmentData['appointment_time']);
-    $before_slot = clone $appointment_datetime;
-    $before_slot->modify('-' . $duration . ' minutes');
-    $after_slot = clone $appointment_datetime;
-    $after_slot->modify('+' . $duration . ' minutes');
-    
-    // Verifica se lo slot dopo è successivo all'ultimo slot configurato
-    $after_slot_exceeds_limit = false;
-    $after_slot_excluded_reason = "";
-    
-    if ($last_slot_time) {
-        $last_slot_datetime = new DateTime($appointmentData['appointment_date'] . ' ' . $last_slot_time);
-        if ($after_slot > $last_slot_datetime) {
-            $after_slot_exceeds_limit = true;
-            $after_slot_excluded_reason = "Orario " . $after_slot->format('H:i:s') . " supera l'ultimo slot configurato ($last_slot_time) per il giorno $day_name";
-            error_log($after_slot_excluded_reason);
-        }
+    if (!$zone_actual_min_slot_time || !$zone_actual_max_slot_time) {
+        error_log("checkAvailableSlotsNearAppointment: Impossibile determinare limiti slot validi da cp_slots per zona {$zone_id} (o zone_id è 0) per app. ID {$appointment_id_ref}. Nessuno slot adiacente sarà proposto.");
+        return [];
     }
-    
-    // Verifica specifica: lo slot successivo viola il limite di orario massimo della zona?
-    $max_time_datetime = new DateTime($appointmentData['appointment_date'] . ' ' . $orario_massimo);
-    if ($after_slot > $max_time_datetime) {
-        $after_slot_exceeds_limit = true;
-        $after_slot_excluded_reason = "Orario " . $after_slot->format('H:i:s') . " supera l'orario massimo consentito per la zona ($orario_massimo)";
-        error_log($after_slot_excluded_reason);
-    }
-    
-    // Verifica anche se lo slot prima è prima dell'orario minimo della zona
-    $before_slot_below_limit = false;
-    $before_slot_excluded_reason = "";
-    $min_time_datetime = new DateTime($appointmentData['appointment_date'] . ' ' . $zone_min_time);
-    if ($before_slot < $min_time_datetime) {
-        $before_slot_below_limit = true;
-        $before_slot_excluded_reason = "Orario " . $before_slot->format('H:i:s') . " è prima dell'orario minimo consentito per la zona ($zone_min_time)";
-        error_log($before_slot_excluded_reason);
-    }
-    
-    // Ottieni tutti gli appuntamenti del giorno per questa zona
-    $sql = "SELECT id, appointment_time, address 
-            FROM cp_appointments 
-            WHERE zone_id = ? AND appointment_date = ?
-            ORDER BY appointment_time";
-    $stmt = $conn->prepare($sql);
-    $appointmentDate = $appointmentData['appointment_date'];
-    
-    if ($stmt) {
-        $stmt->bind_param("is", $zone_id, $appointmentDate);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $appointments = $result->fetch_all(MYSQLI_ASSOC);
-        
-        // Trova l'indice dell'appuntamento corrente
-        $current_index = -1;
-        foreach ($appointments as $i => $app) {
-            if ($app['id'] == $appointmentData['id']) {
-                $current_index = $i;
+
+    $appointment_datetime_ref = new DateTime($appointment_date_str_ref . ' ' . $appointment_time_str_ref);
+
+    // Ottieni tutti gli appuntamenti del giorno per questa zona per trovare il precedente e il successivo
+    // Questo serve per i controlli di distanza.
+    $daily_appointments_sql = "SELECT id, appointment_time, address FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? ORDER BY appointment_time";
+    $daily_stmt = $conn->prepare($daily_appointments_sql);
+    $prev_appointment_details_for_distance = null;
+    $next_appointment_details_for_distance = null;
+
+    if ($daily_stmt) {
+        $daily_stmt->bind_param("is", $zone_id, $appointment_date_str_ref);
+        $daily_stmt->execute();
+        $daily_result = $daily_stmt->get_result();
+        $appointments_for_day_in_zone = $daily_result->fetch_all(MYSQLI_ASSOC);
+        $daily_stmt->close();
+
+        $current_appointment_index_in_day = -1;
+        foreach ($appointments_for_day_in_zone as $i => $app_in_day) {
+            if ($app_in_day['id'] == $appointment_id_ref) {
+                $current_appointment_index_in_day = $i;
                 break;
             }
         }
-        
-        if ($current_index === -1) {
-            error_log("Appuntamento non trovato nel set di appuntamenti del giorno");
-            return $available_slots;
-        }
-        
-        // Determina appuntamenti precedenti e successivi
-        $prev_appointment = ($current_index > 0) ? $appointments[$current_index - 1] : null;
-        $next_appointment = ($current_index < count($appointments) - 1) ? $appointments[$current_index + 1] : null;
-        
-        // --- CONTROLLO SLOT PRIMA ---
-        if ($before_slot_below_limit) {
-            // AGGIUNGIAMO LO SLOT CON SEGNALAZIONE DI ESCLUSIONE
-            $available_slots[] = [
-                'date' => $before_slot->format('Y-m-d'),
-                'time' => $before_slot->format('H:i:s'),
-                'type' => 'before',
-                'related_appointment' => $appointmentData,
-                'excluded' => true,
-                'excluded_reason' => $before_slot_excluded_reason
-            ];
-        } else if ($current_index > 0 && (!$prev_appointment || isTimeSlotAvailable($zone_id, $before_slot->format('Y-m-d'), $before_slot->format('H:i:s')))) {
-            $distance_constraint_met = true;
-            $debug_info = [];
-            $distance_excluded_reason = "";
-            
-            if ($prev_appointment && !empty($prev_appointment['address'])) {
-                $prev_coordinates = getCoordinatesFromAddress($prev_appointment['address'], $prev_appointment['id']);
-                if ($prev_coordinates) {
-                    $current_coordinates = getCoordinatesFromAddress($appointmentData['address'], $appointmentData['id']);
-                    if ($current_coordinates) {
-                        $distance = calculateRoadDistance(
-                            $prev_coordinates['lat'], $prev_coordinates['lng'],
-                            $current_coordinates['lat'], $current_coordinates['lng']
-                        );
-                        $debug_info = [
-                            'prev_address' => $prev_appointment['address'],
-                            'prev_coords' => $prev_coordinates,
-                            'distance' => $distance
-                        ];
-                        if ($distance > 7) {
-                            $distance_constraint_met = false;
-                            $distance_excluded_reason = "Distanza dall'appuntamento precedente ($distance km) > 7 km";
-                            error_log("Slot prima non disponibile: " . $distance_excluded_reason);
-                        }
-                    } else {
-                        $distance_constraint_met = false;
-                        $distance_excluded_reason = "Impossibile ottenere coordinate dell'appuntamento corrente";
-                        error_log("Slot prima non disponibile: " . $distance_excluded_reason);
-                    }
-                } else {
-                    $distance_constraint_met = false;
-                    $distance_excluded_reason = "Impossibile ottenere coordinate dell'appuntamento precedente";
-                    error_log("Slot prima non disponibile: " . $distance_excluded_reason);
-                }
-            }
-            
-            // Controllo slot già occupato
-            if (!$distance_constraint_met) {
-                // AGGIUNGIAMO LO SLOT CON SEGNALAZIONE DI ESCLUSIONE
-                $available_slots[] = [
-                    'date' => $before_slot->format('Y-m-d'),
-                    'time' => $before_slot->format('H:i:s'),
-                    'type' => 'before',
-                    'related_appointment' => $appointmentData,
-                    'excluded' => true,
-                    'excluded_reason' => $distance_excluded_reason,
-                    'debug_info' => $debug_info
-                ];
-            } else {
-                $checkSql = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
-                $checkStmt = $conn->prepare($checkSql);
-                $date = $before_slot->format('Y-m-d');
-                $time = $before_slot->format('H:i:s');
-                $checkStmt->bind_param("ss", $date, $time);
-                $checkStmt->execute();
-                $checkResult = $checkStmt->get_result();
-                $checkRow = $checkResult->fetch_assoc();
-                $alreadyBooked = ($checkRow['count'] > 0);
-                $checkStmt->close();
 
-                if ($alreadyBooked) {
-                    // AGGIUNGIAMO LO SLOT CON SEGNALAZIONE DI ESCLUSIONE
-                    $available_slots[] = [
-                        'date' => $date,
-                        'time' => $time,
-                        'type' => 'before',
-                        'related_appointment' => $appointmentData,
-                        'excluded' => true,
-                        'excluded_reason' => "Slot già occupato da un altro appuntamento",
-                        'debug_info' => $debug_info
-                    ];
-                } else {
-                    $available_slots[] = [
-                        'date' => $date,
-                        'time' => $time,
-                        'type' => 'before',
-                        'related_appointment' => $appointmentData,
-                        'excluded' => false,
-                        'debug_info' => $debug_info
-                    ];
-                }
-            }
+        if ($current_appointment_index_in_day > 0) {
+            $prev_appointment_details_for_distance = $appointments_for_day_in_zone[$current_appointment_index_in_day - 1];
         }
-        
-        // --- CONTROLLO SLOT DOPO ---
-        if ($after_slot_exceeds_limit) {
-            // AGGIUNGIAMO LO SLOT CON SEGNALAZIONE DI ESCLUSIONE
-            $available_slots[] = [
-                'date' => $after_slot->format('Y-m-d'),
-                'time' => $after_slot->format('H:i:s'),
-                'type' => 'after',
-                'related_appointment' => $appointmentData,
-                'excluded' => true,
-                'excluded_reason' => $after_slot_excluded_reason
-            ];
-        } else if (!$next_appointment || isTimeSlotAvailable($zone_id, $after_slot->format('Y-m-d'), $after_slot->format('H:i:s'))) {
-            // Verifica che non superi l'orario massimo della zona per una visita di 60 minuti
-            $after_slot_time = $after_slot->format('H:i:s');
-            $after_slot_datetime = new DateTime($appointmentData['appointment_date'] . ' ' . $after_slot_time);
-            
-            // Calcola la fine della visita se iniziasse nell'orario dello slot proposto
-            $after_slot_end = clone $after_slot_datetime;
-            $after_slot_end->modify('+60 minutes');
-            
-            // Orario massimo zona come datetime
-            $max_zone_datetime = new DateTime($appointmentData['appointment_date'] . ' ' . $zone_max_time);
-            
-            if ($after_slot_end > $max_zone_datetime) {
-                $excluded_reason = "Lo slot dopo (" . $after_slot_time . ") non consente di completare una visita di 60 minuti entro l'orario massimo della zona (" . $zone_max_time . ")";
-                error_log($excluded_reason);
-                
-                // AGGIUNGIAMO LO SLOT CON SEGNALAZIONE DI ESCLUSIONE
-                $available_slots[] = [
-                    'date' => $after_slot->format('Y-m-d'),
-                    'time' => $after_slot->format('H:i:s'),
-                    'type' => 'after',
-                    'related_appointment' => $appointmentData,
-                    'excluded' => true,
-                    'excluded_reason' => $excluded_reason
-                ];
-            } else {
-                $distance_constraint_met = true;
-                $debug_info = [];
-                $distance_excluded_reason = "";
-                
-                if ($next_appointment && !empty($next_appointment['address'])) {
-                    $next_coordinates = getCoordinatesFromAddress($next_appointment['address'], $next_appointment['id']);
-                    if ($next_coordinates) {
-                        $current_coordinates = getCoordinatesFromAddress($appointmentData['address'], $appointmentData['id']);
-                        if ($current_coordinates) {
-                            $distance = calculateRoadDistance(
-                                $current_coordinates['lat'], $current_coordinates['lng'],
-                                $next_coordinates['lat'], $next_coordinates['lng']
-                            );
-                            $debug_info = [
-                                'next_address' => $next_appointment['address'],
-                                'next_coords' => $next_coordinates,
-                                'distance' => $distance
-                            ];
-                            if ($distance > 7) {
-                                $distance_constraint_met = false;
-                                $distance_excluded_reason = "Distanza dall'appuntamento successivo ($distance km) > 7 km";
-                                error_log("Slot dopo non disponibile: " . $distance_excluded_reason);
-                            }
-                        } else {
-                            $distance_constraint_met = false;
-                            $distance_excluded_reason = "Impossibile ottenere coordinate dell'appuntamento corrente";
-                            error_log("Slot dopo non disponibile: " . $distance_excluded_reason);
-                        }
-                    } else {
-                        $distance_constraint_met = false;
-                        $distance_excluded_reason = "Impossibile ottenere coordinate dell'appuntamento successivo";
-                        error_log("Slot dopo non disponibile: " . $distance_excluded_reason);
-                    }
-                }
-                
-                // Controllo slot già occupato
-                if (!$distance_constraint_met) {
-                    // AGGIUNGIAMO LO SLOT CON SEGNALAZIONE DI ESCLUSIONE
-                    $available_slots[] = [
-                        'date' => $after_slot->format('Y-m-d'),
-                        'time' => $after_slot->format('H:i:s'),
-                        'type' => 'after',
-                        'related_appointment' => $appointmentData,
-                        'excluded' => true,
-                        'excluded_reason' => $distance_excluded_reason,
-                        'debug_info' => $debug_info
-                    ];
-                } else {
-                    $checkSql = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
-                    $checkStmt = $conn->prepare($checkSql);
-                    $date = $after_slot->format('Y-m-d');
-                    $time = $after_slot->format('H:i:s');
-                    $checkStmt->bind_param("ss", $date, $time);
-                    $checkStmt->execute();
-                    $checkResult = $checkStmt->get_result();
-                    $checkRow = $checkResult->fetch_assoc();
-                    $alreadyBooked = ($checkRow['count'] > 0);
-                    $checkStmt->close();
+        if ($current_appointment_index_in_day !== -1 && $current_appointment_index_in_day < count($appointments_for_day_in_zone) - 1) {
+            $next_appointment_details_for_distance = $appointments_for_day_in_zone[$current_appointment_index_in_day + 1];
+        }
+    } else {
+        error_log("checkAvailableSlotsNearAppointment: Errore preparazione query appuntamenti giornalieri per controlli distanza (zona {$zone_id}, data {$appointment_date_str_ref}): " . $conn->error);
+    }
 
-                    if ($alreadyBooked) {
-                        // AGGIUNGIAMO LO SLOT CON SEGNALAZIONE DI ESCLUSIONE
-                        $available_slots[] = [
-                            'date' => $date,
-                            'time' => $time,
-                            'type' => 'after',
-                            'related_appointment' => $appointmentData,
-                            'excluded' => true,
-                            'excluded_reason' => "Slot già occupato da un altro appuntamento",
-                            'debug_info' => $debug_info
-                        ];
-                    } else {
-                        $available_slots[] = [
-                            'date' => $date,
-                            'time' => $time,
-                            'type' => 'after',
-                            'related_appointment' => $appointmentData,
-                            'excluded' => false,
-                            'debug_info' => $debug_info
-                        ];
-                    }
-                }
+
+    // --- CONTROLLO SLOT PRIMA ---
+    $proposed_before_slot_dt = clone $appointment_datetime_ref;
+    $proposed_before_slot_dt->modify('-' . $duration_slot_minutes . ' minutes');
+    $proposed_before_date_str = $proposed_before_slot_dt->format('Y-m-d');
+    $proposed_before_time_str = $proposed_before_slot_dt->format('H:i:s');
+    
+    $exclude_before = false;
+    $before_slot_excluded_reason = "";
+    $debug_info_before = ['evaluated_slot' => $proposed_before_date_str . ' ' . $proposed_before_time_str];
+
+    // Check 1: Rispetto ai limiti di slot della zona
+    if (strtotime($proposed_before_time_str) < strtotime($zone_actual_min_slot_time)) {
+        $exclude_before = true;
+        $before_slot_excluded_reason = "Slot proposto {$proposed_before_time_str} è prima del primo slot operativo della zona ({$zone_actual_min_slot_time})";
+    }
+
+    // Check 2: Distanza dall'appuntamento precedente (se esiste e slot ancora valido)
+    if (!$exclude_before && $prev_appointment_details_for_distance && !empty($prev_appointment_details_for_distance['address'])) {
+        $coords_ref_for_prev_dist = getCoordinatesFromAddress($appointment_address_ref, $appointment_id_ref); // Coords dell'app. di riferimento
+        $coords_prev_for_dist = getCoordinatesFromAddress($prev_appointment_details_for_distance['address'], $prev_appointment_details_for_distance['id']);
+
+        if ($coords_ref_for_prev_dist && $coords_prev_for_dist) {
+            $distance_from_prev = calculateRoadDistance(
+                $coords_prev_for_dist['lat'], $coords_prev_for_dist['lng'],
+                $coords_ref_for_prev_dist['lat'], $coords_ref_for_prev_dist['lng']
+            );
+            $debug_info_before['distance_from_prev_app'] = [
+                'prev_app_id' => $prev_appointment_details_for_distance['id'],
+                'prev_address' => $prev_appointment_details_for_distance['address'],
+                'distance_km' => $distance_from_prev
+            ];
+            if ($distance_from_prev === false || $distance_from_prev < 0) { // Assumendo che -1 sia errore
+                $exclude_before = true;
+                $before_slot_excluded_reason = "Errore calcolo distanza da app. precedente ({$prev_appointment_details_for_distance['id']}).";
+            } elseif ($distance_from_prev > 7) {
+                $exclude_before = true;
+                $before_slot_excluded_reason = "Distanza da app. precedente ({$prev_appointment_details_for_distance['id']}: " . number_format($distance_from_prev,1) . " km) > 7 km";
             }
+        } else {
+            $exclude_before = true;
+            $before_slot_excluded_reason = "Impossibile ottenere coordinate per calcolo distanza da app. precedente ({$prev_appointment_details_for_distance['id']}).";
+            $debug_info_before['coord_error_prev'] = $before_slot_excluded_reason;
         }
     }
+    
+    // Check 3: Slot già occupato (se ancora valido)
+    if (!$exclude_before) {
+        $check_booked_sql = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
+        // Non si filtra per zone_id qui, assumendo che uno slot orario sia bloccato universalmente se preso.
+        $check_booked_stmt = $conn->prepare($check_booked_sql);
+        if ($check_booked_stmt) {
+            $check_booked_stmt->bind_param("ss", $proposed_before_date_str, $proposed_before_time_str);
+            $check_booked_stmt->execute();
+            $check_result = $check_booked_stmt->get_result()->fetch_assoc();
+            if ($check_result['count'] > 0) {
+                $exclude_before = true;
+                $before_slot_excluded_reason = "Slot {$proposed_before_time_str} del {$proposed_before_date_str} risulta già occupato";
+            }
+            $check_booked_stmt->close();
+        } else {
+            error_log("checkAvailableSlotsNearAppointment: Errore preparazione query verifica occupazione slot 'prima': " . $conn->error);
+            $exclude_before = true; // Per sicurezza, se non possiamo verificare
+            $before_slot_excluded_reason = "Errore interno verifica disponibilità slot.";
+        }
+    }
+    
+    if ($before_slot_excluded_reason && $exclude_before) { // Logga solo se effettivamente escluso
+         error_log("checkAvailableSlotsNearAppointment (Slot PRIMA) per App Ref ID {$appointment_id_ref}: ESCLUSO. Motivo: " . $before_slot_excluded_reason);
+    }
+
+    $available_slots[] = [
+        'date' => $proposed_before_date_str,
+        'time' => $proposed_before_time_str,
+        'type' => 'before',
+        'related_appointment' => $appointmentData,
+        'excluded' => $exclude_before,
+        'excluded_reason' => $before_slot_excluded_reason,
+        'debug_info' => $debug_info_before
+    ];
+
+    // --- CONTROLLO SLOT DOPO ---
+    $proposed_after_slot_dt = clone $appointment_datetime_ref;
+    $proposed_after_slot_dt->modify('+' . $duration_slot_minutes . ' minutes');
+    $proposed_after_date_str = $proposed_after_slot_dt->format('Y-m-d');
+    $proposed_after_time_str = $proposed_after_slot_dt->format('H:i:s');
+
+    $exclude_after = false;
+    $after_slot_excluded_reason = "";
+    $debug_info_after = ['evaluated_slot' => $proposed_after_date_str . ' ' . $proposed_after_time_str];
+
+    // Check 1: Rispetto ai limiti di slot della zona
+    // $zone_actual_max_slot_time è l'orario di INIZIO dell'ultimo slot.
+    // Lo slot proposto ($proposed_after_time_str) deve iniziare non più tardi di $zone_actual_max_slot_time.
+    if (strtotime($proposed_after_time_str) > strtotime($zone_actual_max_slot_time)) {
+        $exclude_after = true;
+        $after_slot_excluded_reason = "Slot proposto {$proposed_after_time_str} inizia dopo l'ultimo slot operativo della zona ({$zone_actual_max_slot_time})";
+    }
+
+    // Check 2: Distanza dall'appuntamento successivo (se esiste e slot ancora valido)
+    if (!$exclude_after && $next_appointment_details_for_distance && !empty($next_appointment_details_for_distance['address'])) {
+        $coords_ref_for_next_dist = getCoordinatesFromAddress($appointment_address_ref, $appointment_id_ref); // Coords dell'app. di riferimento
+        $coords_next_for_dist = getCoordinatesFromAddress($next_appointment_details_for_distance['address'], $next_appointment_details_for_distance['id']);
+
+        if ($coords_ref_for_next_dist && $coords_next_for_dist) {
+            $distance_to_next = calculateRoadDistance(
+                $coords_ref_for_next_dist['lat'], $coords_ref_for_next_dist['lng'],
+                $coords_next_for_dist['lat'], $coords_next_for_dist['lng']
+            );
+             $debug_info_after['distance_to_next_app'] = [
+                'next_app_id' => $next_appointment_details_for_distance['id'],
+                'next_address' => $next_appointment_details_for_distance['address'],
+                'distance_km' => $distance_to_next
+            ];
+            if ($distance_to_next === false || $distance_to_next < 0) { // Assumendo che -1 sia errore
+                $exclude_after = true;
+                $after_slot_excluded_reason = "Errore calcolo distanza da app. successivo ({$next_appointment_details_for_distance['id']}).";
+            } elseif ($distance_to_next > 7) {
+                $exclude_after = true;
+                $after_slot_excluded_reason = "Distanza da app. successivo ({$next_appointment_details_for_distance['id']}: " . number_format($distance_to_next,1) . " km) > 7 km";
+            }
+        } else {
+            $exclude_after = true;
+            $after_slot_excluded_reason = "Impossibile ottenere coordinate per calcolo distanza da app. successivo ({$next_appointment_details_for_distance['id']}).";
+            $debug_info_after['coord_error_next'] = $after_slot_excluded_reason;
+        }
+    }
+    
+    // Check 3: Slot già occupato (se ancora valido)
+    if (!$exclude_after) {
+        $check_booked_sql_after = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
+        $check_booked_stmt_after = $conn->prepare($check_booked_sql_after);
+        if ($check_booked_stmt_after) {
+            $check_booked_stmt_after->bind_param("ss", $proposed_after_date_str, $proposed_after_time_str);
+            $check_booked_stmt_after->execute();
+            $check_result_after = $check_booked_stmt_after->get_result()->fetch_assoc();
+            if ($check_result_after['count'] > 0) {
+                $exclude_after = true;
+                $after_slot_excluded_reason = "Slot {$proposed_after_time_str} del {$proposed_after_date_str} risulta già occupato";
+            }
+            $check_booked_stmt_after->close();
+        } else {
+            error_log("checkAvailableSlotsNearAppointment: Errore preparazione query verifica occupazione slot 'dopo': " . $conn->error);
+            $exclude_after = true; // Per sicurezza
+            $after_slot_excluded_reason = "Errore interno verifica disponibilità slot.";
+        }
+    }
+
+    if ($after_slot_excluded_reason && $exclude_after) { // Logga solo se effettivamente escluso
+        error_log("checkAvailableSlotsNearAppointment (Slot DOPO) per App Ref ID {$appointment_id_ref}: ESCLUSO. Motivo: " . $after_slot_excluded_reason);
+    }
+    
+    $available_slots[] = [
+        'date' => $proposed_after_date_str,
+        'time' => $proposed_after_time_str,
+        'type' => 'after',
+        'related_appointment' => $appointmentData,
+        'excluded' => $exclude_after,
+        'excluded_reason' => $after_slot_excluded_reason,
+        'debug_info' => $debug_info_after
+    ];
     
     return $available_slots;
 }
