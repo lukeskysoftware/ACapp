@@ -327,22 +327,22 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
             $debug_item['distance'] = number_format($distance, 2) . " km";
 
             // Se la distanza è entro il raggio, aggiungi all'elenco
-            if ($distance <= $radius_km) {
-                $row['distance'] = $distance;
-                $row['latitude'] = $coordinates['lat'];
-                $row['longitude'] = $coordinates['lng'];
-                $row['excluded_reason'] = '';
-                $debug_item['status'] .= ' - Entro raggio';
-                $debug_item['excluded_reason'] = '';
-                $nearby_appointments[] = $row;
-            } else {
-                // Non aggiungere appuntamenti fuori dal raggio all'array nearby_appointments
-                $row['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
-                $debug_item['status'] .= ' - Fuori raggio';
-                $debug_item['excluded_reason'] = $row['excluded_reason'];
-                $debug_info[] = $debug_item;
-                continue; // Salta questo appuntamento
-            }
+if ($distance <= $radius_km) {
+    $row['distance'] = $distance;
+    $row['latitude'] = $coordinates['lat'];
+    $row['longitude'] = $coordinates['lng'];
+    $row['excluded_reason'] = '';
+    $debug_item['status'] .= ' - Entro raggio';
+    $debug_item['excluded_reason'] = '';
+    $nearby_appointments[] = $row;
+} else {
+    $row['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
+    $debug_item['status'] .= ' - Fuori raggio';
+    $debug_item['excluded_reason'] = $row['excluded_reason'];
+    // Non aggiungere appuntamenti fuori raggio a nearby_appointments
+    $debug_info[] = $debug_item;
+    continue;
+}
             $debug_info[] = $debug_item;
         }
     }
@@ -1510,10 +1510,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
         
 // Per ogni appuntamento trovato vicino, verifica slot disponibili
 foreach ($nearby_appointments as $appointment) {
-    // Aggiungi un controllo aggiuntivo per sicurezza
-    if (isset($appointment['distance']) && $appointment['distance'] > 7) {
-        error_log("Ignorato appuntamento ID: " . $appointment['id'] . " - Distanza: " . $appointment['distance'] . " km (superiore a 7 km)");
-        continue; // Salta appuntamenti con distanza > 7km
+    // Assicuriamoci di usare solo appuntamenti entro raggio
+    if (isset($appointment['excluded_reason']) && !empty($appointment['excluded_reason'])) {
+        continue; // Salta appuntamenti esclusi per qualsiasi motivo
     }
     $slots = checkAvailableSlotsNearAppointment($appointment);
     $available_slots_near_appointments = array_merge($available_slots_near_appointments, $slots);
@@ -1542,13 +1541,13 @@ if (!empty($available_slots_near_appointments)) {
     echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
     foreach ($available_slots_near_appointments as $slot) {
         $slot_date = date('d/m/Y', strtotime($slot['date']));
-        $giorno = giornoSettimana($slot['date']); // Aggiungiamo il giorno della settimana
-        $slot_time = date('H:i', strtotime($slot['time']));
-        $distance = number_format($slot['related_appointment']['distance'], 1);
-        $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
-        
-        echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
-        echo "<h4>{$giorno} {$slot_date} {$slot_time}</h4>"; // Mostriamo il giorno della settimana
+$giorno = giornoSettimana($slot['date']);
+$slot_time = date('H:i', strtotime($slot['time']));
+$distance = number_format($slot['related_appointment']['distance'], 1);
+$slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
+
+echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
+echo "<h4>{$giorno} {$slot_date} {$slot_time}</h4>";
         echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
         echo "{$slot['related_appointment']['address']}<br>";
         echo "<small>Distanza: {$distance} km</small></p>";
@@ -1679,7 +1678,7 @@ if (!empty($available_slots_near_appointments)) {
                                 
 foreach ($next3Days as $date => $times) {
     $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
-    $giorno = giornoSettimana($date); // Aggiungiamo il giorno della settimana
+$giorno = giornoSettimana($date);
     
     // MODIFICA: Verifica tutti gli appuntamenti per questa data in TUTTE le zone, non solo in questa zona specifica
     $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
@@ -1691,7 +1690,7 @@ foreach ($next3Days as $date => $times) {
     $existingRow = $existingResult->fetch_assoc();
     $hasExistingAppointments = ($existingRow['count'] > 0);
     
-    echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$giorno} {$formattedDisplayDate}"; // Mostriamo il giorno della settimana
+  echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$giorno} {$formattedDisplayDate}";
 
 // Add an indicator if there are existing appointments
 if ($hasExistingAppointments) {
