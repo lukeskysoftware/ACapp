@@ -1540,11 +1540,19 @@ if (!empty($available_slots_near_appointments)) {
     echo "<div class='container'><center>";
     echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
     foreach ($available_slots_near_appointments as $slot) {
-       $slot_date = date('d/m/Y', strtotime($slot['date']));
-$giorno = giornoSettimana($slot['date']);  // Usiamo la funzione esistente
-$slot_time = date('H:i', strtotime($slot['time']));
-
-echo "<h4>{$giorno} {$slot_date} {$slot_time}</h4>";
+        $slot_date = date('d/m/Y', strtotime($slot['date']));
+        
+        // Definizione del giorno della settimana (alternativa a giornoSettimana())
+        $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+        $ts = strtotime($slot['date']);
+        $giorno = $giorni[date('w', $ts)];
+        
+        $slot_time = date('H:i', strtotime($slot['time']));
+        $distance = number_format($slot['related_appointment']['distance'], 1);
+        $slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
+        
+        echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
+        echo "<h4>{$giorno} {$slot_date} {$slot_time}</h4>";
         echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
         echo "{$slot['related_appointment']['address']}<br>";
         echo "<small>Distanza: {$distance} km</small></p>";
