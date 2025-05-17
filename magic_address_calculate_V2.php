@@ -1407,7 +1407,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
 
     try {
         // Prima cerca appuntamenti vicini entro 7km
-        $nearby_appointments = findNearbyAppointments($address, $latitude, $longitude, 7);
+        $nearby_appointments = findNearbyAppointments($latitude, $longitude, 7);
         
         // Verifica se l'indirizzo corrente ha già un appuntamento
         $existingAppointmentForAddress = null;
