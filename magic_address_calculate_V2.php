@@ -174,15 +174,6 @@ function calculateDistance($origin, $destination) {
 
 /**
  * Funzione per trovare appuntamenti vicini entro il raggio specificato
- * @param string $user_address Indirizzo dell'utente
- * @param float $user_latitude Latitudine dell'utente
- * @param float $user_longitude Longitudine dell'utente
- * @param float $radius_km Raggio in km (default 7)
- * @return array Array di appuntamenti vicini
- */
-/**
- * Funzione per trovare appuntamenti vicini entro il raggio specificato
- * @param string $user_address Indirizzo dell'utente
  * @param float $user_latitude Latitudine dell'utente
  * @param float $user_longitude Longitudine dell'utente
  * @param float $radius_km Raggio in km (default 7)
@@ -288,6 +279,42 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                     $cache_found = true;
                     $debug_item['status'] = 'In cache';
                     $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
+                    
+                    // NUOVA FUNZIONALITÀ: Se l'appuntamento ha zone_id = 0, verifica a quale zona appartiene
+                    if ($zone_id == 0 && $coordinates) {
+                        $correct_zone_id = 0;
+                        $zones = getZonesFromCoordinates($coordinates['lat'], $coordinates['lng']);
+                        foreach ($zones as $zone) {
+                            $zone_center = [$zone['latitude'], $zone['longitude']];
+                            $app_coords = [$coordinates['lat'], $coordinates['lng']];
+                            $distance_to_zone = calculateDistance($app_coords, $zone_center);
+                            
+                            if ($distance_to_zone <= $zone['radius_km']) {
+                                $correct_zone_id = $zone['id'];
+                                error_log("Appuntamento ID: $appointment_id con indirizzo: $address appartiene alla zona: {$zone['name']} (ID: {$zone['id']})");
+                                break;
+                            }
+                        }
+                        
+                        // Se abbiamo trovato una zona, aggiorniamo l'appuntamento
+                        if ($correct_zone_id > 0) {
+                            $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
+                            $update_stmt = $conn->prepare($update_sql);
+                            if ($update_stmt) {
+                                $update_stmt->bind_param("ii", $correct_zone_id, $appointment_id);
+                                if ($update_stmt->execute()) {
+                                    // Aggiorna il valore nel record corrente per continuare con la logica corretta
+                                    $zone_id = $correct_zone_id;
+                                    $row['zone_id'] = $correct_zone_id;
+                                    $debug_item['zone_id'] = $correct_zone_id;
+                                    error_log("Aggiornata zona per appuntamento ID: $appointment_id da 0 a $correct_zone_id");
+                                } else {
+                                    error_log("Errore nell'aggiornamento della zona per l'appuntamento ID: $appointment_id: " . $update_stmt->error);
+                                }
+                                $update_stmt->close();
+                            }
+                        }
+                    }
                 }
             } else {
                 $debug_item['cache_prepare_error'] = $conn->error;
@@ -299,6 +326,42 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
                 if ($coordinates) {
                     $debug_item['status'] = 'Geocodificato';
                     $debug_item['coords'] = "Lat: {$coordinates['lat']}, Lng: {$coordinates['lng']}";
+                    
+                    // Se l'appuntamento ha zone_id = 0, verifica a quale zona appartiene
+                    if ($zone_id == 0) {
+                        $correct_zone_id = 0;
+                        $zones = getZonesFromCoordinates($coordinates['lat'], $coordinates['lng']);
+                        foreach ($zones as $zone) {
+                            $zone_center = [$zone['latitude'], $zone['longitude']];
+                            $app_coords = [$coordinates['lat'], $coordinates['lng']];
+                            $distance_to_zone = calculateDistance($app_coords, $zone_center);
+                            
+                            if ($distance_to_zone <= $zone['radius_km']) {
+                                $correct_zone_id = $zone['id'];
+                                error_log("Appuntamento ID: $appointment_id con indirizzo: $address appartiene alla zona: {$zone['name']} (ID: {$zone['id']})");
+                                break;
+                            }
+                        }
+                        
+                        // Se abbiamo trovato una zona, aggiorniamo l'appuntamento
+                        if ($correct_zone_id > 0) {
+                            $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
+                            $update_stmt = $conn->prepare($update_sql);
+                            if ($update_stmt) {
+                                $update_stmt->bind_param("ii", $correct_zone_id, $appointment_id);
+                                if ($update_stmt->execute()) {
+                                    // Aggiorna il valore nel record corrente per continuare con la logica corretta
+                                    $zone_id = $correct_zone_id;
+                                    $row['zone_id'] = $correct_zone_id;
+                                    $debug_item['zone_id'] = $correct_zone_id;
+                                    error_log("Aggiornata zona per appuntamento ID: $appointment_id da 0 a $correct_zone_id");
+                                } else {
+                                    error_log("Errore nell'aggiornamento della zona per l'appuntamento ID: $appointment_id: " . $update_stmt->error);
+                                }
+                                $update_stmt->close();
+                            }
+                        }
+                    }
                 } else {
                     $row['excluded_reason'] = 'Impossibile ottenere coordinate';
                     $debug_item['status'] = 'Geocodifica fallita';
@@ -326,22 +389,22 @@ function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7)
             $row['distance'] = $distance;
             $debug_item['distance'] = number_format($distance, 2) . " km";
 
-// Se la distanza è entro il raggio, aggiungi all'elenco
-if ($distance <= $radius_km) {
-    $row['distance'] = $distance;
-    $row['latitude'] = $coordinates['lat'];
-    $row['longitude'] = $coordinates['lng'];
-    $row['excluded_reason'] = '';
-    $debug_item['status'] .= ' - Entro raggio';
-    $debug_item['excluded_reason'] = '';
-    $nearby_appointments[] = $row;
-} else {
-    $row['distance'] = $distance;
-    $row['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
-    $debug_item['status'] .= ' - Fuori raggio';
-    $debug_item['excluded_reason'] = $row['excluded_reason'];
-    $nearby_appointments[] = $row; // Aggiunge l'appuntamento comunque all'array nearby_appointments
-}
+            // Se la distanza è entro il raggio, aggiungi all'elenco
+            if ($distance <= $radius_km) {
+                $row['distance'] = $distance;
+                $row['latitude'] = $coordinates['lat'];
+                $row['longitude'] = $coordinates['lng'];
+                $row['excluded_reason'] = '';
+                $debug_item['status'] .= ' - Entro raggio';
+                $debug_item['excluded_reason'] = '';
+                $nearby_appointments[] = $row;
+            } else {
+                $row['distance'] = $distance;
+                $row['excluded_reason'] = 'Distanza > ' . $radius_km . ' km';
+                $debug_item['status'] .= ' - Fuori raggio';
+                $debug_item['excluded_reason'] = $row['excluded_reason'];
+                $nearby_appointments[] = $row; // Aggiunge l'appuntamento comunque all'array nearby_appointments
+            }
 
             $debug_info[] = $debug_item;
         }
