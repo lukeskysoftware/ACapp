@@ -2301,14 +2301,103 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
                 echo "<h4 class='card-title'>{$giorno_nome} {$slot_date_fmt} ore {$slot_time_fmt}</h4>";
                 $related_sel = $slot['related_appointment']; 
                 $zone_id_book = $related_sel['zone_id'] ?? 'N/D_Zone';
-                if ($item['source'] == 'adjacent_to_existing') {
-                    $ref_time_sel = isset($related_sel['appointment_time']) ? date('H:i', strtotime($related_sel['appointment_time'])) : 'N/D';
-                    $type_desc_sel = ($slot['type'] == 'before') ? "Prima app. {$ref_time_sel} in" : "Dopo app. {$ref_time_sel} in";
-                    echo "<p class='card-text'><strong>Proposto perché {$type_desc_sel}</strong>: " . htmlspecialchars($related_sel['address'] ?? 'N/D') . "<br>";
-                    if ($item['travel_distance'] !== null) echo "<span style='color:#28a745;font-weight:bold;'>Viaggio operatore: " . number_format($item['travel_distance'], 1) . " km.</span><br>";
-                } elseif ($item['source'] == 'zone_logic') {
-                    echo "<p class='card-text'><strong>Slot standard per Zona</strong>: " . htmlspecialchars($related_sel['name'] ?? 'N/D') . "<br>";
-                }
+               if ($item['source'] == 'adjacent_to_existing') {
+    $ref_time_sel = isset($related_sel['appointment_time']) ? date('H:i', strtotime($related_sel['appointment_time'])) : 'N/D';
+    $type_desc_sel = ($slot['type'] == 'before') ? "Prima app. {$ref_time_sel} in" : "Dopo app. {$ref_time_sel} in";
+    echo "<p class='card-text'><strong>Proposto perché {$type_desc_sel}</strong>: " . htmlspecialchars($related_sel['address'] ?? 'N/D') . "<br>";
+    
+    // Intestazione per le distanze
+    echo "<span style='color:#28a745;font-weight:bold;'>Distanze di viaggio:</span><br>";
+    
+    // Utilizziamo i dati già recuperati in $appuntamenti_riferimento (che è passato alla funzione displayAppointmentDetails)
+    // Se siamo nel loop di $slots_proposti_con_priorita, possiamo accedere a $appuntamenti_riferimento
+    
+    $app_date = $slot['date'] ?? date('Y-m-d');
+    $app_time = $slot['time'] ?? '00:00:00';
+    $app_time_timestamp = strtotime($app_time);
+    $zona_id = $related_sel['zone_id'] ?? 0;
+    
+    // Filtra gli appuntamenti per la data e zona corrente
+    $apps_for_date = [];
+    $ref_app_id = isset($related_sel['id']) ? $related_sel['id'] : null;
+    
+    foreach ($appuntamenti_riferimento as $app) {
+        if ($app['appointment_date'] == $app_date && $app['zone_id'] == $zona_id && 
+            (!$ref_app_id || $app['id'] != $ref_app_id)) {
+            $apps_for_date[] = $app;
+        }
+    }
+    
+    // Ordina per orario (anche se dovrebbero essere già ordinati, per sicurezza)
+    usort($apps_for_date, function($a, $b) {
+        return strtotime($a['appointment_time']) - strtotime($b['appointment_time']);
+    });
+    
+    // Trova appuntamenti precedenti e successivi
+    $prev_app = null;
+    $next_app = null;
+    
+    foreach ($apps_for_date as $app) {
+        $curr_time_timestamp = strtotime($app['appointment_time']);
+        
+        if ($curr_time_timestamp < $app_time_timestamp) {
+            $prev_app = $app; // Continua a sovrascrivere finché non trova l'ultimo precedente
+        } else if ($curr_time_timestamp > $app_time_timestamp) {
+            $next_app = $app; // Prendi il primo successivo
+            break;
+        }
+    }
+    
+    // Mostra SEMPRE ENTRAMBE le distanze se ci sono sia precedenti che successivi
+    if ($prev_app && $next_app) {
+        $prev_time_fmt = date('H:i', strtotime($prev_app['appointment_time']));
+        $next_time_fmt = date('H:i', strtotime($next_app['appointment_time']));
+        
+        $prev_dist = isset($prev_app['latitude']) && isset($prev_app['longitude']) ? 
+            calculateRoadDistance($latitude_utente, $longitude_utente, $prev_app['latitude'], $prev_app['longitude']) : false;
+        
+        $next_dist = isset($next_app['latitude']) && isset($next_app['longitude']) ? 
+            calculateRoadDistance($latitude_utente, $longitude_utente, $next_app['latitude'], $next_app['longitude']) : false;
+            
+        echo "<span style='color:#28a745;'> - Distanza dal precedente ({$prev_time_fmt}): " . 
+             ($prev_dist !== false ? number_format($prev_dist, 1) . " km" : "N/D") . "</span><br>";
+        echo "<span style='color:#28a745;'> - Distanza dal successivo ({$next_time_fmt}): " . 
+             ($next_dist !== false ? number_format($next_dist, 1) . " km" : "N/D") . "</span><br>";
+    } 
+    // Gestione del caso con solo un precedente o solo un successivo
+    else {
+        // L'appuntamento di riferimento è considerato o precedente o successivo in base al tipo
+        if ($slot['type'] == 'before') {
+            // In questo caso, l'appuntamento di riferimento è successivo
+            echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ref_time_sel}): " . 
+                 number_format($item['travel_distance'], 1) . " km</span><br>";
+                 
+            // Se c'è un precedente, mostralo
+            if ($prev_app) {
+                $prev_time_fmt = date('H:i', strtotime($prev_app['appointment_time']));
+                $prev_dist = isset($prev_app['latitude']) && isset($prev_app['longitude']) ? 
+                    calculateRoadDistance($latitude_utente, $longitude_utente, $prev_app['latitude'], $prev_app['longitude']) : false;
+                
+                echo "<span style='color:#28a745;'> - Distanza dal precedente ({$prev_time_fmt}): " . 
+                     ($prev_dist !== false ? number_format($prev_dist, 1) . " km" : "N/D") . "</span><br>";
+            }
+        } else {
+            // In questo caso, l'appuntamento di riferimento è precedente
+            echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ref_time_sel}): " . 
+                 number_format($item['travel_distance'], 1) . " km</span><br>";
+                 
+            // Se c'è un successivo, mostralo
+            if ($next_app) {
+                $next_time_fmt = date('H:i', strtotime($next_app['appointment_time']));
+                $next_dist = isset($next_app['latitude']) && isset($next_app['longitude']) ? 
+                    calculateRoadDistance($latitude_utente, $longitude_utente, $next_app['latitude'], $next_app['longitude']) : false;
+                
+                echo "<span style='color:#28a745;'> - Distanza dal successivo ({$next_time_fmt}): " . 
+                     ($next_dist !== false ? number_format($next_dist, 1) . " km" : "N/D") . "</span><br>";
+            }
+        }
+    }
+}
                 echo "<small class='text-muted'>Zona Slot: " . htmlspecialchars($zone_id_book) . "</small></p>";
                 // Bottoni e script (come nella tua ultima versione corretta)
                 $unique_sfx = preg_replace('/[^a-zA-Z0-9]/','',$slot['date'].$slot['time'].$zone_id_book).rand(100,999);
