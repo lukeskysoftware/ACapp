@@ -2254,7 +2254,55 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
             echo "<div class='alert alert-danger mt-3'>Errore: funzione display non disponibile.</div>";
         }
 
+/**
+ * Funzione di supporto per estrarre i range orari dai slot configurati
+ */
+function extractTimeRanges($slots_config) {
+    $time_ranges = [];
+    foreach ($slots_config as $slot) {
+        $day = $slot['day'];
+        $time = $slot['time'];
+        
+        if (!isset($time_ranges[$day])) {
+            $time_ranges[$day] = ['min' => $time, 'max' => $time];
+        } else {
+            if (strtotime($time) < strtotime($time_ranges[$day]['min'])) {
+                $time_ranges[$day]['min'] = $time;
+            }
+            if (strtotime($time) > strtotime($time_ranges[$day]['max'])) {
+                $time_ranges[$day]['max'] = $time;
+            }
+        }
+    }
+    return $time_ranges;
+}
 
+/**
+ * Funzione di supporto per verificare se una zona ha una fascia oraria più ampia
+ */
+function hasWiderTimeRange($zona_conf_ranges, $zona_utente_ranges) {
+    foreach ($zona_conf_ranges as $day => $conf_range) {
+        // Se questo giorno esiste anche nella zona utente
+        if (isset($zona_utente_ranges[$day])) {
+            $utente_range = $zona_utente_ranges[$day];
+            
+            // Controlla se la zona confinante ha un orario di inizio precedente
+            if (strtotime($conf_range['min']) < strtotime($utente_range['min'])) {
+                return true;
+            }
+            
+            // O se ha un orario di fine successivo
+            if (strtotime($conf_range['max']) > strtotime($utente_range['max'])) {
+                return true;
+            }
+        } else {
+            // Se questo giorno non esiste nella zona utente, allora ha una fascia più ampia
+            return true;
+        }
+    }
+    
+    return false;
+}
 // Nella FASE B dove viene determinata la zona dell'utente e vengono cercati gli slot disponibili
 
 error_log($log_prefix_main . "FASE B: Ricerca slot di zona con getNext3AppointmentDates (ORIGINALE).");
