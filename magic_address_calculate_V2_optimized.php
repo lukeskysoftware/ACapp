@@ -2547,7 +2547,7 @@ if ($zona_utente) {
                 $related_sel = $slot['related_appointment']; 
                 $zone_id_book = $related_sel['zone_id'] ?? 'N/D_Zone';
              
-             if ($item['source'] == 'adjacent_to_existing') {
+            if ($item['source'] == 'adjacent_to_existing') {
     $ref_time_sel = isset($related_sel['appointment_time']) ? date('H:i', strtotime($related_sel['appointment_time'])) : 'N/D';
     $type_desc_sel = ($slot['type'] == 'before') ? "Prima app. {$ref_time_sel} in" : "Dopo app. {$ref_time_sel} in";
     echo "<p class='card-text'><strong>Proposto perché {$type_desc_sel}</strong>: " . htmlspecialchars($related_sel['address'] ?? 'N/D') . "<br>";
@@ -2555,102 +2555,79 @@ if ($zona_utente) {
     // Intestazione per le distanze
     echo "<span style='color:#28a745;font-weight:bold;'>Distanze di viaggio:</span><br>";
     
-    // Query SQL per ottenere tutti gli appuntamenti del giorno nella zona
+    // 1. Trova lo slot temporale dello slot proposto
     $app_date = $slot['date'] ?? date('Y-m-d');
-    $zona_id = $related_sel['zone_id'] ?? 0;
+    $app_time = $slot['time'];
     
-    $sql = "SELECT id, appointment_time, address, latitude, longitude 
-            FROM cp_appointments 
-            WHERE zone_id = $zona_id AND appointment_date = '$app_date' 
-            ORDER BY appointment_time";
+    // 2. Cerca negli appuntamenti di riferimento già trovati per la data corretta
+    $same_day_appointments = [];
+    foreach ($appuntamenti_riferimento as $app_rif) {
+        if ($app_rif['appointment_date'] == $app_date && 
+            !empty($app_rif['latitude']) && !empty($app_rif['longitude'])) {
+            $same_day_appointments[] = $app_rif;
+        }
+    }
     
-    $result = mysqli_query($conn, $sql);
+    // Ordina gli appuntamenti per orario
+    usort($same_day_appointments, function($a, $b) {
+        return strtotime($a['appointment_time']) - strtotime($b['appointment_time']);
+    });
     
-    if ($result && mysqli_num_rows($result) > 0) {
-        $appointments = [];
-        while ($row = mysqli_fetch_assoc($result)) {
-            $appointments[] = $row;
-        }
+    // Trova l'appuntamento più vicino prima e dopo lo slot proposto
+    $app_time_ts = strtotime($app_time);
+    $closest_before = null;
+    $closest_after = null;
+    
+    foreach ($same_day_appointments as $app) {
+        $app_ts = strtotime($app['appointment_time']);
         
-        // 1. Trova lo slot temporale dello slot proposto
-        $app_time = $slot['time'];
-        $app_time_ts = strtotime($app_time);
-        
-        // 2. Trova gli appuntamenti precedenti e successivi
-        $prev_app = null;
-        $next_app = null;
-        $ref_app_id = isset($related_sel['id']) ? $related_sel['id'] : null;
-        
-        foreach ($appointments as $app) {
-            // Salta l'appuntamento di riferimento dal confronto
-            if ($ref_app_id && $app['id'] == $ref_app_id) {
-                continue;
+        if ($app_ts < $app_time_ts) {
+            // È prima dello slot proposto
+            if (!$closest_before || strtotime($app['appointment_time']) > strtotime($closest_before['appointment_time'])) {
+                $closest_before = $app; // Mantiene quello più vicino (più recente)
             }
-            
-            $curr_time_ts = strtotime($app['appointment_time']);
-            
-            if ($curr_time_ts < $app_time_ts) {
-                // Questo è un candidato per prev_app
-                // Manteniamo sempre il più recente prima dello slot
-                if (!$prev_app || strtotime($app['appointment_time']) > strtotime($prev_app['appointment_time'])) {
-                    $prev_app = $app;
-                }
-            } elseif ($curr_time_ts > $app_time_ts) {
-                // Questo è un candidato per next_app
-                // Manteniamo sempre il primo dopo lo slot
-                if (!$next_app || strtotime($app['appointment_time']) < strtotime($next_app['appointment_time'])) {
-                    $next_app = $app;
-                }
+        } else if ($app_ts > $app_time_ts) {
+            // È dopo lo slot proposto
+            if (!$closest_after || strtotime($app['appointment_time']) < strtotime($closest_after['appointment_time'])) {
+                $closest_after = $app; // Mantiene quello più vicino (più imminente)
             }
         }
+    }
+    
+    // 3. Mostra SEMPRE prima l'appuntamento precedente (se esiste)
+    if ($closest_before) {
+        $prev_time_fmt = date('H:i', strtotime($closest_before['appointment_time']));
+        $prev_dist = calculateRoadDistance(
+            $latitude_utente, $longitude_utente,
+            $closest_before['latitude'], $closest_before['longitude']
+        );
         
-        // 3. Mostra sempre l'appuntamento di riferimento come precedente o successivo
-        if ($slot['type'] == 'before') {
-            // Per slot 'before', l'app di riferimento è il successivo
-            echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ref_time_sel}): " . 
-                 number_format($item['travel_distance'], 1) . " km</span><br>";
-            
-            // Se c'è un appuntamento precedente, mostra anche quello
-            if ($prev_app && isset($prev_app['latitude']) && isset($prev_app['longitude'])) {
-                $prev_time_fmt = date('H:i', strtotime($prev_app['appointment_time']));
-                $prev_dist = calculateRoadDistance(
-                    $latitude_utente, $longitude_utente,
-                    (float)$prev_app['latitude'], (float)$prev_app['longitude']
-                );
-                
-                if ($prev_dist !== false) {
-                    echo "<span style='color:#28a745;'> - Distanza dal precedente ({$prev_time_fmt}): " . 
-                         number_format($prev_dist, 1) . " km</span><br>";
-                }
-            }
-        } else {
-            // Per slot 'after', l'app di riferimento è il precedente
-            echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ref_time_sel}): " . 
-                 number_format($item['travel_distance'], 1) . " km</span><br>";
-            
-            // Se c'è un appuntamento successivo, mostra anche quello
-            if ($next_app && isset($next_app['latitude']) && isset($next_app['longitude'])) {
-                $next_time_fmt = date('H:i', strtotime($next_app['appointment_time']));
-                $next_dist = calculateRoadDistance(
-                    $latitude_utente, $longitude_utente,
-                    (float)$next_app['latitude'], (float)$next_app['longitude']
-                );
-                
-                if ($next_dist !== false) {
-                    echo "<span style='color:#28a745;'> - Distanza dal successivo ({$next_time_fmt}): " . 
-                         number_format($next_dist, 1) . " km</span><br>";
-                }
-            }
+        if ($prev_dist !== false) {
+            echo "<span style='color:#28a745;'> - Distanza dal precedente ({$prev_time_fmt}): " . 
+                 number_format($prev_dist, 1) . " km</span><br>";
         }
-    } else {
-        // Se non ci sono appuntamenti o la query fallisce, mostra solo la distanza di riferimento
-        if ($slot['type'] == 'before') {
-            echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ref_time_sel}): " . 
-                 number_format($item['travel_distance'], 1) . " km</span><br>";
-        } else {
-            echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ref_time_sel}): " . 
-                 number_format($item['travel_distance'], 1) . " km</span><br>";
+    } else if ($slot['type'] == 'after') {
+        // Se non c'è un altro precedente ma lo slot è 'after', mostra il riferimento come precedente
+        echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ref_time_sel}): " . 
+             number_format($item['travel_distance'], 1) . " km</span><br>";
+    }
+    
+    // 4. Mostra SEMPRE dopo l'appuntamento successivo (se esiste)
+    if ($closest_after) {
+        $next_time_fmt = date('H:i', strtotime($closest_after['appointment_time']));
+        $next_dist = calculateRoadDistance(
+            $latitude_utente, $longitude_utente,
+            $closest_after['latitude'], $closest_after['longitude']
+        );
+        
+        if ($next_dist !== false) {
+            echo "<span style='color:#28a745;'> - Distanza dal successivo ({$next_time_fmt}): " . 
+                 number_format($next_dist, 1) . " km</span><br>";
         }
+    } else if ($slot['type'] == 'before') {
+        // Se non c'è un altro successivo ma lo slot è 'before', mostra il riferimento come successivo
+        echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ref_time_sel}): " . 
+             number_format($item['travel_distance'], 1) . " km</span><br>";
     }
 }
              
