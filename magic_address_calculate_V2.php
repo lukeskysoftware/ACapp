@@ -433,11 +433,11 @@ function displayAppointmentDetails($appointments) {
 }
 
 // Funzione per ottenere il nome del giorno della settimana in italiano
-function giornoSettimana($data) {
+/*function giornoSettimana($data) {
     $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
     $ts = strtotime($data);
     return $giorni[date('w', $ts)];
-}
+}*/
 
 // Negli slot proposti: aggiungi il giorno della settimana prima della data (es: "Mercoledì 2025-05-21")
 // Supponiamo che la stampa degli slot proposti sia tipo:
@@ -1510,9 +1510,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
         
 // Per ogni appuntamento trovato vicino, verifica slot disponibili
 foreach ($nearby_appointments as $appointment) {
-    // Assicuriamoci di usare solo appuntamenti entro raggio
-    if (isset($appointment['excluded_reason']) && !empty($appointment['excluded_reason'])) {
-        continue; // Salta appuntamenti esclusi per qualsiasi motivo
+    // Salta appuntamenti con distanza superiore a 7km
+    if (isset($appointment['distance']) && $appointment['distance'] > 7) {
+        continue;
     }
     $slots = checkAvailableSlotsNearAppointment($appointment);
     $available_slots_near_appointments = array_merge($available_slots_near_appointments, $slots);
@@ -1540,13 +1540,10 @@ if (!empty($available_slots_near_appointments)) {
     echo "<div class='container'><center>";
     echo "<h3>Slot disponibili vicino ad altri appuntamenti (entro 7km)</h3>";
     foreach ($available_slots_near_appointments as $slot) {
-        $slot_date = date('d/m/Y', strtotime($slot['date']));
-$giorno = giornoSettimana($slot['date']);
+       $slot_date = date('d/m/Y', strtotime($slot['date']));
+$giorno = giornoSettimana($slot['date']);  // Usiamo la funzione esistente
 $slot_time = date('H:i', strtotime($slot['time']));
-$distance = number_format($slot['related_appointment']['distance'], 1);
-$slot_type = ($slot['type'] == 'before') ? '60 minuti prima' : '60 minuti dopo';
 
-echo "<div style='margin: 15px; padding: 10px; border-left: 5px solid #4CAF50; background-color: #f9f9f9;'>";
 echo "<h4>{$giorno} {$slot_date} {$slot_time}</h4>";
         echo "<p><strong>{$slot_type}</strong> dell'appuntamento in<br>";
         echo "{$slot['related_appointment']['address']}<br>";
@@ -1677,8 +1674,11 @@ echo "<h4>{$giorno} {$slot_date} {$slot_time}</h4>";
                                 echo "<div class='container'><center><h4>Appuntamenti disponibili per i prossimi 3 giorni per la zona <span style='color:green; font-weight:700;'>{$zone['name']}</span>:</h4>";
                                 
 foreach ($next3Days as $date => $times) {
-    $formattedDisplayDate = strftime('%d %B %Y', strtotime($date)); // Change format for display
-$giorno = giornoSettimana($date);
+$formattedDisplayDate = strftime('%d %B %Y', strtotime($date));
+$giorno = giornoSettimana($date);  // Usiamo la funzione esistente
+
+
+
     
     // MODIFICA: Verifica tutti gli appuntamenti per questa data in TUTTE le zone, non solo in questa zona specifica
     $existingAppsSql = "SELECT COUNT(*) as count FROM cp_appointments 
@@ -1690,7 +1690,7 @@ $giorno = giornoSettimana($date);
     $existingRow = $existingResult->fetch_assoc();
     $hasExistingAppointments = ($existingRow['count'] > 0);
     
-  echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$giorno} {$formattedDisplayDate}";
+echo "<p style='margin-top:2rem; font-size:120%; font-weight:700;'>Data: {$giorno} {$formattedDisplayDate}";
 
 // Add an indicator if there are existing appointments
 if ($hasExistingAppointments) {
