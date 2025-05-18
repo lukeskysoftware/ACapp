@@ -2519,147 +2519,404 @@ if ($zona_utente) {
 
 
 
+// -------- FASE C: Ordinamento e Visualizzazione Finale degli Slot Selezionabili --------
+echo "<div class='container mt-3' style='text-align:left;'>"; 
+if (!empty($slots_proposti_con_priorita)) {
+    // Dividi gli slot in due categorie: adiacenti ad appuntamenti esistenti e slot di zona
+    $slots_adiacenti = [];
+    $slots_by_zone_and_date = []; // Struttura: [zone_id][date] = array di slot
+    
+    // Per il debug
+    error_log("DEBUG: Inizio fase C con " . count($slots_proposti_con_priorita) . " slot totali");
+    
+    foreach ($slots_proposti_con_priorita as $item) {
+        if ($item['slot_details']['excluded']) {
+            error_log($log_prefix_main . "FASE C: Slot saltato perché 'excluded': " . json_encode($item['slot_details']));
+            continue;
+        }
         
-        // -------- FASE C: Ordinamento e Visualizzazione Finale degli Slot Selezionabili --------
-        echo "<div class='container mt-3' style='text-align:left;'>"; 
-        if (!empty($slots_proposti_con_priorita)) {
-            usort($slots_proposti_con_priorita, function($a, $b) { 
-                if ($a['priority_score'] != $b['priority_score']) return $a['priority_score'] <=> $b['priority_score'];
-                $dt_a = strtotime(($a['slot_details']['date'] ?? '') . ' ' . ($a['slot_details']['time'] ?? ''));
-                $dt_b = strtotime(($b['slot_details']['date'] ?? '') . ' ' . ($b['slot_details']['time'] ?? ''));
-                return $dt_a <=> $dt_b;
-            });
-            echo "<h3 class='text-center mb-3 mt-4'>Proposte di Appuntamento Selezionabili (Ordinate per Priorità)</h3>";
-            $count_displayed_sel = 0;
-            foreach ($slots_proposti_con_priorita as $item) {
-                if ($item['slot_details']['excluded']) { // Slot esclusi dalla logica originale non dovrebbero essere qui, ma doppio check
-                    error_log($log_prefix_main . "FASE C: Slot saltato perché 'excluded': " . json_encode($item['slot_details']));
-                    continue;
-                }
-                $slot = $item['slot_details'];
-                $slot_date_fmt = date('d/m/Y', strtotime($slot['date']));
-                $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                $giorno_nome = $giorni[date('w', strtotime($slot['date']))];
-                $slot_time_fmt = date('H:i', strtotime($slot['time']));
-
-                echo "<div class='card mb-3 shadow-sm'><div class='card-body'>"; // Card per slot selezionabile
-                echo "<h4 class='card-title'>{$giorno_nome} {$slot_date_fmt} ore {$slot_time_fmt}</h4>";
-                $related_sel = $slot['related_appointment']; 
-                $zone_id_book = $related_sel['zone_id'] ?? 'N/D_Zone';
-             
-            if ($item['source'] == 'adjacent_to_existing') {
-    $ref_time_sel = isset($related_sel['appointment_time']) ? date('H:i', strtotime($related_sel['appointment_time'])) : 'N/D';
-    $type_desc_sel = ($slot['type'] == 'before') ? "Prima app. {$ref_time_sel} in" : "Dopo app. {$ref_time_sel} in";
-    echo "<p class='card-text'><strong>Proposto perché {$type_desc_sel}</strong>: " . htmlspecialchars($related_sel['address'] ?? 'N/D') . "<br>";
-    
-    // Intestazione per le distanze
-    echo "<span style='color:#28a745;font-weight:bold;'>Distanze di viaggio:</span><br>";
-    
-    // 1. Trova lo slot temporale dello slot proposto
-    $app_date = $slot['date'] ?? date('Y-m-d');
-    $app_time = $slot['time'];
-    
-    // 2. Cerca negli appuntamenti di riferimento già trovati per la data corretta
-    $same_day_appointments = [];
-    foreach ($appuntamenti_riferimento as $app_rif) {
-        if ($app_rif['appointment_date'] == $app_date && 
-            !empty($app_rif['latitude']) && !empty($app_rif['longitude'])) {
-            $same_day_appointments[] = $app_rif;
+        if ($item['source'] == 'adjacent_to_existing') {
+            // Slot adiacenti a appuntamenti esistenti - mantieni la visualizzazione originale
+            $slots_adiacenti[] = $item;
+        } else {
+            // Slot di zona - raggruppa per zona e data
+            $date = $item['slot_details']['date'];
+            $zone_id = $item['slot_details']['related_appointment']['zone_id'] ?? 0;
+            $zone_name = $item['slot_details']['related_appointment']['name'] ?? "Zona $zone_id";
+            
+            if (!isset($slots_by_zone_and_date[$zone_id])) {
+                $slots_by_zone_and_date[$zone_id] = [
+                    'zone_name' => $zone_name,
+                    'dates' => []
+                ];
+            }
+            
+            if (!isset($slots_by_zone_and_date[$zone_id]['dates'][$date])) {
+                $slots_by_zone_and_date[$zone_id]['dates'][$date] = [];
+            }
+            
+            $slots_by_zone_and_date[$zone_id]['dates'][$date][] = $item;
+            
+            // Debug ogni zona e data
+            error_log("DEBUG: Slot zona_id=$zone_id, zona_name=$zone_name, date=$date, time={$item['slot_details']['time']}");
         }
     }
     
-    // Ordina gli appuntamenti per orario
-    usort($same_day_appointments, function($a, $b) {
-        return strtotime($a['appointment_time']) - strtotime($b['appointment_time']);
+    // Mantieni l'ordinamento originale per priorità/distanza per gli slot adiacenti
+    usort($slots_adiacenti, function($a, $b) { 
+        if ($a['priority_score'] != $b['priority_score']) return $a['priority_score'] <=> $b['priority_score'];
+        $dt_a = strtotime(($a['slot_details']['date'] ?? '') . ' ' . ($a['slot_details']['time'] ?? ''));
+        $dt_b = strtotime(($b['slot_details']['date'] ?? '') . ' ' . ($b['slot_details']['time'] ?? ''));
+        return $dt_a <=> $dt_b;
     });
     
-    // Trova l'appuntamento più vicino prima e dopo lo slot proposto
-    $app_time_ts = strtotime($app_time);
-    $closest_before = null;
-    $closest_after = null;
-    
-    foreach ($same_day_appointments as $app) {
-        $app_ts = strtotime($app['appointment_time']);
+    // 1. Prima mostra gli slot adiacenti con la visualizzazione originale dettagliata
+    if (!empty($slots_adiacenti)) {
+        echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili vicino ad appuntamenti esistenti</h3>";
+        $count_displayed_sel = 0;
         
-        if ($app_ts < $app_time_ts) {
-            // È prima dello slot proposto
-            if (!$closest_before || strtotime($app['appointment_time']) > strtotime($closest_before['appointment_time'])) {
-                $closest_before = $app; // Mantiene quello più vicino (più recente)
+        foreach ($slots_adiacenti as $item) {
+            $slot = $item['slot_details'];
+            $slot_date_fmt = date('d/m/Y', strtotime($slot['date']));
+            $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+            $giorno_nome = $giorni[date('w', strtotime($slot['date']))];
+            $slot_time_fmt = date('H:i', strtotime($slot['time']));
+
+            echo "<div class='card mb-3 shadow-sm'><div class='card-body'>"; // Card per slot selezionabile
+            echo "<h4 class='card-title'>{$giorno_nome} {$slot_date_fmt} ore {$slot_time_fmt}</h4>";
+            $related_sel = $slot['related_appointment']; 
+            $zone_id_book = $related_sel['zone_id'] ?? 'N/D_Zone';
+          
+            $ref_time_sel = isset($related_sel['appointment_time']) ? date('H:i', strtotime($related_sel['appointment_time'])) : 'N/D';
+            $type_desc_sel = ($slot['type'] == 'before') ? "Prima app. {$ref_time_sel} in" : "Dopo app. {$ref_time_sel} in";
+            echo "<p class='card-text'><strong>Proposto perché {$type_desc_sel}</strong>: " . htmlspecialchars($related_sel['address'] ?? 'N/D') . "<br>";
+            
+            // Intestazione per le distanze
+            echo "<span style='color:#28a745;font-weight:bold;'>Distanze di viaggio:</span><br>";
+            
+            // 1. Trova lo slot temporale dello slot proposto
+            $app_date = $slot['date'] ?? date('Y-m-d');
+            $app_time = $slot['time'];
+            
+            // 2. Cerca negli appuntamenti di riferimento già trovati per la data corretta
+            $same_day_appointments = [];
+            foreach ($appuntamenti_riferimento as $app_rif) {
+                if ($app_rif['appointment_date'] == $app_date && 
+                    !empty($app_rif['latitude']) && !empty($app_rif['longitude'])) {
+                    $same_day_appointments[] = $app_rif;
+                }
             }
-        } else if ($app_ts > $app_time_ts) {
-            // È dopo lo slot proposto
-            if (!$closest_after || strtotime($app['appointment_time']) < strtotime($closest_after['appointment_time'])) {
-                $closest_after = $app; // Mantiene quello più vicino (più imminente)
+            
+            // Ordina gli appuntamenti per orario
+            usort($same_day_appointments, function($a, $b) {
+                return strtotime($a['appointment_time']) - strtotime($b['appointment_time']);
+            });
+            
+            // Trova l'appuntamento più vicino prima e dopo lo slot proposto
+            $app_time_ts = strtotime($app_time);
+            $closest_before = null;
+            $closest_after = null;
+            
+            foreach ($same_day_appointments as $app) {
+                $app_ts = strtotime($app['appointment_time']);
+                
+                if ($app_ts < $app_time_ts) {
+                    // È prima dello slot proposto
+                    if (!$closest_before || strtotime($app['appointment_time']) > strtotime($closest_before['appointment_time'])) {
+                        $closest_before = $app; // Mantiene quello più vicino (più recente)
+                    }
+                } else if ($app_ts > $app_time_ts) {
+                    // È dopo lo slot proposto
+                    if (!$closest_after || strtotime($app['appointment_time']) < strtotime($closest_after['appointment_time'])) {
+                        $closest_after = $app; // Mantiene quello più vicino (più imminente)
+                    }
+                }
+            }
+            
+            // 3. Mostra SEMPRE prima l'appuntamento precedente (se esiste)
+            if ($closest_before) {
+                $prev_time_fmt = date('H:i', strtotime($closest_before['appointment_time']));
+                $prev_dist = calculateRoadDistance(
+                    $latitude_utente, $longitude_utente,
+                    $closest_before['latitude'], $closest_before['longitude']
+                );
+                
+                if ($prev_dist !== false) {
+                    echo "<span style='color:#28a745;'> - Distanza dal precedente ({$prev_time_fmt}): " . 
+                         number_format($prev_dist, 1) . " km</span><br>";
+                }
+            } else if ($slot['type'] == 'after') {
+                // Se non c'è un altro precedente ma lo slot è 'after', mostra il riferimento come precedente
+                echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ref_time_sel}): " . 
+                     number_format($item['travel_distance'], 1) . " km</span><br>";
+            }
+            
+            // 4. Mostra SEMPRE dopo l'appuntamento successivo (se esiste)
+            if ($closest_after) {
+                $next_time_fmt = date('H:i', strtotime($closest_after['appointment_time']));
+                $next_dist = calculateRoadDistance(
+                    $latitude_utente, $longitude_utente,
+                    $closest_after['latitude'], $closest_after['longitude']
+                );
+                
+                if ($next_dist !== false) {
+                    echo "<span style='color:#28a745;'> - Distanza dal successivo ({$next_time_fmt}): " . 
+                         number_format($next_dist, 1) . " km</span><br>";
+                }
+            } else if ($slot['type'] == 'before') {
+                // Se non c'è un altro successivo ma lo slot è 'before', mostra il riferimento come successivo
+                echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ref_time_sel}): " . 
+                     number_format($item['travel_distance'], 1) . " km</span><br>";
+            }
+            
+            echo "<small class='text-muted'>Zona Slot: " . htmlspecialchars($zone_id_book);
+
+            // Aggiungi informazioni sulla zona confinante se presente
+            if (isset($slot['related_appointment']['is_neighboring_zone']) && $slot['related_appointment']['is_neighboring_zone']) {
+                echo " <span class='badge bg-info'>Zona confinante</span>";
+            }
+
+            echo "</small></p>";
+            
+            // Bottoni e script per gli slot adiacenti
+            $unique_sfx = preg_replace('/[^a-zA-Z0-9]/','',$slot['date'].$slot['time'].$zone_id_book).rand(100,999);
+            $coll_id = "ag_coll_".$unique_sfx; $cont_id = "ag_cont_".$unique_sfx;
+            
+            // Lasciamo il pulsante Vedi agenda per gli slot incastrati
+            echo "<button class='btn btn-sm btn-outline-info mt-1 me-2' type='button' data-bs-toggle='collapse' data-bs-target='#{$coll_id}' aria-expanded='false'><i class='bi bi-calendar3'></i> Vedi agenda</button>";
+            
+            $nameE=urlencode($name_utente); $surE=urlencode($surname_utente); $phE=urlencode($phone_utente); $addrE=urlencode($address_utente);
+            $book_url = "book_appointment.php?zone_id=".urlencode($zone_id_book)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
+            echo "<a href='{$book_url}' class='btn btn-success mt-1 fw-bold'><i class='bi bi-check-circle'></i> Seleziona</a>";
+            
+            // Aggiunta del div collapsable per l'agenda
+            echo "<div class='collapse mt-2' id='{$coll_id}'><div class='card card-body bg-light' id='{$cont_id}'><div class='text-center'><div class='spinner-border spinner-border-sm'></div> Caricamento...</div></div></div>";
+            
+            // Script per caricare l'agenda quando viene espansa
+            echo "<script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    var collapseEl = document.getElementById('{$coll_id}');
+                    var contentEl = document.getElementById('{$cont_id}');
+                    
+                    if (collapseEl && contentEl) {
+                        collapseEl.addEventListener('shown.bs.collapse', function() {
+                            fetch('get_appointments_modal.php', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                },
+                                body: 'appointment_date={$slot['date']}'
+                            })
+                            .then(function(response) {
+                                if (!response.ok) throw new Error('Errore di rete');
+                                return response.text();
+                            })
+                            .then(function(html) {
+                                contentEl.innerHTML = html;
+                            })
+                            .catch(function(error) {
+                                contentEl.innerHTML = '<div class=\"alert alert-danger\"><p>Si è verificato un errore: ' + error.message + '</p></div>';
+                            });
+                        });
+                    }
+                });
+            </script>";
+            
+            echo "</div></div>";
+            $count_displayed_sel++;
+        }
+        
+        if ($count_displayed_sel == 0) {
+            echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot adiacente disponibile.</div>";
+        }
+        
+        echo "<hr class='my-4'>";
+    }
+    
+    // 2. Poi mostra gli slot raggruppati per zona
+    if (!empty($slots_by_zone_and_date)) {
+        echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili per zona</h3>";
+        
+        // Determina zona principale
+        $zona_principale_id = $zona_utente['id'] ?? 0;
+        $zona_principale_name = $zona_utente['name'] ?? 'Zona principale';
+        
+        // Debug
+        error_log("DEBUG: zona_principale_id = $zona_principale_id, zona_principale_name = $zona_principale_name");
+        
+        // Log di tutte le zone trovate
+        foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
+            $date_count = count($zone_data['dates']);
+            error_log("DEBUG: Zona ID $zone_id ({$zone_data['zone_name']}) ha $date_count date");
+        }
+        
+        // 2.1. Prima mostra la zona principale se esiste
+        if (isset($slots_by_zone_and_date[$zona_principale_id])) {
+            $main_zone_data = $slots_by_zone_and_date[$zona_principale_id];
+            
+            echo "<h4 class='mb-3'>Date disponibili nella tua zona principale: {$main_zone_data['zone_name']}</h4>";
+            
+            // Ordina le date e limita a 3
+            $main_zone_dates = array_keys($main_zone_data['dates']);
+            sort($main_zone_dates);
+            $main_zone_dates = array_slice($main_zone_dates, 0, 3);
+            
+            // Per ogni data della zona principale
+            foreach ($main_zone_dates as $date) {
+                $slot_date_fmt = date('d/m/Y', strtotime($date));
+                $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+                $giorno_nome = $giorni[date('w', strtotime($date))];
+                
+                echo "<div class='card mb-4 shadow'>";
+                echo "<div class='card-header bg-light'>";
+                echo "<h4 class='m-0'>{$giorno_nome} {$slot_date_fmt} - Zona: {$main_zone_data['zone_name']}</h4>";
+                echo "</div>";
+                echo "<div class='card-body'>";
+                echo "<div class='d-flex flex-wrap gap-2 mb-3'>";
+                
+                foreach ($main_zone_data['dates'][$date] as $item) {
+                    $slot = $item['slot_details'];
+                    $slot_time_fmt = date('H:i', strtotime($slot['time']));
+                    
+                    // Genera l'URL di prenotazione
+                    $nameE = urlencode($name_utente); 
+                    $surE = urlencode($surname_utente); 
+                    $phE = urlencode($phone_utente); 
+                    $addrE = urlencode($address_utente);
+                    $book_url = "book_appointment.php?zone_id=".urlencode($zona_principale_id)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
+                    
+                    // Crea pulsante per questo orario
+                    echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a>";
+                }
+                
+                echo "</div>";
+                echo "</div>";
+                echo "</div>";
+            }
+            
+            // Definisci il range di date per le zone confinanti
+            $min_date = !empty($main_zone_dates) ? min($main_zone_dates) : null;
+            $max_date = !empty($main_zone_dates) ? max($main_zone_dates) : null;
+            
+            // 2.2. Poi mostra le zone confinanti (escludi la zona principale)
+            foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
+                // Salta la zona principale
+                if ($zone_id == $zona_principale_id) continue;
+                
+                echo "<h4 class='mb-3 mt-4'>Date disponibili nella zona confinante: {$zone_data['zone_name']}</h4>";
+                
+                // Filtra le date solo nel range della zona principale
+                $neighbor_dates = array_keys($zone_data['dates']);
+                sort($neighbor_dates);
+                
+                // Se abbiamo un range definito dalla zona principale, filtra le date
+                $filtered_dates = $neighbor_dates;
+                if ($min_date && $max_date) {
+                    $filtered_dates = array_filter($neighbor_dates, function($date) use ($min_date, $max_date) {
+                        return $date >= $min_date && $date <= $max_date;
+                    });
+                }
+                
+                // Se non ci sono date filtrate
+                if (empty($filtered_dates)) {
+                    echo "<div class='alert alert-info text-center mb-4'>Nessuna data disponibile in questa zona confinante nel periodo selezionato.</div>";
+                    continue;
+                }
+                
+                // Per ogni data filtrata
+                foreach ($filtered_dates as $date) {
+                    $slot_date_fmt = date('d/m/Y', strtotime($date));
+                    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+                    $giorno_nome = $giorni[date('w', strtotime($date))];
+                    
+                    echo "<div class='card mb-4 shadow'>";
+                    echo "<div class='card-header bg-light'>";
+                    echo "<h4 class='m-0'>{$giorno_nome} {$slot_date_fmt} - Zona: {$zone_data['zone_name']} <span class='badge bg-info'>Zona confinante</span></h4>";
+                    echo "</div>";
+                    echo "<div class='card-body'>";
+                    echo "<div class='d-flex flex-wrap gap-2 mb-3'>";
+                    
+                    foreach ($zone_data['dates'][$date] as $item) {
+                        $slot = $item['slot_details'];
+                        $slot_time_fmt = date('H:i', strtotime($slot['time']));
+                        
+                        // Genera l'URL di prenotazione
+                        $nameE = urlencode($name_utente); 
+                        $surE = urlencode($surname_utente); 
+                        $phE = urlencode($phone_utente); 
+                        $addrE = urlencode($address_utente);
+                        $book_url = "book_appointment.php?zone_id=".urlencode($zone_id)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
+                        
+                        // Crea pulsante per questo orario
+                        echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a>";
+                    }
+                    
+                    echo "</div>";
+                    echo "</div>";
+                    echo "</div>";
+                }
+            }
+        } 
+        // Se la zona principale non ha slot, mostra solo le zone confinanti
+        else {
+            echo "<div class='alert alert-warning mb-4'>Nessuna data disponibile nella tua zona principale (ID: {$zona_principale_id}). Mostriamo le date disponibili nelle zone confinanti.</div>";
+            
+            foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
+                echo "<h4 class='mb-3 mt-4'>Date disponibili nella zona confinante: {$zone_data['zone_name']}</h4>";
+                
+                // Ordina le date e limita a 3 per ogni zona confinante
+                $dates = array_keys($zone_data['dates']);
+                sort($dates);
+                $dates = array_slice($dates, 0, 3);
+                
+                foreach ($dates as $date) {
+                    $slot_date_fmt = date('d/m/Y', strtotime($date));
+                    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+                    $giorno_nome = $giorni[date('w', strtotime($date))];
+                    
+                    echo "<div class='card mb-4 shadow'>";
+                    echo "<div class='card-header bg-light'>";
+                    echo "<h4 class='m-0'>{$giorno_nome} {$slot_date_fmt} - Zona: {$zone_data['zone_name']} <span class='badge bg-info'>Zona confinante</span></h4>";
+                    echo "</div>";
+                    echo "<div class='card-body'>";
+                    echo "<div class='d-flex flex-wrap gap-2 mb-3'>";
+                    
+                    foreach ($zone_data['dates'][$date] as $item) {
+                        $slot = $item['slot_details'];
+                        $slot_time_fmt = date('H:i', strtotime($slot['time']));
+                        
+                        // Genera l'URL di prenotazione
+                        $nameE = urlencode($name_utente); 
+                        $surE = urlencode($surname_utente); 
+                        $phE = urlencode($phone_utente); 
+                        $addrE = urlencode($address_utente);
+                        $book_url = "book_appointment.php?zone_id=".urlencode($zone_id)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
+                        
+                        // Crea pulsante per questo orario
+                        echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a>";
+                    }
+                    
+                    echo "</div>";
+                    echo "</div>";
+                    echo "</div>";
+                }
             }
         }
+    } else {
+        echo "<div class='alert alert-info text-center mt-3'>Nessuno slot di zona disponibile.</div>";
     }
     
-    // 3. Mostra SEMPRE prima l'appuntamento precedente (se esiste)
-    if ($closest_before) {
-        $prev_time_fmt = date('H:i', strtotime($closest_before['appointment_time']));
-        $prev_dist = calculateRoadDistance(
-            $latitude_utente, $longitude_utente,
-            $closest_before['latitude'], $closest_before['longitude']
-        );
-        
-        if ($prev_dist !== false) {
-            echo "<span style='color:#28a745;'> - Distanza dal precedente ({$prev_time_fmt}): " . 
-                 number_format($prev_dist, 1) . " km</span><br>";
-        }
-    } else if ($slot['type'] == 'after') {
-        // Se non c'è un altro precedente ma lo slot è 'after', mostra il riferimento come precedente
-        echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ref_time_sel}): " . 
-             number_format($item['travel_distance'], 1) . " km</span><br>";
+    if (empty($slots_adiacenti) && empty($slots_by_zone_and_date)) {
+        echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot selezionabile valido. Prova ad aumentare il raggio.</div>";
     }
-    
-    // 4. Mostra SEMPRE dopo l'appuntamento successivo (se esiste)
-    if ($closest_after) {
-        $next_time_fmt = date('H:i', strtotime($closest_after['appointment_time']));
-        $next_dist = calculateRoadDistance(
-            $latitude_utente, $longitude_utente,
-            $closest_after['latitude'], $closest_after['longitude']
-        );
-        
-        if ($next_dist !== false) {
-            echo "<span style='color:#28a745;'> - Distanza dal successivo ({$next_time_fmt}): " . 
-                 number_format($next_dist, 1) . " km</span><br>";
-        }
-    } else if ($slot['type'] == 'before') {
-        // Se non c'è un altro successivo ma lo slot è 'before', mostra il riferimento come successivo
-        echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ref_time_sel}): " . 
-             number_format($item['travel_distance'], 1) . " km</span><br>";
-    }
+} else {
+    echo "<div class='alert alert-info text-center mt-3'><strong>Nessuno slot disponibile trovato.</strong><br>Prova ad aumentare il raggio o controlla più tardi.</div>";
 }
-             
-             
-                echo "<small class='text-muted'>Zona Slot: " . htmlspecialchars($zone_id_book);
+echo "</div>"; 
 
-// Aggiungi informazioni sulla zona confinante se presente
-if (isset($slot['related_appointment']['is_neighboring_zone']) && $slot['related_appointment']['is_neighboring_zone']) {
-    echo " <span class='badge bg-info'>Slot da zona confinante con orari più ampi</span>";
-}
+if ($proceedSearchAnyway_div_open) echo "</div>"; // Chiude #proceedSearchAnyway
+echo "</div>"; // Chiude il container principale iniziato dopo il try
 
-echo "</small></p>";
-                // Bottoni e script (come nella tua ultima versione corretta)
-                $unique_sfx = preg_replace('/[^a-zA-Z0-9]/','',$slot['date'].$slot['time'].$zone_id_book).rand(100,999);
-                $coll_id = "ag_coll_".$unique_sfx; $cont_id = "ag_cont_".$unique_sfx;
-                echo "<button class='btn btn-sm btn-outline-info mt-1 me-2' type='button' data-bs-toggle='collapse' data-bs-target='#{$coll_id}' aria-expanded='false'><i class='bi bi-calendar3'></i> Agenda</button>";
-                $nameE=urlencode($name_utente); $surE=urlencode($surname_utente); $phE=urlencode($phone_utente); $addrE=urlencode($address_utente);
-                $book_url = "book_appointment.php?zone_id=".urlencode($zone_id_book)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE."&display_radius=".urlencode($display_radius_km);
-                echo "<a href='{$book_url}' class='btn btn-success mt-1 fw-bold'><i class='bi bi-check-circle'></i> Seleziona</a>";
-                echo "<div class='collapse mt-2' id='{$coll_id}'><div class='card card-body bg-light' id='{$cont_id}'><div class='text-center'><div class='spinner-border spinner-border-sm'></div><span> Caricamento...</span></div></div></div>";
-                echo "<script>(function(){var c=document.getElementById('{$coll_id}'),t=document.getElementById('{$cont_id}');if(c&&t){c.addEventListener('shown.bs.collapse',function(){t.innerHTML=\"<div class='text-center'><div class='spinner-border spinner-border-sm'></div><span> Caricamento...</span></div>\";fetch('get_appointments_modal.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'appointment_date={$slot['date']}'}).then(r=>{if(!r.ok)throw Error(r.statusText);return r.text()}).then(h=>t.innerHTML=h).catch(e=>t.innerHTML='<div class=\"alert alert-warning p-2\">Errore: '+e.message+'</div>')})}})();</script>";
-                echo "</div></div>";
-                $count_displayed_sel++;
-            }
-            if ($count_displayed_sel == 0) echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot selezionabile valido. Prova ad aumentare il raggio.</div>";
-        } else {
-            echo "<div class='alert alert-info text-center mt-3'><strong>Nessuno slot disponibile trovato.</strong><br>Prova ad aumentare il raggio o controlla più tardi.</div>";
-        }
-        echo "</div>"; 
-
-        if ($proceedSearchAnyway_div_open) echo "</div>"; // Chiude #proceedSearchAnyway
-        echo "</div>"; // Chiude il container principale iniziato dopo il try
 
     } catch (Exception $e) {
         error_log($log_prefix_main . "ECCEZIONE: " . $e->getMessage() . " File: " . $e->getFile() . " Riga: " . $e->getLine());
