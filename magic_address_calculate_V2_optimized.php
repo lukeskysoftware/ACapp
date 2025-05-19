@@ -2003,8 +2003,9 @@ function getNextAppointmentDatesForZone($slots_config, $zoneId, $user_latitude, 
             // Se quella logica esclude la data, si farebbe: continue;
             $available_dates_with_times[$check_date_str] = $valid_times_for_date;
         }
-         if (count($available_dates_with_times) >= ($weeks_to_search * 2) && $weeks_to_search <=2 ) break; // Limita il numero di giorni con risultati per non eccedere.
-         if (count($available_dates_with_times) >= 10 && $weeks_to_search > 2 ) break; // Limita a 10 giorni se la ricerca è più lunga
+         if (count($available_dates_with_times) >= 3) {
+    error_log("getNextAppointmentDatesForZone: Trovate " . count($available_dates_with_times) . " date, suffienti per la visualizzazione");
+    break;
     }
     ksort($available_dates_with_times);
     return $available_dates_with_times;
@@ -2597,9 +2598,27 @@ if ($zona_utente) {
         error_log($log_prefix_main . "FASE B: Chiamo getNext3AppointmentDates con " . count($tutti_slots_config) . " slot totali da " . count($tutte_zone_rilevanti) . " zone.");
         
         // Passa la zona dell'utente, ma con tutti gli slot combinati
-        $date_disponibili_zona_da_originale = getNext3AppointmentDates(
-            $tutti_slots_config, $zona_utente['id'], $latitude_utente, $longitude_utente
-        );
+        // Verifica se la zona utente ha configurazione di slot
+$slots_config_zona_utente = getSlotsForZone($zona_utente['id']);
+if (empty($slots_config_zona_utente)) {
+    error_log("AVVISO: Zona principale ID {$zona_utente['id']} non ha configurazione di slot!");
+    // Usa tutti gli slot in questo caso
+    $slots_config_zona_utente = $tutti_slots_config;
+}
+
+// Cerca per un periodo più lungo (12 settimane)
+// Utilizziamo direttamente getNextAppointmentDatesForZone con parametri adeguati
+$date_disponibili_zona_da_originale = getNextAppointmentDatesForZone(
+    $tutti_slots_config, $zona_utente['id'], $latitude_utente, $longitude_utente, 
+    MAX_OPERATOR_HOP_KM, 12 // Cerca per 12 settimane
+);
+
+// Assicurati che l'array delle date sia ordinato e limitato a 3
+ksort($date_disponibili_zona_da_originale);
+$date_disponibili_zona_da_originale = array_slice($date_disponibili_zona_da_originale, 0, 3, true);
+
+error_log("FASE B: Trovate " . count($date_disponibili_zona_da_originale) . " date per zona principale ID {$zona_utente['id']}");
+
         
         foreach ($date_disponibili_zona_da_originale as $date_str_orig => $times_arr_orig) {
             foreach ($times_arr_orig as $time_str_orig) {
@@ -2950,7 +2969,13 @@ if (!empty($slots_proposti_con_priorita)) {
             $max_date = !empty($main_zone_dates) ? max($main_zone_dates) : null;
             
             // 2.2. Poi mostra le zone confinanti (escludi la zona principale)
-            foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
+            // Assicurati che questo codice sia presente all'inizio del ciclo
+foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
+    // Aggiungi questo controllo per saltare la zona principale
+    if ($zone_id == $zona_principale_id) {
+        error_log("FASE B: Saltata zona principale ID {$zone_id} nel ciclo delle zone confinanti");
+        continue;
+    }
                 // Salta la zona principale
                 if ($zone_id == $zona_principale_id) continue;
                 
@@ -2961,12 +2986,9 @@ if (!empty($slots_proposti_con_priorita)) {
                 sort($neighbor_dates);
                 
                 // Se abbiamo un range definito dalla zona principale, filtra le date
-                $filtered_dates = $neighbor_dates;
-                if ($min_date && $max_date) {
-                    $filtered_dates = array_filter($neighbor_dates, function($date) use ($min_date, $max_date) {
-                        return $date >= $min_date && $date <= $max_date;
-                    });
-                }
+               $filtered_dates = array_filter($neighbor_dates, function($date) use ($max_date) {
+    return $date <= $max_date; // Solo non superare la data massima
+});
                 
                 // Se non ci sono date filtrate
                 if (empty($filtered_dates)) {
@@ -3013,6 +3035,11 @@ if (!empty($slots_proposti_con_priorita)) {
             echo "<div class='alert alert-warning mb-4'>Nessuna data disponibile nella tua zona principale (ID: {$zona_principale_id}). Mostriamo le date disponibili nelle zone confinanti.</div>";
             
             foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
+    // Saltare esplicitamente la zona principale
+    if ($zone_id == $zona_principale_id) {
+        error_log("Saltata zona principale ID {$zone_id} nel ciclo delle zone confinanti");
+        continue;
+    }
                 echo "<h4 class='mb-3 mt-4'>Date disponibili nella zona confinante: {$zone_data['zone_name']}</h4>";
                 
                 // Ordina le date e limita a 3 per ogni zona confinante
