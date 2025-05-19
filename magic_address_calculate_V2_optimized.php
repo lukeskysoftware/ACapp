@@ -2970,12 +2970,12 @@ if (!empty($slots_proposti_con_priorita)) {
             
             // 2.2. Poi mostra le zone confinanti (escludi la zona principale)
             // Assicurati che questo codice sia presente all'inizio del ciclo
-foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
+/*/////////// foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
     // Aggiungi questo controllo per saltare la zona principale
     if ($zone_id == $zona_principale_id) {
         error_log("FASE B: Saltata zona principale ID {$zone_id} nel ciclo delle zone confinanti");
         continue;
-    }
+    } */////////////
                 // Salta la zona principale
                 if ($zone_id == $zona_principale_id) continue;
                 
