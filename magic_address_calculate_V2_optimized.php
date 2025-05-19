@@ -1763,6 +1763,157 @@ function getAddressCoordinates($address, $appointment_id = null) {
 // Qui riutilizziamo la funzione esistente
 return getCoordinatesFromAddress($address, $appointment_id);
 }
+
+/**
+ * NUOVA FUNZIONE: Variante di getNextAppointmentDatesForZone che rispetta una data massima.
+ * Trova date e orari disponibili per una zona, fino a una data specifica.
+ *
+ * @param array $slots_config Configurazione degli slot per la zona.
+ * @param int $zoneId ID della zona.
+ * @param float $user_latitude Latitudine utente.
+ * @param float $user_longitude Longitudine utente.
+ * @param int $max_operator_hop_km Max distanza tra appuntamenti operatore (attualmente non usata attivamente in questa funzione per filtrare slot di zona).
+ * @param string $max_target_date_str Data massima (Y-m-d) per la ricerca.
+ * @param int $weeks_to_search_fallback Numero di settimane nel futuro da cercare come fallback se $max_target_date_str non è restrittiva.
+ * @return array Date con i relativi orari disponibili.
+ */
+function getNextAppointmentDatesForZone_Bounded($slots_config, $zoneId, $user_latitude, $user_longitude, $max_operator_hop_km, $max_target_date_str, $weeks_to_search_fallback = 4) {
+    global $conn; // Assicurati che $conn sia accessibile
+    $available_dates_with_times = [];
+    $current_date_obj = new DateTime(); // Data di inizio ricerca è oggi
+
+    $max_date_obj = new DateTime($max_target_date_str);
+    
+    // Calcola il numero di giorni da oggi fino a max_target_date_str
+    // Se max_target_date_str è oggi o nel passato, $days_to_scan sarà 0 o negativo.
+    $days_to_scan = 0;
+    if ($current_date_obj <= $max_date_obj) {
+        $interval = $current_date_obj->diff($max_date_obj);
+        $days_to_scan = $interval->days;
+    }
+    
+    // Limita la ricerca al massimo a N settimane nel futuro (come fallback) o fino alla data massima
+    $days_limit_from_fallback = $weeks_to_search_fallback * 7;
+    // +1 per includere max_target_date_str se è futura
+    $actual_days_to_check = min($days_to_scan + 1, $days_limit_from_fallback);
+    if ($max_date_obj < $current_date_obj) { // Se la data massima è passata, non cercare affatto.
+        $actual_days_to_check = 0;
+    }
+
+
+    $map_day_to_number = [
+        'Monday' => 1, 'Lunedì' => 1,
+        'Tuesday' => 2, 'Martedì' => 2,
+        'Wednesday' => 3, 'Mercoledì' => 3,
+        'Thursday' => 4, 'Giovedì' => 4,
+        'Friday' => 5, 'Venerdì' => 5,
+        'Saturday' => 6, 'Sabato' => 6,
+        'Sunday' => 7, 'Domenica' => 7,
+    ];
+
+    for ($i = 0; $i < $actual_days_to_check; $i++) {
+        $check_date_obj = (clone $current_date_obj)->modify("+$i days");
+        $check_date_str = $check_date_obj->format('Y-m-d');
+
+        // Controllo esplicito per non superare la data target (anche se $actual_days_to_check dovrebbe già gestirlo)
+        if ($check_date_str > $max_target_date_str) {
+            break;
+        }
+
+        $day_of_week_iso = (int)$check_date_obj->format('N');
+
+        $date_availability = isSlotAvailable($check_date_str, null, null, $zoneId);
+        if (!$date_availability['available']) {
+            error_log("getNextAppointmentDatesForZone_Bounded: Data {$check_date_str} bloccata per zona {$zoneId}. Motivo: " . ($date_availability['reason'] ?? 'Non specificato'));
+            continue;
+        }
+
+        $slots_for_this_day_type = [];
+        foreach ($slots_config as $slot_cfg) {
+            $cfg_day_iso = $map_day_to_number[$slot_cfg['day']] ?? -1;
+            if ($cfg_day_iso == $day_of_week_iso) {
+                $slots_for_this_day_type[] = $slot_cfg['time'];
+            }
+        }
+        sort($slots_for_this_day_type);
+
+        if (empty($slots_for_this_day_type)) continue;
+
+        $valid_times_for_date = [];
+        foreach ($slots_for_this_day_type as $slot_time_str) {
+            if ($check_date_str == date('Y-m-d') && strtotime($slot_time_str) < time()) {
+                continue;
+            }
+
+            $slot_start_time = $slot_time_str;
+            $slot_end_time = date('H:i:s', strtotime($slot_start_time . " +1 hour")); // Assumendo slot di 1 ora
+            $slot_specific_availability = isSlotAvailable($check_date_str, $slot_start_time, $slot_end_time, $zoneId);
+
+            if (!$slot_specific_availability['available']) {
+                 error_log("getNextAppointmentDatesForZone_Bounded: Slot {$check_date_str} {$slot_start_time} (Zona {$zoneId}) bloccato. Motivo: " . ($slot_specific_availability['reason'] ?? 'Non specificato'));
+                continue;
+            }
+
+            $check_booked_sql = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
+            $chk_stmt = $conn->prepare($check_booked_sql);
+            if ($chk_stmt) {
+                $chk_stmt->bind_param("ss", $check_date_str, $slot_time_str);
+                $chk_stmt->execute();
+                $is_occupied = ($chk_stmt->get_result()->fetch_assoc()['count'] > 0);
+                $chk_stmt->close();
+
+                if (!$is_occupied) {
+                    $valid_times_for_date[] = $slot_time_str;
+                }
+            } else {
+                error_log("getNextAppointmentDatesForZone_Bounded: Errore prepare SQL check_booked_sql: " . $conn->error);
+            }
+        }
+
+        if (!empty($valid_times_for_date)) {
+            $available_dates_with_times[$check_date_str] = $valid_times_for_date;
+        }
+    }
+    ksort($available_dates_with_times);
+    return $available_dates_with_times;
+}
+
+
+// Funzione helper per creare l'oggetto slot (puoi posizionarla dove preferisci, prima del suo utilizzo)
+function creaSlotPropostoDaDatiZona($date_str, $time_str, $zona_data, $user_lat, $user_lng, $is_confinante = false, $distanza_utente_centro_zona = 0) {
+    $priority_score = ($is_confinante ? 2000 : 1000) + (float)$distanza_utente_centro_zona;
+
+    $related_details = [
+        'id' => null, // Non è un appuntamento esistente
+        'address' => 'N/A - Slot di Zona',
+        'zone_id' => $zona_data['id'],
+        'name' => $zona_data['name'] ?? "Zona ID {$zona_data['id']}",
+        'latitude' => ($zona_data['zone_lat'] ?? $zona_data['latitude'] ?? 0), // Adatta a seconda di come sono nominati i campi in $zona_data
+        'longitude' => ($zona_data['zone_lng'] ?? $zona_data['longitude'] ?? 0),
+        'is_neighboring_zone' => $is_confinante,
+        'is_main_zone' => !$is_confinante
+    ];
+
+    $slot_details_prop = [
+        'date' => $date_str,
+        'time' => $time_str,
+        'type' => $is_confinante ? 'neighbor_zone_slot' : 'main_zone_slot',
+        'related_appointment' => $related_details, // Contiene i dati della zona
+        'excluded' => false,
+        'excluded_reason' => '',
+        'debug_info' => [],
+        'note_zona_confinante' => $is_confinante ? "Slot disponibile dalla zona confinante {$related_details['name']}" : ""
+    ];
+    
+    return [
+        'slot_details' => $slot_details_prop,
+        'priority_score' => $priority_score,
+        'travel_distance' => (float)$distanza_utente_centro_zona, // Distanza utente dal centro della zona
+        'source' => $is_confinante ? 'neighbor_zone_logic' : 'main_zone_logic'
+    ];
+}
+
+
 /**
  * Trova date e orari disponibili per una zona, considerando gli slot configurati e gli appuntamenti esistenti.
  *
@@ -2229,690 +2380,590 @@ echo "<p class='text-center'>Coordinate: Lat {$latitude_utente}, Lng {$longitude
 echo "</div></div><hr>";
         // --- FINE BLOCCO AVVISO APPUNTAMENTO ESISTENTE ---
 
-        $slots_proposti_con_priorita = []; 
-        $tutti_gli_slot_adiacenti_per_tabella = []; // Per displayAppointmentDetails
+// NUOVA FUNZIONE HELPER SPECIFICA PER LA LOGICA DEGLI SLOT ADIACENTI (FASE A)
+// Questa funzione incorpora i controlli di sequenza dell'operatore.
+function getValidAdjacentSlotsForRef(
+    $ref_app_data,
+    $new_user_latitude,
+    $new_user_longitude,
+    $max_operator_hop_km,
+    $buffer_minutes,
+    $db_connection,
+    $log_prefix = ''
+) {
+    $valid_adjacent_slots = [];
+    $debug_details_for_ref = []; // Per la tabella di debug
 
-        // -------- FASE A: Slot Adiacenti ad Appuntamenti Esistenti --------
-        error_log($log_prefix_main . "FASE A: Chiamo findNearbyAppointments (ORIGINALE) con raggio {$display_radius_km}km.");
-        $appuntamenti_riferimento = findNearbyAppointments($latitude_utente, $longitude_utente, $display_radius_km); // USA FUNZIONE ORIGINALE
+    $ref_app_id = $ref_app_data['id'] ?? 'N/D_REF_ID';
+    $ref_app_zone_id = $ref_app_data['zone_id'] ?? 0;
+    $ref_app_date_str = $ref_app_data['appointment_date'] ?? null;
+    $ref_app_time_str = $ref_app_data['appointment_time'] ?? null;
+    $ref_app_lat = $ref_app_data['latitude'] ?? null;
+    $ref_app_lng = $ref_app_data['longitude'] ?? null;
 
-        if (!empty($appuntamenti_riferimento)) {
-            error_log($log_prefix_main . "FASE A: Trovati " . count($appuntamenti_riferimento) . " app. di riferimento.");
-            foreach ($appuntamenti_riferimento as $ref_app) {
-                $ref_app_id_log = $ref_app['id'] ?? 'N/D';
-                // Se findNearbyAppointments ha escluso il riferimento, lo aggiungiamo per la tabella ma non generiamo slot.
-                if (!empty($ref_app['excluded_reason'])) {
-                    error_log($log_prefix_main . "FASE A: RefApp ID {$ref_app_id_log} escluso da findNearbyAppointments: " . $ref_app['excluded_reason']);
-                    $tutti_gli_slot_adiacenti_per_tabella[] = ['type' => 'N/A_REF_EXCLUDED', 'related_appointment' => $ref_app, 'excluded' => true, 'excluded_reason' => "Rif. escluso da findNearby: " . $ref_app['excluded_reason'], 'debug_info' => ['reason' => $ref_app['excluded_reason']]];
-                    continue;
-                }
-                if (!isset($ref_app['zone_id']) || $ref_app['zone_id'] == 0 || !isset($ref_app['latitude']) || !isset($ref_app['longitude'])) {
-                    $missing_data_reason = "Dati rif. incompleti (zona/lat/lng) per ID {$ref_app_id_log}.";
-                    error_log($log_prefix_main . "FASE A: " . $missing_data_reason);
-                    $tutti_gli_slot_adiacenti_per_tabella[] = ['type' => 'N/A_REF_INVALID_DATA', 'related_appointment' => $ref_app, 'excluded' => true, 'excluded_reason' => $missing_data_reason, 'debug_info' => ['reason' => $missing_data_reason]];
-                    continue;
-                }
-
-                error_log($log_prefix_main . "FASE A: Analizzo RefApp ID {$ref_app_id_log} ({$ref_app['address']}) con checkAvailableSlotsNearAppointment (ORIGINALE).");
-                $slot_adiacenti_da_originale = checkAvailableSlotsNearAppointment($ref_app); // USA FUNZIONE ORIGINALE
-
-                foreach ($slot_adiacenti_da_originale as $slot_calc_orig) {
-                    $slot_per_tabella = $slot_calc_orig; // Copia per modificarla senza alterare l'originale se necessario
-                    $slot_per_tabella['related_appointment'] = $ref_app; // Assicura che related_appointment sia presente
-                    
-                    $actual_travel_for_this_slot = false;
-                    if (!$slot_per_tabella['excluded']) { // Solo se valido secondo la logica originale
-                        if ($slot_per_tabella['type'] == 'before') {
-                            $actual_travel_for_this_slot = calculateRoadDistance($latitude_utente, $longitude_utente, (float)$ref_app['latitude'], (float)$ref_app['longitude']);
-                        } elseif ($slot_per_tabella['type'] == 'after') {
-                            $actual_travel_for_this_slot = calculateRoadDistance((float)$ref_app['latitude'], (float)$ref_app['longitude'], $latitude_utente, $longitude_utente);
-                        }
-                        // Applica filtro MAX_OPERATOR_HOP_KM al viaggio specifico NuovoUtente<->RefApp
-                        if ($actual_travel_for_this_slot === false || $actual_travel_for_this_slot < 0 || $actual_travel_for_this_slot > MAX_OPERATOR_HOP_KM) {
-                            $slot_per_tabella['excluded'] = true;
-                            $current_reason = $slot_per_tabella['excluded_reason'] ?? '';
-                            $slot_per_tabella['excluded_reason'] = ($current_reason ? $current_reason." | " : "") . "Viaggio NuovoApp<->RefApp (" . number_format($actual_travel_for_this_slot,1) . "km) > " . MAX_OPERATOR_HOP_KM . "km.";
-                            if (!isset($slot_per_tabella['debug_info'])) $slot_per_tabella['debug_info'] = [];
-                            $slot_per_tabella['debug_info']['hop_km_new_ref_fail'] = true;
-                        }
-                    }
-                    $slot_per_tabella['actual_travel_distance_for_new_slot'] = $actual_travel_for_this_slot; // Per priorità
-                    $tutti_gli_slot_adiacenti_per_tabella[] = $slot_per_tabella;
-
-                    if (!$slot_per_tabella['excluded']) {
-                        if ($actual_travel_for_this_slot !== false && $actual_travel_for_this_slot >= 0 && $actual_travel_for_this_slot <= $display_radius_km) {
-                            $slots_proposti_con_priorita[] = [
-                                'slot_details'      => $slot_per_tabella,
-                                'priority_score'    => (float)$actual_travel_for_this_slot,
-                                'travel_distance'   => (float)$actual_travel_for_this_slot,
-                                'source'            => 'adjacent_to_existing'
-                            ];
-                        }
-                    }
-                }
-            }
-        }
-        error_log($log_prefix_main . "FASE A: Fine. Slot ad. validi e nel raggio display: " . count(array_filter($slots_proposti_con_priorita, function($s){ return $s['source'] == 'adjacent_to_existing'; })));
-
-        // -------- CHIAMATA A displayAppointmentDetails (ORIGINALE) --------
-        if (function_exists('displayAppointmentDetails')) {
-            if (!empty($appuntamenti_riferimento)) {
-                error_log($log_prefix_main . "Chiamo displayAppointmentDetails con " . count($appuntamenti_riferimento) . " rif. e " . count($tutti_gli_slot_adiacenti_per_tabella) . " slot ad. totali.");
-                displayAppointmentDetails($appuntamenti_riferimento, $tutti_gli_slot_adiacenti_per_tabella); // USA FUNZIONE ORIGINALE
-            } else {
-                 echo "<div class='alert alert-info mt-3'>Nessun appuntamento di riferimento trovato nelle vicinanze per generare slot adiacenti.</div>";
-            }
-        } else {
-            error_log($log_prefix_main . "ERRORE CRITICO: displayAppointmentDetails non definita!");
-            echo "<div class='alert alert-danger mt-3'>Errore: funzione display non disponibile.</div>";
-        }
-
-/**
- * Funzione di supporto per estrarre i range orari dai slot configurati
- */
-function extractTimeRanges($slots_config) {
-    $time_ranges = [];
-    foreach ($slots_config as $slot) {
-        $day = $slot['day'];
-        $time = $slot['time'];
-        
-        if (!isset($time_ranges[$day])) {
-            $time_ranges[$day] = ['min' => $time, 'max' => $time];
-        } else {
-            if (strtotime($time) < strtotime($time_ranges[$day]['min'])) {
-                $time_ranges[$day]['min'] = $time;
-            }
-            if (strtotime($time) > strtotime($time_ranges[$day]['max'])) {
-                $time_ranges[$day]['max'] = $time;
-            }
-        }
+    if (!$ref_app_id || !$ref_app_zone_id || !$ref_app_date_str || !$ref_app_time_str || $ref_app_lat === null || $ref_app_lng === null) {
+        error_log($log_prefix . "getValidAdjacentSlotsForRef: Dati RefApp ID {$ref_app_id} incompleti. Impossibile calcolare slot adiacenti.");
+        // Restituisce un record per la tabella di debug indicando il problema col riferimento
+        $debug_details_for_ref[] = [
+            'type' => 'N/A_REF_INCOMPLETE_DATA_FOR_ADJACENT',
+            'related_appointment' => $ref_app_data,
+            'excluded' => true,
+            'excluded_reason' => 'Dati RefApp incompleti per calcolo slot adiacenti.',
+            'actual_travel_distance_for_new_slot' => false,
+            'debug_info' => ['error' => 'RefApp data missing for adjacent slot calculation']
+        ];
+        return ['slots_proposti' => [], 'slots_debug' => $debug_details_for_ref];
     }
-    return $time_ranges;
-}
 
-/**
- * Funzione di supporto per verificare se una zona ha una fascia oraria più ampia
- */
-function hasWiderTimeRange($zona_conf_ranges, $zona_utente_ranges) {
-    foreach ($zona_conf_ranges as $day => $conf_range) {
-        // Se questo giorno esiste anche nella zona utente
-        if (isset($zona_utente_ranges[$day])) {
-            $utente_range = $zona_utente_ranges[$day];
+    $ref_app_datetime = new DateTime($ref_app_date_str . ' ' . $ref_app_time_str);
+
+    // Ottieni limiti slot della zona del RefApp
+    $zone_min_time = null; $zone_max_time = null;
+    $slots_cfg_sql = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ?";
+    $slots_cfg_stmt = $db_connection->prepare($slots_cfg_sql);
+    if ($slots_cfg_stmt) {
+        $slots_cfg_stmt->bind_param("i", $ref_app_zone_id);
+        $slots_cfg_stmt->execute();
+        $slots_cfg_res = $slots_cfg_stmt->get_result();
+        if ($row = $slots_cfg_res->fetch_assoc()) {
+            $zone_min_time = $row['earliest_slot'];
+            $zone_max_time = $row['latest_slot'];
+        }
+        $slots_cfg_stmt->close();
+    }
+    if (!$zone_min_time || !$zone_max_time) {
+        error_log($log_prefix . "getValidAdjacentSlotsForRef: Impossibile determinare limiti slot per zona {$ref_app_zone_id} (RefApp ID {$ref_app_id}).");
+        $debug_details_for_ref[] = [
+            'type' => 'N/A_REF_ZONE_LIMITS_MISSING',
+            'related_appointment' => $ref_app_data,
+            'excluded' => true,
+            'excluded_reason' => "Limiti slot zona {$ref_app_zone_id} non trovati.",
+            'actual_travel_distance_for_new_slot' => false,
+            'debug_info' => ['error' => 'Zone slot limits missing']
+        ];
+        return ['slots_proposti' => [], 'slots_debug' => $debug_details_for_ref];
+    }
+
+    // Ottieni appuntamenti dell'operatore per lo stesso giorno e stessa zona del RefApp
+    // per verificare la sequenza (Prev -> NuovoSlot -> Ref) e (Ref -> NuovoSlot -> Next)
+    $prev_app_in_sequence = null;
+    $next_app_in_sequence = null;
+    $daily_seq_sql = "SELECT id, appointment_time, address, latitude, longitude FROM cp_appointments 
+                      WHERE zone_id = ? AND appointment_date = ? ORDER BY appointment_time";
+    $daily_seq_stmt = $db_connection->prepare($daily_seq_sql);
+    if ($daily_seq_stmt) {
+        $daily_seq_stmt->bind_param("is", $ref_app_zone_id, $ref_app_date_str);
+        $daily_seq_stmt->execute();
+        $daily_seq_result = $daily_seq_stmt->get_result();
+        $appointments_in_day_zone = [];
+        while($row = $daily_seq_result->fetch_assoc()){
+            // Assicurati che le coordinate siano float
+            $row['latitude'] = isset($row['latitude']) ? (float)$row['latitude'] : null;
+            $row['longitude'] = isset($row['longitude']) ? (float)$row['longitude'] : null;
+            $appointments_in_day_zone[] = $row;
+        }
+        $daily_seq_stmt->close();
+
+        $current_ref_idx = -1;
+        foreach ($appointments_in_day_zone as $idx => $app_day) {
+            if ($app_day['id'] == $ref_app_id) {
+                $current_ref_idx = $idx;
+                break;
+            }
+        }
+        if ($current_ref_idx > 0) {
+            $prev_app_in_sequence = $appointments_in_day_zone[$current_ref_idx - 1];
+        }
+        if ($current_ref_idx != -1 && $current_ref_idx < (count($appointments_in_day_zone) - 1)) {
+            $next_app_in_sequence = $appointments_in_day_zone[$current_ref_idx + 1];
+        }
+    } else {
+        error_log($log_prefix . "getValidAdjacentSlotsForRef: Errore SQL per appuntamenti giornalieri sequenza: " . $db_connection->error);
+    }
+
+    // Slot Tipi: 'before', 'after'
+    foreach (['before', 'after'] as $slot_type) {
+        $proposed_slot_dt = clone $ref_app_datetime;
+        if ($slot_type == 'before') {
+            $proposed_slot_dt->modify('-' . $buffer_minutes . ' minutes');
+        } else { // after
+            $proposed_slot_dt->modify('+' . $buffer_minutes . ' minutes');
+        }
+        $proposed_date_str = $proposed_slot_dt->format('Y-m-d');
+        $proposed_time_str = $proposed_slot_dt->format('H:i:s');
+
+        $slot_obj_for_debug = [
+            'date' => $proposed_date_str,
+            'time' => $proposed_time_str,
+            'type' => $slot_type,
+            'related_appointment' => $ref_app_data, // Riferimento originale
+            'excluded' => false,
+            'excluded_reason' => '',
+            'actual_travel_distance_for_new_slot' => false, // Distanza UtenteNuovo <-> RefApp
+            'debug_info' => []
+        ];
+
+        // 1. Controllo limiti orari della zona
+        if (strtotime($proposed_time_str) < strtotime($zone_min_time) || strtotime($proposed_time_str) > strtotime($zone_max_time)) {
+            $slot_obj_for_debug['excluded'] = true;
+            $slot_obj_for_debug['excluded_reason'] = "Fuori limiti operativi zona ({$zone_min_time}-{$zone_max_time}).";
+            $debug_details_for_ref[] = $slot_obj_for_debug;
+            error_log($log_prefix . "getValidAdjacentSlotsForRef: Slot {$slot_type} {$proposed_time_str} per RefID {$ref_app_id} escluso per limiti zona.");
+            continue;
+        }
+
+        // 2. Controllo se lo slot proposto è già occupato (globalmente o per zona, a seconda delle tue regole)
+        //    Qui uso un controllo globale per semplicità. Adattalo se necessario.
+        //    La funzione isSlotAvailable da utils_appointment.php è più completa.
+        $slot_availability = isSlotAvailable($proposed_date_str, $proposed_time_str, date('H:i:s', strtotime($proposed_time_str . " +{$buffer_minutes} minutes")), $ref_app_zone_id);
+        if (!$slot_availability['available']) {
+             $slot_obj_for_debug['excluded'] = true;
+             $slot_obj_for_debug['excluded_reason'] = "Slot già occupato o bloccato: " . ($slot_availability['reason'] ?? 'Non disponibile');
+             $debug_details_for_ref[] = $slot_obj_for_debug;
+             error_log($log_prefix . "getValidAdjacentSlotsForRef: Slot {$slot_type} {$proposed_time_str} per RefID {$ref_app_id} escluso perché non disponibile/occupato.");
+             continue;
+        }
+
+
+        // 3. Controlli di distanza per la sequenza dell'operatore E distanza UtenteNuovo<->RefApp
+        $dist_utente_ref = false; // Distanza tra le coordinate del nuovo utente e le coordinate del RefApp
+
+        if ($slot_type == 'before') {
+            // Viaggio 1 (Opzionale): App Precedente in Sequenza -> Nuovo Slot (coordinate utente)
+            if ($prev_app_in_sequence) {
+                if (isset($prev_app_in_sequence['latitude'], $prev_app_in_sequence['longitude'])) {
+                    $dist_prev_to_new = calculateRoadDistance(
+                        $prev_app_in_sequence['latitude'], $prev_app_in_sequence['longitude'],
+                        $new_user_latitude, $new_user_longitude
+                    );
+                    if ($dist_prev_to_new === false || $dist_prev_to_new > $max_operator_hop_km) {
+                        $slot_obj_for_debug['excluded'] = true;
+                        $slot_obj_for_debug['excluded_reason'] .= " Distanza da AppPrecOperatore ({$prev_app_in_sequence['id']}) a NuovoSlot (" . number_format($dist_prev_to_new,1) . "km) > {$max_operator_hop_km}km.";
+                    }
+                } else {
+                    $slot_obj_for_debug['excluded'] = true; $slot_obj_for_debug['excluded_reason'] .= " Coordinate mancanti per AppPrecOperatore ({$prev_app_in_sequence['id']}).";
+                }
+            }
+            // Viaggio 2: Nuovo Slot (coordinate utente) -> RefApp
+            if (!$slot_obj_for_debug['excluded']) {
+                $dist_utente_ref = calculateRoadDistance(
+                    $new_user_latitude, $new_user_longitude,
+                    $ref_app_lat, $ref_app_lng
+                );
+                $slot_obj_for_debug['actual_travel_distance_for_new_slot'] = $dist_utente_ref;
+                if ($dist_utente_ref === false || $dist_utente_ref > $max_operator_hop_km) {
+                    $slot_obj_for_debug['excluded'] = true;
+                    $slot_obj_for_debug['excluded_reason'] .= " Distanza NuovoSlot a RefApp (" . number_format($dist_utente_ref,1) . "km) > {$max_operator_hop_km}km.";
+                }
+            }
+        } else { // slot_type == 'after'
+            // Viaggio 1: RefApp -> Nuovo Slot (coordinate utente)
+            $dist_utente_ref = calculateRoadDistance(
+                $ref_app_lat, $ref_app_lng,
+                $new_user_latitude, $new_user_longitude
+            );
+            $slot_obj_for_debug['actual_travel_distance_for_new_slot'] = $dist_utente_ref;
+            if ($dist_utente_ref === false || $dist_utente_ref > $max_operator_hop_km) {
+                $slot_obj_for_debug['excluded'] = true;
+                $slot_obj_for_debug['excluded_reason'] .= " Distanza RefApp a NuovoSlot (" . number_format($dist_utente_ref,1) . "km) > {$max_operator_hop_km}km.";
+            }
+            // Viaggio 2 (Opzionale): Nuovo Slot (coordinate utente) -> App Successivo in Sequenza
+            if (!$slot_obj_for_debug['excluded'] && $next_app_in_sequence) {
+                 if (isset($next_app_in_sequence['latitude'], $next_app_in_sequence['longitude'])) {
+                    $dist_new_to_next = calculateRoadDistance(
+                        $new_user_latitude, $new_user_longitude,
+                        $next_app_in_sequence['latitude'], $next_app_in_sequence['longitude']
+                    );
+                    if ($dist_new_to_next === false || $dist_new_to_next > $max_operator_hop_km) {
+                        $slot_obj_for_debug['excluded'] = true;
+                        $slot_obj_for_debug['excluded_reason'] .= " Distanza NuovoSlot a AppSuccOperatore ({$next_app_in_sequence['id']}) (" . number_format($dist_new_to_next,1) . "km) > {$max_operator_hop_km}km.";
+                    }
+                } else {
+                     $slot_obj_for_debug['excluded'] = true; $slot_obj_for_debug['excluded_reason'] .= " Coordinate mancanti per AppSuccOperatore ({$next_app_in_sequence['id']}).";
+                }
+            }
+        }
+        // Fine controlli distanza sequenza
+
+        $debug_details_for_ref[] = $slot_obj_for_debug; // Aggiungi ai dettagli per la tabella di debug
+
+        if (!$slot_obj_for_debug['excluded']) {
+            // Lo slot è valido, aggiungilo ai proposti
+            // La priorità è data dalla distanza UtenteNuovo<->RefApp
+            $priority_score = ($dist_utente_ref !== false && $dist_utente_ref >= 0) ? (float)$dist_utente_ref : 9996;
             
-            // Controlla se la zona confinante ha un orario di inizio precedente
-            if (strtotime($conf_range['min']) < strtotime($utente_range['min'])) {
-                return true;
-            }
-            
-            // O se ha un orario di fine successivo
-            if (strtotime($conf_range['max']) > strtotime($utente_range['max'])) {
-                return true;
-            }
+            $valid_adjacent_slots[] = [
+                'slot_details'    => $slot_obj_for_debug, // Contiene già tutto il necessario
+                'priority_score'  => $priority_score,
+                'travel_distance' => ($dist_utente_ref !== false ? (float)$dist_utente_ref : null),
+                'source'          => 'adjacent_to_existing'
+            ];
+            error_log($log_prefix . "getValidAdjacentSlotsForRef: Slot ADIACENTE VALIDO: RefID {$ref_app_id}, Tipo {$slot_type}, Data {$proposed_date_str} {$proposed_time_str}, Dist. Utente-Ref: " . number_format($dist_utente_ref,1) . "km, Score: {$priority_score}");
         } else {
-            // Se questo giorno non esiste nella zona utente, allora ha una fascia più ampia
-            return true;
+            error_log($log_prefix . "getValidAdjacentSlotsForRef: Slot {$slot_type} {$proposed_time_str} per RefID {$ref_app_id} ESCLUSO. Motivo finale: " . $slot_obj_for_debug['excluded_reason']);
         }
-    }
-    
-    return false;
+    } // Fine ciclo 'before'/'after'
+
+    return ['slots_proposti' => $valid_adjacent_slots, 'slots_debug' => $debug_details_for_ref];
 }
-// Nella FASE B dove viene determinata la zona dell'utente e vengono cercati gli slot disponibili
-
-error_log($log_prefix_main . "FASE B: Ricerca slot di zona con getNext3AppointmentDates (ORIGINALE).");
-$zona_utente = getZoneForCoordinates($latitude_utente, $longitude_utente); // Funzione helper già presente
-
-// NUOVO: Cerca anche zone confinanti entro un raggio ragionevole (es. 3km)
-$zone_confinanti = [];
-$raggio_confine = 3; // km - raggio entro cui considerare un'altra zona come confinante
-$sql_zone_confinanti = "SELECT id, name, latitude AS zone_lat, longitude AS zone_lng, radius_km FROM cp_zones WHERE id != ?";
-$stmt_zone_conf = $conn->prepare($sql_zone_confinanti);
-
-if ($stmt_zone_conf) {
-    $stmt_zone_conf->bind_param("i", $zona_utente['id']);
-    $stmt_zone_conf->execute();
-    $result_zone_conf = $stmt_zone_conf->get_result();
-    
-    while ($altra_zona = $result_zone_conf->fetch_assoc()) {
-        // Calcola distanza tra l'utente e il centro dell'altra zona
-        $distanza_zona = calculateDistance(
-            [$latitude_utente, $longitude_utente],
-            [(float)$altra_zona['zone_lat'], (float)$altra_zona['zone_lng']]
-        );
-        
-        // Se l'utente è abbastanza vicino al confine dell'altra zona
-        if ($distanza_zona <= $raggio_confine + (float)$altra_zona['radius_km']) {
-            $altra_zona['distance_from_user'] = $distanza_zona;
-            $zone_confinanti[] = $altra_zona;
-            error_log($log_prefix_main . "FASE B: Zona confinante trovata - ID: {$altra_zona['id']}, Nome: {$altra_zona['name']}, Distanza: {$distanza_zona} km");
-        }
-    }
-    $stmt_zone_conf->close();
-}
-
-// Raccogli tutti gli slot di tutte le zone rilevanti (zona utente + zone confinanti)
-$tutte_zone_rilevanti = [$zona_utente['id']];
-$tutti_slots_config = [];
-$orari_zona_utente = []; // Memorizza gli orari della zona dell'utente per confronto
-
-if ($zona_utente) {
-    $slots_config_zona_utente = getSlotsForZone($zona_utente['id']); // Funzione ORIGINALE
-    
-    if (!empty($slots_config_zona_utente)) {
-        $tutti_slots_config = $slots_config_zona_utente;
-        $orari_zona_utente = extractTimeRanges($slots_config_zona_utente);
-        error_log($log_prefix_main . "FASE B: Zona utente ID {$zona_utente['id']} ha " . count($slots_config_zona_utente) . " slot configurati");
-    } else { 
-        error_log($log_prefix_main . "FASE B: Nessuna config slot per zona utente ID {$zona_utente['id']}."); 
-    }
-    
-    // Ora aggiungi slot delle zone confinanti se hanno orari più ampi
-    foreach ($zone_confinanti as $zona_conf) {
-        $slots_config_zona_conf = getSlotsForZone($zona_conf['id']);
-        
-        if (!empty($slots_config_zona_conf)) {
-            $orari_zona_conf = extractTimeRanges($slots_config_zona_conf);
-            
-            // Verifica se la zona confinante ha una fascia oraria più ampia
-            if (hasWiderTimeRange($orari_zona_conf, $orari_zona_utente)) {
-                error_log($log_prefix_main . "FASE B: Zona confinante ID {$zona_conf['id']} ha fascia oraria più ampia. Includo i suoi slot.");
-                $tutte_zone_rilevanti[] = $zona_conf['id'];
-                
-                // Aggiungi gli slot della zona confinante
-                foreach ($slots_config_zona_conf as $slot_conf) {
-                    // Aggiungi al totale solo se non esiste già uno slot identico
-                    $slot_exists = false;
-                    foreach ($tutti_slots_config as $existing_slot) {
-                        if ($existing_slot['day'] == $slot_conf['day'] && $existing_slot['time'] == $slot_conf['time']) {
-                            $slot_exists = true;
-                            break;
-                        }
-                    }
-                    if (!$slot_exists) {
-                        $tutti_slots_config[] = $slot_conf;
-                        // Aggiungi un marcatore per indicare che questo slot proviene da una zona confinante
-                        $last_index = count($tutti_slots_config) - 1;
-                        $tutti_slots_config[$last_index]['from_neighboring_zone'] = true;
-                        $tutti_slots_config[$last_index]['original_zone_id'] = $zona_conf['id'];
-                    }
-                }
-            } else {
-                error_log($log_prefix_main . "FASE B: Zona confinante ID {$zona_conf['id']} NON ha una fascia oraria più ampia.");
-            }
-        }
-    }
-    
-    // Ora usa tutti gli slot raccolti per generare date disponibili
-    if (!empty($tutti_slots_config)) {
-        error_log($log_prefix_main . "FASE B: Chiamo getNext3AppointmentDates con " . count($tutti_slots_config) . " slot totali da " . count($tutte_zone_rilevanti) . " zone.");
-        
-        // Passa la zona dell'utente, ma con tutti gli slot combinati
-        $date_disponibili_zona_da_originale = getNext3AppointmentDates(
-            $tutti_slots_config, $zona_utente['id'], $latitude_utente, $longitude_utente
-        );
-        
-        foreach ($date_disponibili_zona_da_originale as $date_str_orig => $times_arr_orig) {
-            foreach ($times_arr_orig as $time_str_orig) {
-                // Determina da quale zona proviene questo slot
-                $zona_source_id = $zona_utente['id'];
-                $zona_source_name = $zona_utente['name'] ?? 'Sconosciuta';
-                
-                // Controlla se lo slot proviene da una zona confinante
-                foreach ($tutti_slots_config as $slot_cfg) {
-                    // Controlla se questo è lo slot corrente e viene da una zona confinante
-                    $slot_time = date('H:i:s', strtotime($time_str_orig));
-                    if (isset($slot_cfg['from_neighboring_zone']) && 
-                        $slot_cfg['time'] == $slot_time &&
-                        isset($slot_cfg['original_zone_id'])) {
-                        
-                        $zona_source_id = $slot_cfg['original_zone_id'];
-                        
-                        // Trova il nome della zona confinante
-                        foreach ($zone_confinanti as $zc) {
-                            if ($zc['id'] == $zona_source_id) {
-                                $zona_source_name = $zc['name'] ?? 'Confinante';
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                }
-                
-                // Crea i dettagli dello slot, includendo l'informazione sulla zona di origine
-                $related_details_zona_prop = [
-                    'id' => null, 
-                    'address' => 'N/A - Slot di Zona', 
-                    'zone_id' => $zona_source_id,  // Usa la zona da cui proviene lo slot 
-                    'name' => $zona_source_name,  // Nome della zona
-                    'latitude' => ($zona_utente['zone_lat'] ?? 0),
-                    'longitude' => ($zona_utente['zone_lng'] ?? 0),
-                    'is_neighboring_zone' => ($zona_source_id != $zona_utente['id'])  // Flag per slot di zona confinante
-                ];
-                
-                $slot_details_prop = [
-                    'date' => $date_str_orig, 
-                    'time' => $time_str_orig, 
-                    'type' => 'zone_based', 
-                    'related_appointment' => $related_details_zona_prop, 
-                    'excluded' => false,
-                    'excluded_reason' => '', 
-                    'debug_info' => []
-                ];
-                
-                // Aggiungi una nota se lo slot proviene da una zona confinante
-                if ($zona_source_id != $zona_utente['id']) {
-                    $slot_details_prop['note_zona_confinante'] = "Slot disponibile dalla zona confinante {$zona_source_name} (ID: {$zona_source_id})";
-                }
-                
-                $slots_proposti_con_priorita[] = [
-                    'slot_details' => $slot_details_prop, 
-                    'priority_score' => 1000 + (float)($zona_utente['distance_from_user_address'] ?? 0), 
-                    'travel_distance' => (float)($zona_utente['distance_from_user_address'] ?? 0),
-                    'source' => 'zone_logic'
-                ];
-            }
-        }
-    }
-} else { 
-    error_log($log_prefix_main . "FASE B: Utente non in nessuna zona definita."); 
-}
+// FINE NUOVA FUNZIONE HELPER
 
 
+// Inizializzazione delle variabili principali per gli slot (già definite sopra nel tuo script)
+// $slots_proposti_con_priorita = [];
+// $tutti_gli_slot_adiacenti_per_tabella_debug = [];
+// $appuntamenti_riferimento_per_tabella_debug = [];
 
+// -------- INIZIO FASE A (RIVISTA CON NUOVA FUNZIONE HELPER) --------
+error_log($log_prefix_main . "FASE A (HELPER): Inizio ricerca slot adiacenti.");
 
-// -------- FASE C: Ordinamento e Visualizzazione Finale degli Slot Selezionabili --------
-echo "<div class='container mt-3' style='text-align:left;'>"; 
-if (!empty($slots_proposti_con_priorita)) {
-    // Dividi gli slot in due categorie: adiacenti ad appuntamenti esistenti e slot di zona
-    $slots_adiacenti = [];
-    $slots_by_zone_and_date = []; // Struttura: [zone_id][date] = array di slot
-    
-    // Per il debug
-    error_log("DEBUG: Inizio fase C con " . count($slots_proposti_con_priorita) . " slot totali");
-    
-    foreach ($slots_proposti_con_priorita as $item) {
-        if ($item['slot_details']['excluded']) {
-            error_log($log_prefix_main . "FASE C: Slot saltato perché 'excluded': " . json_encode($item['slot_details']));
+// 1. Trova appuntamenti di riferimento vicini all'utente (TUA FUNZIONE ORIGINALE)
+$appuntamenti_riferimento_base = findNearbyAppointments($latitude_utente, $longitude_utente, $display_radius_km);
+$appuntamenti_riferimento_per_tabella_debug = $appuntamenti_riferimento_base; // Per la tabella di debug
+
+if (!empty($appuntamenti_riferimento_base)) {
+    error_log($log_prefix_main . "FASE A (HELPER): Trovati " . count($appuntamenti_riferimento_base) . " app. di riferimento da findNearbyAppointments.");
+
+    foreach ($appuntamenti_riferimento_base as $ref_app_iter) {
+        $ref_app_id_iter_log = $ref_app_iter['id'] ?? 'N/D_HELPER_A';
+
+        // Se findNearbyAppointments ha già escluso il riferimento, lo aggiungiamo per la tabella ma non generiamo slot.
+        if (!empty($ref_app_iter['excluded_reason'])) {
+            error_log($log_prefix_main . "FASE A (HELPER): RefApp ID {$ref_app_id_iter_log} escluso da findNearbyAppointments: " . $ref_app_iter['excluded_reason']);
+            // Aggiungi un record placeholder per la tabella di debug per questo riferimento escluso
+            $tutti_gli_slot_adiacenti_per_tabella_debug[] = [
+                'type' => 'N/A_REF_EXCLUDED_BY_FINDNEARBY',
+                'related_appointment' => $ref_app_iter,
+                'excluded' => true,
+                'excluded_reason' => "Rif. escluso da findNearby: " . $ref_app_iter['excluded_reason'],
+                'actual_travel_distance_for_new_slot' => false,
+                'debug_info' => $ref_app_iter['debug_info'] ?? []
+            ];
             continue;
         }
         
-        if ($item['source'] == 'adjacent_to_existing') {
-            // Slot adiacenti a appuntamenti esistenti - mantieni la visualizzazione originale
-            $slots_adiacenti[] = $item;
-        } else {
-            // Slot di zona - raggruppa per zona e data
-            $date = $item['slot_details']['date'];
-            $zone_id = $item['slot_details']['related_appointment']['zone_id'] ?? 0;
-            $zone_name = $item['slot_details']['related_appointment']['name'] ?? "Zona $zone_id";
-            
-            if (!isset($slots_by_zone_and_date[$zone_id])) {
-                $slots_by_zone_and_date[$zone_id] = [
-                    'zone_name' => $zone_name,
-                    'dates' => []
-                ];
-            }
-            
-            if (!isset($slots_by_zone_and_date[$zone_id]['dates'][$date])) {
-                $slots_by_zone_and_date[$zone_id]['dates'][$date] = [];
-            }
-            
-            $slots_by_zone_and_date[$zone_id]['dates'][$date][] = $item;
-            
-            // Debug ogni zona e data
-            error_log("DEBUG: Slot zona_id=$zone_id, zona_name=$zone_name, date=$date, time={$item['slot_details']['time']}");
-        }
-    }
-    
-    // Mantieni l'ordinamento originale per priorità/distanza per gli slot adiacenti
-    usort($slots_adiacenti, function($a, $b) { 
-        if ($a['priority_score'] != $b['priority_score']) return $a['priority_score'] <=> $b['priority_score'];
-        $dt_a = strtotime(($a['slot_details']['date'] ?? '') . ' ' . ($a['slot_details']['time'] ?? ''));
-        $dt_b = strtotime(($b['slot_details']['date'] ?? '') . ' ' . ($b['slot_details']['time'] ?? ''));
-        return $dt_a <=> $dt_b;
-    });
-    
-    // 1. Prima mostra gli slot adiacenti con la visualizzazione originale dettagliata
-    if (!empty($slots_adiacenti)) {
-        echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili vicino ad appuntamenti esistenti</h3>";
-        $count_displayed_sel = 0;
-        
-        foreach ($slots_adiacenti as $item) {
-            $slot = $item['slot_details'];
-            $slot_date_fmt = date('d/m/Y', strtotime($slot['date']));
-            $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-            $giorno_nome = $giorni[date('w', strtotime($slot['date']))];
-            $slot_time_fmt = date('H:i', strtotime($slot['time']));
+        // Chiamata alla nuova funzione helper che fa tutti i controlli di sequenza
+        $risultato_adiacenti_per_ref = getValidAdjacentSlotsForRef(
+            $ref_app_iter,
+            $latitude_utente,
+            $longitude_utente,
+            MAX_OPERATOR_HOP_KM,
+            60, // buffer_minutes (es. 60)
+            $conn, // Passa la connessione al DB
+            $log_prefix_main . "RefID {$ref_app_id_iter_log} -> "
+        );
 
-            echo "<div class='card mb-3 shadow-sm'><div class='card-body'>"; // Card per slot selezionabile
-            echo "<h4 class='card-title'>{$giorno_nome} {$slot_date_fmt} ore {$slot_time_fmt}</h4>";
-            $related_sel = $slot['related_appointment']; 
-            $zone_id_book = $related_sel['zone_id'] ?? 'N/D_Zone';
-          
-            $ref_time_sel = isset($related_sel['appointment_time']) ? date('H:i', strtotime($related_sel['appointment_time'])) : 'N/D';
-            $type_desc_sel = ($slot['type'] == 'before') ? "Prima app. {$ref_time_sel} in" : "Dopo app. {$ref_time_sel} in";
-            echo "<p class='card-text'><strong>Proposto perché {$type_desc_sel}</strong>: " . htmlspecialchars($related_sel['address'] ?? 'N/D') . "<br>";
-            
-            // Intestazione per le distanze
-            echo "<span style='color:#28a745;font-weight:bold;'>Distanze di viaggio:</span><br>";
-            
-            // 1. Trova lo slot temporale dello slot proposto
-            $app_date = $slot['date'] ?? date('Y-m-d');
-            $app_time = $slot['time'];
-            
-            // 2. Cerca negli appuntamenti di riferimento già trovati per la data corretta
-            $same_day_appointments = [];
-            foreach ($appuntamenti_riferimento as $app_rif) {
-                if ($app_rif['appointment_date'] == $app_date && 
-                    !empty($app_rif['latitude']) && !empty($app_rif['longitude'])) {
-                    $same_day_appointments[] = $app_rif;
-                }
-            }
-            
-            // Ordina gli appuntamenti per orario
-            usort($same_day_appointments, function($a, $b) {
-                return strtotime($a['appointment_time']) - strtotime($b['appointment_time']);
-            });
-            
-            // Trova l'appuntamento più vicino prima e dopo lo slot proposto
-            $app_time_ts = strtotime($app_time);
-            $closest_before = null;
-            $closest_after = null;
-            
-            foreach ($same_day_appointments as $app) {
-                $app_ts = strtotime($app['appointment_time']);
-                
-                if ($app_ts < $app_time_ts) {
-                    // È prima dello slot proposto
-                    if (!$closest_before || strtotime($app['appointment_time']) > strtotime($closest_before['appointment_time'])) {
-                        $closest_before = $app; // Mantiene quello più vicino (più recente)
-                    }
-                } else if ($app_ts > $app_time_ts) {
-                    // È dopo lo slot proposto
-                    if (!$closest_after || strtotime($app['appointment_time']) < strtotime($closest_after['appointment_time'])) {
-                        $closest_after = $app; // Mantiene quello più vicino (più imminente)
-                    }
-                }
-            }
-            
-            // 3. Mostra SEMPRE prima l'appuntamento precedente (se esiste)
-            if ($closest_before) {
-                $prev_time_fmt = date('H:i', strtotime($closest_before['appointment_time']));
-                $prev_dist = calculateRoadDistance(
-                    $latitude_utente, $longitude_utente,
-                    $closest_before['latitude'], $closest_before['longitude']
-                );
-                
-                if ($prev_dist !== false) {
-                    echo "<span style='color:#28a745;'> - Distanza dal precedente ({$prev_time_fmt}): " . 
-                         number_format($prev_dist, 1) . " km</span><br>";
-                }
-            } else if ($slot['type'] == 'after') {
-                // Se non c'è un altro precedente ma lo slot è 'after', mostra il riferimento come precedente
-                echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ref_time_sel}): " . 
-                     number_format($item['travel_distance'], 1) . " km</span><br>";
-            }
-            
-            // 4. Mostra SEMPRE dopo l'appuntamento successivo (se esiste)
-            if ($closest_after) {
-                $next_time_fmt = date('H:i', strtotime($closest_after['appointment_time']));
-                $next_dist = calculateRoadDistance(
-                    $latitude_utente, $longitude_utente,
-                    $closest_after['latitude'], $closest_after['longitude']
-                );
-                
-                if ($next_dist !== false) {
-                    echo "<span style='color:#28a745;'> - Distanza dal successivo ({$next_time_fmt}): " . 
-                         number_format($next_dist, 1) . " km</span><br>";
-                }
-            } else if ($slot['type'] == 'before') {
-                // Se non c'è un altro successivo ma lo slot è 'before', mostra il riferimento come successivo
-                echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ref_time_sel}): " . 
-                     number_format($item['travel_distance'], 1) . " km</span><br>";
-            }
-            
-            echo "<small class='text-muted'>Zona Slot: " . htmlspecialchars($zone_id_book);
-
-            // Aggiungi informazioni sulla zona confinante se presente
-            if (isset($slot['related_appointment']['is_neighboring_zone']) && $slot['related_appointment']['is_neighboring_zone']) {
-                echo " <span class='badge bg-info'>Zona confinante</span>";
-            }
-
-            echo "</small></p>";
-            
-            // Bottoni e script per gli slot adiacenti
-            $unique_sfx = preg_replace('/[^a-zA-Z0-9]/','',$slot['date'].$slot['time'].$zone_id_book).rand(100,999);
-            $coll_id = "ag_coll_".$unique_sfx; $cont_id = "ag_cont_".$unique_sfx;
-            
-            // Lasciamo il pulsante Vedi agenda per gli slot incastrati
-            echo "<button class='btn btn-sm btn-outline-info mt-1 me-2' type='button' data-bs-toggle='collapse' data-bs-target='#{$coll_id}' aria-expanded='false'><i class='bi bi-calendar3'></i> Vedi agenda</button>";
-            
-            $nameE=urlencode($name_utente); $surE=urlencode($surname_utente); $phE=urlencode($phone_utente); $addrE=urlencode($address_utente);
-            $book_url = "book_appointment.php?zone_id=".urlencode($zone_id_book)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
-            echo "<a href='{$book_url}' class='btn btn-success mt-1 fw-bold'><i class='bi bi-check-circle'></i> Seleziona</a>";
-            
-            // Aggiunta del div collapsable per l'agenda
-            echo "<div class='collapse mt-2' id='{$coll_id}'><div class='card card-body bg-light' id='{$cont_id}'><div class='text-center'><div class='spinner-border spinner-border-sm'></div> Caricamento...</div></div></div>";
-            
-            // Script per caricare l'agenda quando viene espansa
-            echo "<script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    var collapseEl = document.getElementById('{$coll_id}');
-                    var contentEl = document.getElementById('{$cont_id}');
-                    
-                    if (collapseEl && contentEl) {
-                        collapseEl.addEventListener('shown.bs.collapse', function() {
-                            fetch('get_appointments_modal.php', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/x-www-form-urlencoded',
-                                },
-                                body: 'appointment_date={$slot['date']}'
-                            })
-                            .then(function(response) {
-                                if (!response.ok) throw new Error('Errore di rete');
-                                return response.text();
-                            })
-                            .then(function(html) {
-                                contentEl.innerHTML = html;
-                            })
-                            .catch(function(error) {
-                                contentEl.innerHTML = '<div class=\"alert alert-danger\"><p>Si è verificato un errore: ' + error.message + '</p></div>';
-                            });
-                        });
-                    }
-                });
-            </script>";
-            
-            echo "</div></div>";
-            $count_displayed_sel++;
+        // Aggiungi i risultati ai collettori principali
+        if (!empty($risultato_adiacenti_per_ref['slots_proposti'])) {
+            $slots_proposti_con_priorita = array_merge($slots_proposti_con_priorita, $risultato_adiacenti_per_ref['slots_proposti']);
         }
-        
-        if ($count_displayed_sel == 0) {
-            echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot adiacente disponibile.</div>";
+        if (!empty($risultato_adiacenti_per_ref['slots_debug'])) {
+            $tutti_gli_slot_adiacenti_per_tabella_debug = array_merge($tutti_gli_slot_adiacenti_per_tabella_debug, $risultato_adiacenti_per_ref['slots_debug']);
         }
-        
-        echo "<hr class='my-4'>";
-    }
-    
-    // 2. Poi mostra gli slot raggruppati per zona
-    if (!empty($slots_by_zone_and_date)) {
-        echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili per zona</h3>";
-        
-        // Determina zona principale
-        $zona_principale_id = $zona_utente['id'] ?? 0;
-        $zona_principale_name = $zona_utente['name'] ?? 'Zona principale';
-        
-        // Debug
-        error_log("DEBUG: zona_principale_id = $zona_principale_id, zona_principale_name = $zona_principale_name");
-        
-        // Log di tutte le zone trovate
-        foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
-            $date_count = count($zone_data['dates']);
-            error_log("DEBUG: Zona ID $zone_id ({$zone_data['zone_name']}) ha $date_count date");
-        }
-        
-        // 2.1. Prima mostra la zona principale se esiste
-        if (isset($slots_by_zone_and_date[$zona_principale_id])) {
-            $main_zone_data = $slots_by_zone_and_date[$zona_principale_id];
-            
-            echo "<h4 class='mb-3'>Date disponibili nella tua zona principale: {$main_zone_data['zone_name']}</h4>";
-            
-            // Ordina le date e limita a 3
-            $main_zone_dates = array_keys($main_zone_data['dates']);
-            sort($main_zone_dates);
-            $main_zone_dates = array_slice($main_zone_dates, 0, 3);
-            
-            // Per ogni data della zona principale
-            foreach ($main_zone_dates as $date) {
-                $slot_date_fmt = date('d/m/Y', strtotime($date));
-                $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                $giorno_nome = $giorni[date('w', strtotime($date))];
-                
-                echo "<div class='card mb-4 shadow'>";
-                echo "<div class='card-header bg-light'>";
-                echo "<h4 class='m-0'>{$giorno_nome} {$slot_date_fmt} - Zona: {$main_zone_data['zone_name']}</h4>";
-                echo "</div>";
-                echo "<div class='card-body'>";
-                echo "<div class='d-flex flex-wrap gap-2 mb-3'>";
-                
-                foreach ($main_zone_data['dates'][$date] as $item) {
-                    $slot = $item['slot_details'];
-                    $slot_time_fmt = date('H:i', strtotime($slot['time']));
-                    
-                    // Genera l'URL di prenotazione
-                    $nameE = urlencode($name_utente); 
-                    $surE = urlencode($surname_utente); 
-                    $phE = urlencode($phone_utente); 
-                    $addrE = urlencode($address_utente);
-                    $book_url = "book_appointment.php?zone_id=".urlencode($zona_principale_id)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
-                    
-                    // Crea pulsante per questo orario
-                    echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a>";
-                }
-                
-                echo "</div>";
-                echo "</div>";
-                echo "</div>";
-            }
-            
-            // Definisci il range di date per le zone confinanti
-            $min_date = !empty($main_zone_dates) ? min($main_zone_dates) : null;
-            $max_date = !empty($main_zone_dates) ? max($main_zone_dates) : null;
-            
-            // 2.2. Poi mostra le zone confinanti (escludi la zona principale)
-            foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
-                // Salta la zona principale
-                if ($zone_id == $zona_principale_id) continue;
-                
-                echo "<h4 class='mb-3 mt-4'>Date disponibili nella zona confinante: {$zone_data['zone_name']}</h4>";
-                
-                // Filtra le date solo nel range della zona principale
-                $neighbor_dates = array_keys($zone_data['dates']);
-                sort($neighbor_dates);
-                
-                // Se abbiamo un range definito dalla zona principale, filtra le date
-                $filtered_dates = $neighbor_dates;
-                if ($min_date && $max_date) {
-                    $filtered_dates = array_filter($neighbor_dates, function($date) use ($min_date, $max_date) {
-                        return $date >= $min_date && $date <= $max_date;
-                    });
-                }
-                
-                // Se non ci sono date filtrate
-                if (empty($filtered_dates)) {
-                    echo "<div class='alert alert-info text-center mb-4'>Nessuna data disponibile in questa zona confinante nel periodo selezionato.</div>";
-                    continue;
-                }
-                
-                // Per ogni data filtrata
-                foreach ($filtered_dates as $date) {
-                    $slot_date_fmt = date('d/m/Y', strtotime($date));
-                    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                    $giorno_nome = $giorni[date('w', strtotime($date))];
-                    
-                    echo "<div class='card mb-4 shadow'>";
-                    echo "<div class='card-header bg-light'>";
-                    echo "<h4 class='m-0'>{$giorno_nome} {$slot_date_fmt} - Zona: {$zone_data['zone_name']} <span class='badge bg-info'>Zona confinante</span></h4>";
-                    echo "</div>";
-                    echo "<div class='card-body'>";
-                    echo "<div class='d-flex flex-wrap gap-2 mb-3'>";
-                    
-                    foreach ($zone_data['dates'][$date] as $item) {
-                        $slot = $item['slot_details'];
-                        $slot_time_fmt = date('H:i', strtotime($slot['time']));
-                        
-                        // Genera l'URL di prenotazione
-                        $nameE = urlencode($name_utente); 
-                        $surE = urlencode($surname_utente); 
-                        $phE = urlencode($phone_utente); 
-                        $addrE = urlencode($address_utente);
-                        $book_url = "book_appointment.php?zone_id=".urlencode($zone_id)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
-                        
-                        // Crea pulsante per questo orario
-                        echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a>";
-                    }
-                    
-                    echo "</div>";
-                    echo "</div>";
-                    echo "</div>";
-                }
-            }
-        } 
-        // Se la zona principale non ha slot, mostra solo le zone confinanti
-        else {
-            echo "<div class='alert alert-warning mb-4'>Nessuna data disponibile nella tua zona principale (ID: {$zona_principale_id}). Mostriamo le date disponibili nelle zone confinanti.</div>";
-            
-            foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
-                echo "<h4 class='mb-3 mt-4'>Date disponibili nella zona confinante: {$zone_data['zone_name']}</h4>";
-                
-                // Ordina le date e limita a 3 per ogni zona confinante
-                $dates = array_keys($zone_data['dates']);
-                sort($dates);
-                $dates = array_slice($dates, 0, 3);
-                
-                foreach ($dates as $date) {
-                    $slot_date_fmt = date('d/m/Y', strtotime($date));
-                    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                    $giorno_nome = $giorni[date('w', strtotime($date))];
-                    
-                    echo "<div class='card mb-4 shadow'>";
-                    echo "<div class='card-header bg-light'>";
-                    echo "<h4 class='m-0'>{$giorno_nome} {$slot_date_fmt} - Zona: {$zone_data['zone_name']} <span class='badge bg-info'>Zona confinante</span></h4>";
-                    echo "</div>";
-                    echo "<div class='card-body'>";
-                    echo "<div class='d-flex flex-wrap gap-2 mb-3'>";
-                    
-                    foreach ($zone_data['dates'][$date] as $item) {
-                        $slot = $item['slot_details'];
-                        $slot_time_fmt = date('H:i', strtotime($slot['time']));
-                        
-                        // Genera l'URL di prenotazione
-                        $nameE = urlencode($name_utente); 
-                        $surE = urlencode($surname_utente); 
-                        $phE = urlencode($phone_utente); 
-                        $addrE = urlencode($address_utente);
-                        $book_url = "book_appointment.php?zone_id=".urlencode($zone_id)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
-                        
-                        // Crea pulsante per questo orario
-                        echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a>";
-                    }
-                    
-                    echo "</div>";
-                    echo "</div>";
-                    echo "</div>";
-                }
-            }
-        }
-    } else {
-        echo "<div class='alert alert-info text-center mt-3'>Nessuno slot di zona disponibile.</div>";
-    }
-    
-    if (empty($slots_adiacenti) && empty($slots_by_zone_and_date)) {
-        echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot selezionabile valido. Prova ad aumentare il raggio.</div>";
     }
 } else {
-    echo "<div class='alert alert-info text-center mt-3'><strong>Nessuno slot disponibile trovato.</strong><br>Prova ad aumentare il raggio o controlla più tardi.</div>";
+    error_log($log_prefix_main . "FASE A (HELPER): Nessun appuntamento di riferimento trovato da findNearbyAppointments.");
 }
-echo "</div>"; 
+error_log($log_prefix_main . "FASE A (HELPER): Fine. App.Rif. totali analizzati: " . count($appuntamenti_riferimento_base) . ". Righe totali per Tabella Debug: " . count($tutti_gli_slot_adiacenti_per_tabella_debug) . ". Slot Ad. VALIDI proposti: " . count(array_filter($slots_proposti_con_priorita, function($s){ return $s['source'] == 'adjacent_to_existing';})) );
+// -------- FINE FASE A (RIVISTA CON NUOVA FUNZIONE HELPER) --------
+
+
+// -------- CHIAMATA A displayAppointmentDetails (Tabella di Debug) --------
+if (function_exists('displayAppointmentDetails')) {
+    if (!empty($appuntamenti_riferimento_per_tabella_debug)) { // Usa la lista originale dei riferimenti
+        error_log($log_prefix_main . "Chiamo displayAppointmentDetails con " . count($appuntamenti_riferimento_per_tabella_debug) . " riferimenti e " . count($tutti_gli_slot_adiacenti_per_tabella_debug) . " record di dettaglio slot (debug).");
+        displayAppointmentDetails($appuntamenti_riferimento_per_tabella_debug, $tutti_gli_slot_adiacenti_per_tabella_debug);
+    } else {
+        // echo "<div class='container mt-3'><div class='alert alert-info text-center'>Nessun appuntamento di riferimento trovato nelle vicinanze per generare slot adiacenti (per tabella debug).</div></div>";
+    }
+} else {
+    error_log($log_prefix_main . "ERRORE CRITICO: Funzione displayAppointmentDetails non definita!");
+}
+// -------- FINE CHIAMATA displayAppointmentDetails --------
+
+
+// -------- INIZIO FASE B: Ricerca slot di zona (principale e confinanti) --------
+error_log($log_prefix_main . "FASE B: Inizio ricerca slot di zona.");
+$zona_utente = getZoneForCoordinates($latitude_utente, $longitude_utente);
+
+$slots_da_logica_zona_buffer_b = [];
+$max_date_zona_principale_per_confinanti_b = null;
+$date_effettive_zona_principale_output_b = []; // Date e slot della zona principale per FASE C
+
+if ($zona_utente) {
+    error_log($log_prefix_main . "FASE B: Zona utente: ID {$zona_utente['id']} ('" . htmlspecialchars($zona_utente['name'] ?? 'N/A') . "').");
+    $slots_config_zona_utente_b = getSlotsForZone($zona_utente['id']);
+
+    if (!empty($slots_config_zona_utente_b)) {
+        $date_disponibili_raw_utente_b = getNextAppointmentDatesForZone( // TUA FUNZIONE ESISTENTE
+            $slots_config_zona_utente_b, $zona_utente['id'],
+            $latitude_utente, $longitude_utente, MAX_OPERATOR_HOP_KM, 4
+        );
+        error_log($log_prefix_main . "FASE B: getNextAppointmentDatesForZone per zona utente ha restituito " . count($date_disponibili_raw_utente_b) . " date con slot.");
+        
+        $count_date_principali_sel_b = 0;
+        if (!empty($date_disponibili_raw_utente_b)) {
+            ksort($date_disponibili_raw_utente_b);
+            foreach ($date_disponibili_raw_utente_b as $date_str_zp_b => $times_arr_zp_b) {
+                // Ulteriore controllo: la data non deve essere passata
+                if (strtotime($date_str_zp_b) < strtotime(date('Y-m-d'))) {
+                    error_log($log_prefix_main . "FASE B: Data zona principale {$date_str_zp_b} scartata perché passata.");
+                    continue;
+                }
+                if ($count_date_principali_sel_b < 3) {
+                    $valid_times_for_this_date_zp = [];
+                    foreach($times_arr_zp_b as $time_zp_b){
+                        // Controllo orario passato per oggi + disponibilità generale
+                        if ($date_str_zp_b == date('Y-m-d') && strtotime($time_zp_b) < time()) {
+                            continue;
+                        }
+                        $slot_av_check_zp = isSlotAvailable($date_str_zp_b, $time_zp_b, date('H:i:s', strtotime($time_zp_b . " +60 minutes")), $zona_utente['id']);
+                        if ($slot_av_check_zp['available']) {
+                            $valid_times_for_this_date_zp[] = $time_zp_b;
+                        } else {
+                             error_log($log_prefix_main . "FASE B: Slot ZP {$date_str_zp_b} {$time_zp_b} scartato da isSlotAvailable: ".($slot_av_check_zp['reason'] ?? ''));
+                        }
+                    }
+
+                    if (!empty($valid_times_for_this_date_zp)) {
+                        $date_effettive_zona_principale_output_b[$date_str_zp_b] = $valid_times_for_this_date_zp;
+                        $max_date_zona_principale_per_confinanti_b = $date_str_zp_b;
+                        foreach ($valid_times_for_this_date_zp as $time_to_add_zp) {
+                            $slots_da_logica_zona_buffer_b[] = creaSlotPropostoDaDatiZona(
+                                $date_str_zp_b, $time_to_add_zp, $zona_utente,
+                                $latitude_utente, $longitude_utente, false,
+                                $zona_utente['distance_from_user_address'] ?? 0, 1000 // Score base ZP
+                            );
+                        }
+                        $count_date_principali_sel_b++;
+                        error_log($log_prefix_main . "FASE B: Data ZONA PRINCIPALE valida: {$date_str_zp_b} con " . count($valid_times_for_this_date_zp) . " slot. Tot date ZP: {$count_date_principali_sel_b}.");
+                    }
+                } else { break; }
+            }
+        }
+        if ($max_date_zona_principale_per_confinanti_b) {
+            error_log($log_prefix_main . "FASE B: Zona utente ID {$zona_utente['id']}. Sel. {$count_date_principali_sel_b} date. Limite per confinanti: {$max_date_zona_principale_per_confinanti_b}");
+        } else {
+            error_log($log_prefix_main . "FASE B: Zona utente ID {$zona_utente['id']}. Nessuna data valida trovata per ZP.");
+        }
+    } else { error_log($log_prefix_main . "FASE B: Nessuna config slot per zona utente ID {$zona_utente['id']}."); }
+} else { error_log($log_prefix_main . "FASE B: Utente non in nessuna zona definita."); }
+
+if ($max_date_zona_principale_per_confinanti_b && $zona_utente) {
+    error_log($log_prefix_main . "FASE B: Inizio ricerca zone confinanti. Limite data: {$max_date_zona_principale_per_confinanti_b}.");
+    // ... (Logica per trovare $zone_confinanti_trovate_per_ricerca_b come nel blocco precedente, usando $conn) ...
+    // Esempio:
+    $zone_confinanti_trovate_per_ricerca_b = [];
+    $raggio_buffer_conf_b = 3;
+    $sql_altre_zone_b = "SELECT id, name, latitude, longitude, radius_km FROM cp_zones WHERE id != ?";
+    $stmt_altre_zone_b = $conn->prepare($sql_altre_zone_b);
+    if ($stmt_altre_zone_b) {
+        $stmt_altre_zone_b->bind_param("i", $zona_utente['id']);
+        $stmt_altre_zone_b->execute();
+        $res_altre_b = $stmt_altre_zone_b->get_result();
+        while($row_azb = $res_altre_b->fetch_assoc()){
+            $dist_u_c_azb = calculateRoadDistance($latitude_utente, $longitude_utente, (float)$row_azb['latitude'], (float)$row_azb['longitude']); // USARE calculateRoadDistance per coerenza
+            if ($dist_u_c_azb !== false && $dist_u_c_azb <= ((float)$row_azb['radius_km'] + $raggio_buffer_conf_b)){
+                $row_azb['distance_from_user_to_center'] = $dist_u_c_azb;
+                $zone_confinanti_trovate_per_ricerca_b[] = $row_azb;
+            }
+        }
+        $stmt_altre_zone_b->close();
+    }
+     error_log($log_prefix_main . "FASE B: Trovate " . count($zone_confinanti_trovate_per_ricerca_b) . " zone confinanti.");
+
+
+    foreach ($zone_confinanti_trovate_per_ricerca_b as $dati_zc_b) {
+        error_log($log_prefix_main . "FASE B: Analizzo zona confinante ID {$dati_zc_b['id']} ('" . htmlspecialchars($dati_zc_b['name'] ?? 'N/A') . "') fino a {$max_date_zona_principale_per_confinanti_b}.");
+        $slots_config_zc_b = getSlotsForZone($dati_zc_b['id']);
+        if (!empty($slots_config_zc_b)) {
+            $date_disp_zc_b = getNextAppointmentDatesForZone_Bounded( // NUOVA FUNZIONE HELPER
+                $slots_config_zc_b, $dati_zc_b['id'],
+                $latitude_utente, $longitude_utente, MAX_OPERATOR_HOP_KM,
+                $max_date_zona_principale_per_confinanti_b, 2
+            );
+            if (!empty($date_disp_zc_b)) {
+                foreach ($date_disp_zc_b as $date_str_zc_b => $times_arr_zc_b) {
+                    if (strtotime($date_str_zc_b) < strtotime(date('Y-m-d'))) continue; // Salta date passate
+                    if ($date_str_zc_b > $max_date_zona_principale_per_confinanti_b) continue; // Doppio check
+
+                    $valid_times_for_this_date_zc = [];
+                     foreach($times_arr_zc_b as $time_zc_b){
+                        if ($date_str_zc_b == date('Y-m-d') && strtotime($time_zc_b) < time()) {
+                            continue;
+                        }
+                        $slot_av_check_zc = isSlotAvailable($date_str_zc_b, $time_zc_b, date('H:i:s', strtotime($time_zc_b . " +60 minutes")), $dati_zc_b['id']);
+                        if ($slot_av_check_zc['available']) {
+                           $valid_times_for_this_date_zc[] = $time_zc_b;
+                        } else {
+                            error_log($log_prefix_main . "FASE B: Slot ZC {$dati_zc_b['id']} {$date_str_zc_b} {$time_zc_b} scartato da isSlotAvailable: ".($slot_av_check_zc['reason'] ?? ''));
+                        }
+                    }
+                    if(!empty($valid_times_for_this_date_zc)){
+                        foreach($valid_times_for_this_date_zc as $time_to_add_zc){
+                             $slots_da_logica_zona_buffer_b[] = creaSlotPropostoDaDatiZona(
+                                $date_str_zc_b, $time_to_add_zc, $dati_zc_b,
+                                $latitude_utente, $longitude_utente, true,
+                                $dati_zc_b['distance_from_user_to_center'] ?? 0, 2000 // Score base ZC
+                            );
+                        }
+                        error_log($log_prefix_main . "FASE B: Zona CONFINANTE {$dati_zc_b['id']}: aggiunti " . count($valid_times_for_this_date_zc) . " slot per data {$date_str_zc_b}.");
+                    }
+                }
+            }
+        }
+    }
+}
+
+if (!empty($slots_da_logica_zona_buffer_b)) {
+    $slots_proposti_con_priorita = array_merge($slots_proposti_con_priorita, $slots_da_logica_zona_buffer_b);
+}
+error_log($log_prefix_main . "FASE B: Fine. Slot totali (adiacenti + zona) prima di FASE C: " . count($slots_proposti_con_priorita));
+// -------- FINE FASE B --------
+
+
+// -------- INIZIO FASE C: Ordinamento e Visualizzazione Finale --------
+error_log($log_prefix_main . "FASE C: Inizio. Slot totali ricevuti: " . count($slots_proposti_con_priorita));
+echo "<div class='container mt-3' id='selectable_slots_container_final' style='text-align:left;'>";
+
+$final_slots_adiacenti_c = [];
+$final_slots_zp_grouped_c = []; // Key: date_str, Value: array di slot_item
+$final_slots_zc_grouped_c = []; // Key: zone_id, Value: ['zone_name' => ..., 'dates' => [date_str => array di slot_item]]
+
+if (!empty($slots_proposti_con_priorita)) {
+    foreach ($slots_proposti_con_priorita as $item_slot_c) {
+        // 'excluded' dovrebbe essere già gestito nelle fasi precedenti o nella funzione helper
+        if (isset($item_slot_c['slot_details']['excluded']) && $item_slot_c['slot_details']['excluded']) {
+            continue;
+        }
+        $source_c = $item_slot_c['source'] ?? 'unknown';
+        $details_c = $item_slot_c['slot_details'];
+        $related_c = $details_c['related_appointment'] ?? []; // Per adiacenti è l'app.rif, per zona sono i dati della zona
+        $zone_id_c = $related_c['zone_id'] ?? 0;
+
+        if ($source_c == 'adjacent_to_existing') {
+            $final_slots_adiacenti_c[] = $item_slot_c;
+        } elseif ($source_c == 'main_zone_logic' && $zona_utente && $zone_id_c == $zona_utente['id']) {
+            // Filtra per le date effettive della zona principale (max 3)
+            if (isset($date_effettive_zona_principale_output_b[$details_c['date']])) {
+                 $final_slots_zp_grouped_c[$details_c['date']][] = $item_slot_c;
+            }
+        } elseif ($source_c == 'neighbor_zone_logic' && $zona_utente && $zone_id_c != $zona_utente['id']) {
+            // Filtra per le date delle zone confinanti entro il limite
+            if ($max_date_zona_principale_per_confinanti_b && $details_c['date'] <= $max_date_zona_principale_per_confinanti_b) {
+                if (!isset($final_slots_zc_grouped_c[$zone_id_c])) {
+                    $final_slots_zc_grouped_c[$zone_id_c] = [
+                        'zone_name' => $related_c['name'] ?? "Zona ID {$zone_id_c}",
+                        'dates' => []
+                    ];
+                }
+                $final_slots_zc_grouped_c[$zone_id_c]['dates'][$details_c['date']][] = $item_slot_c;
+            }
+        }
+    }
+}
+error_log($log_prefix_main . "FASE C: Slot Ad. pronti: ".count($final_slots_adiacenti_c).". Date ZP: ".count($final_slots_zp_grouped_c).". Zone Conf.: ".count($final_slots_zc_grouped_c));
+
+usort($final_slots_adiacenti_c, function($a, $b) { /* ... ordinamento priority_score, poi data/ora ... */ 
+    if (($a['priority_score'] ?? 9999) != ($b['priority_score'] ?? 9999)) return ($a['priority_score'] ?? 9999) <=> ($b['priority_score'] ?? 9999);
+    return strtotime(($a['slot_details']['date'] ?? '') . ' ' . ($a['slot_details']['time'] ?? '')) <=> strtotime(($b['slot_details']['date'] ?? '') . ' ' . ($b['slot_details']['time'] ?? ''));
+});
+
+$giorni_map_c_render = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+
+// 1. Visualizzazione SLOT ADIACENTI
+if (!empty($final_slots_adiacenti_c)) {
+    echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili vicino ad appuntamenti esistenti</h3>";
+    foreach ($final_slots_adiacenti_c as $item_adj_c_render) {
+        // ... (HTML per slot adiacente come da blocco precedente, usando $item_adj_c_render)
+        $slot_adj_cr = $item_adj_c_render['slot_details'];
+        $related_adj_cr = $slot_adj_cr['related_appointment'];
+        $slot_date_obj_acr = new DateTime($slot_adj_cr['date']);
+        $giorno_nome_acr = $giorni_map_c_render[(int)$slot_date_obj_acr->format('w')];
+        $slot_date_fmt_acr = $slot_date_obj_acr->format('d/m/Y');
+        $slot_time_fmt_acr = date('H:i', strtotime($slot_adj_cr['time']));
+        $ref_time_fmt_acr = isset($related_adj_cr['appointment_time']) ? date('H:i', strtotime($related_adj_cr['appointment_time'])) : 'N/D';
+        $desc_tipo_acr = ($slot_adj_cr['type'] == 'before') ? "Prima di app. {$ref_time_fmt_acr} presso" : "Dopo app. {$ref_time_fmt_acr} presso";
+
+        echo "<div class='card mb-3 shadow-sm'><div class='card-body'>";
+        echo "<h5 class='card-title'>{$giorno_nome_acr} {$slot_date_fmt_acr} ore <strong>{$slot_time_fmt_acr}</strong></h5>";
+        echo "<p class='card-text mb-1'><strong>{$desc_tipo_acr}</strong>: " . htmlspecialchars($related_adj_cr['address'] ?? 'N/D') . "</p>";
+        if (isset($item_adj_c_render['travel_distance']) && $item_adj_c_render['travel_distance'] !== null) {
+             echo "<p class='card-text mb-1'><span style='color:#28a745;font-weight:bold;'>Distanza operatore per questo slot: " . number_format($item_adj_c_render['travel_distance'], 1) . " km</span></p>";
+        }
+        echo "<p class='card-text'><small class='text-muted'>Rif. Zona: " . htmlspecialchars($related_adj_cr['zone_id'] ?? 'N/D') . "</small></p>";
+        $book_url_acr = "book_appointment.php?zone_id=".urlencode($related_adj_cr['zone_id'] ?? '')."&date=".urlencode($slot_adj_cr['date'])."&time=".urlencode($slot_time_fmt_acr)."&address=".urlencode($address_utente)."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".urlencode($name_utente)."&surname=".urlencode($surname_utente)."&phone=".urlencode($phone_utente);
+        echo "<a href='{$book_url_acr}' class='btn btn-success mt-1 fw-bold'><i class='bi bi-check-circle'></i> Seleziona</a>";
+        echo "</div></div>";
+    }
+    echo "<hr class='my-4'>";
+}
+
+// 2. Visualizzazione SLOT DI ZONA
+$ha_mostrato_header_altri_slot = false;
+if ($zona_utente && !empty($final_slots_zp_grouped_c)) {
+    if(!$ha_mostrato_header_altri_slot){ echo "<h3 class='text-center mb-3 mt-4'>Altre date e orari disponibili per zona</h3>"; $ha_mostrato_header_altri_slot = true;}
+    echo "<h4 class='mb-3 text-primary'>Date nella Tua Zona Principale: <strong>" . htmlspecialchars($zona_utente['name'] ?? 'N/A') . "</strong></h4>";
+    ksort($final_slots_zp_grouped_c);
+    foreach ($final_slots_zp_grouped_c as $date_str_zp_cr => $slot_items_zp_cr_arr) {
+        // ... (HTML per card e pulsanti slot ZONA PRINCIPALE, usando $slot_items_zp_cr_arr)
+        $slot_date_obj_zpr = new DateTime($date_str_zp_cr);
+        $giorno_nome_zpr = $giorni_map_c_render[(int)$slot_date_obj_zpr->format('w')];
+        $slot_date_fmt_zpr = $slot_date_obj_zpr->format('d/m/Y');
+        echo "<div class='card mb-4 shadow'><div class='card-header bg-primary text-white'>";
+        echo "<h5 class='m-0'>{$giorno_nome_zpr} {$slot_date_fmt_zpr} - Zona: " . htmlspecialchars($zona_utente['name'] ?? 'N/A') . "</h5></div>";
+        echo "<div class='card-body'><div class='d-flex flex-wrap gap-2 justify-content-center'>";
+        usort($slot_items_zp_cr_arr, function($a, $b){ return strtotime($a['slot_details']['time']) <=> strtotime($b['slot_details']['time']); });
+        foreach ($slot_items_zp_cr_arr as $item_zp_cr) {
+            $slot_info_zpr = $item_zp_cr['slot_details'];
+            $slot_time_fmt_zpr_btn = date('H:i', strtotime($slot_info_zpr['time']));
+            $book_url_zpr = "book_appointment.php?zone_id=".urlencode($zona_utente['id'])."&date=".urlencode($slot_info_zpr['date'])."&time=".urlencode($slot_time_fmt_zpr_btn)."&address=".urlencode($address_utente)."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".urlencode($name_utente)."&surname=".urlencode($surname_utente)."&phone=".urlencode($phone_utente);
+            echo "<a href='{$book_url_zpr}' class='btn btn-primary m-1 fw-bold' style='min-width: 90px;'>{$slot_time_fmt_zpr_btn}</a>";
+        }
+        echo "</div></div></div>";
+    }
+} else if ($zona_utente) {
+    if(!$ha_mostrato_header_altri_slot){ echo "<h3 class='text-center mb-3 mt-4'>Altre date e orari disponibili per zona</h3>"; $ha_mostrato_header_altri_slot = true;}
+    echo "<div class='alert alert-info text-center mb-4'>Nessuno slot disponibile trovato per la tua Zona Principale (<strong>" . htmlspecialchars($zona_utente['name'] ?? 'N/A') . "</strong>) nelle prossime date utili.</div>";
+}
+
+if (!empty($final_slots_zc_grouped_c)) {
+    if(!$ha_mostrato_header_altri_slot){ echo "<h3 class='text-center mb-3 mt-4'>Altre date e orari disponibili per zona</h3>"; $ha_mostrato_header_altri_slot = true;}
+    $data_limite_zc_fmt = $max_date_zona_principale_per_confinanti_b ? date('d/m/Y', strtotime($max_date_zona_principale_per_confinanti_b)) : '';
+    echo "<h4 class='mb-3 mt-4 text-secondary'>Date in Zone Confinanti" . ($data_limite_zc_fmt ? " (fino al {$data_limite_zc_fmt})" : "") . "</h4>";
+    uasort($final_slots_zc_grouped_c, function($a, $b){ return strcmp($a['zone_name'], $b['zone_name']); });
+    foreach ($final_slots_zc_grouped_c as $id_zc_cr => $dati_zc_cr) {
+        // ... (HTML per card e pulsanti slot ZONA CONFINANTE, usando $dati_zc_cr)
+        if (empty($dati_zc_cr['dates'])) continue;
+        ksort($dati_zc_cr['dates']);
+        $mostrato_header_zc = false;
+        foreach($dati_zc_cr['dates'] as $date_str_zcr => $slot_items_zcr_arr){
+            if(empty($slot_items_zcr_arr)) continue;
+            if(!$mostrato_header_zc){
+                echo "<h5 class='mt-3 mb-2'>Zona: <strong>" . htmlspecialchars($dati_zc_cr['zone_name']) . "</strong> <span class='badge bg-info text-dark ms-1'>Confinante</span></h5>";
+                $mostrato_header_zc = true;
+            }
+            $slot_date_obj_zcr = new DateTime($date_str_zcr);
+            $giorno_nome_zcr = $giorni_map_c_render[(int)$slot_date_obj_zcr->format('w')];
+            $slot_date_fmt_zcr = $slot_date_obj_zcr->format('d/m/Y');
+            echo "<div class='card mb-3 shadow-sm'><div class='card-header bg-light'><h6 class='m-0'>{$giorno_nome_zcr} {$slot_date_fmt_zcr}</h6></div>";
+            echo "<div class='card-body py-2'><div class='d-flex flex-wrap gap-1 justify-content-start'>";
+            usort($slot_items_zcr_arr, function($a, $b){ return strtotime($a['slot_details']['time']) <=> strtotime($b['slot_details']['time']); });
+            foreach($slot_items_zcr_arr as $item_zcr){
+                $slot_info_zcr = $item_zcr['slot_details'];
+                $slot_time_fmt_zcr_btn = date('H:i', strtotime($slot_info_zcr['time']));
+                $book_url_zcr = "book_appointment.php?zone_id=".urlencode($id_zc_cr)."&date=".urlencode($slot_info_zcr['date'])."&time=".urlencode($slot_time_fmt_zcr_btn)."&address=".urlencode($address_utente)."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".urlencode($name_utente)."&surname=".urlencode($surname_utente)."&phone=".urlencode($phone_utente);
+                echo "<a href='{$book_url_zcr}' class='btn btn-outline-secondary btn-sm m-1 fw-bold' style='min-width: 75px;'>{$slot_time_fmt_zcr_btn}</a>";
+            }
+            echo "</div></div></div>";
+        }
+    }
+}
+
+if (empty($final_slots_adiacenti_c) && empty($final_slots_zp_grouped_c) && empty($final_slots_zc_grouped_c)) {
+    echo "<div class='alert alert-warning text-center mt-5'><strong>Nessuno slot disponibile trovato con i criteri attuali.</strong></div>";
+}
+echo "</div>"; // Fine #selectable_slots_container_final 
 
 if ($proceedSearchAnyway_div_open) echo "</div>"; // Chiude #proceedSearchAnyway
 echo "</div>"; // Chiude il container principale iniziato dopo il try
