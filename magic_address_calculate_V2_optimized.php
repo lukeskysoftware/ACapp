@@ -3030,9 +3030,9 @@ foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
             
             foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
     // Aggiungi questo controllo per saltare la zona principale 
-    if ($zone_id == $zona_principale_id) {
-        error_log("FASE B: Saltata zona principale ID {$zone_id} nel ciclo alternativo");
-        continue;
+ if ($zone_id == $zona_principale_id) {
+      error_log("FASE B: Saltata zona principale ID {$zone_id} nel ciclo alternativo");
+      continue;
     }
                 echo "<h4 class='mb-3 mt-4'>Date disponibili nella zona confinante: {$zone_data['zone_name']}</h4>";
                 
