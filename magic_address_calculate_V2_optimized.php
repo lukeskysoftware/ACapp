@@ -2727,17 +2727,151 @@ if (!empty($slots_proposti_con_priorita)) {
     }
     
     // Mantieni l'ordinamento originale per priorità/distanza per gli slot adiacenti
-    usort($slots_adiacenti, function($a, $b) { 
-        if ($a['priority_score'] != $b['priority_score']) return $a['priority_score'] <=> $b['priority_score'];
-        $dt_a = strtotime(($a['slot_details']['date'] ?? '') . ' ' . ($a['slot_details']['time'] ?? ''));
-        $dt_b = strtotime(($b['slot_details']['date'] ?? '') . ' ' . ($b['slot_details']['time'] ?? ''));
-        return $dt_a <=> $dt_b;
-    });
+   usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento, $latitude_utente, $longitude_utente) {
+    $find_prev = function($slot, $apps) {
+        $target_date = $slot['date'];
+        $target_time = $slot['time'];
+        $before = null;
+        foreach ($apps as $app) {
+            if (!empty($app['excluded_reason'])) continue;
+            if ($app['appointment_date'] == $target_date && $app['appointment_time'] < $target_time) {
+                if (!$before || $app['appointment_time'] > $before['appointment_time']) {
+                    $before = $app;
+                }
+            }
+        }
+        return $before;
+    };
+    $find_next = function($slot, $apps) {
+        $target_date = $slot['date'];
+        $target_time = $slot['time'];
+        $after = null;
+        foreach ($apps as $app) {
+            if (!empty($app['excluded_reason'])) continue;
+            if ($app['appointment_date'] == $target_date && $app['appointment_time'] > $target_time) {
+                if (!$after || $app['appointment_time'] < $after['appointment_time']) {
+                    $after = $app;
+                }
+            }
+        }
+        return $after;
+    };
+
+    $slotA = $a['slot_details'];
+    $slotB = $b['slot_details'];
+
+    // --- SLOT A ---
+    $prevA = $find_prev($slotA, $appuntamenti_riferimento);
+    $nextA = $find_next($slotA, $appuntamenti_riferimento);
+    $distA = 9999;
+    if ($prevA && $nextA) {
+        $distA_prev = calculateRoadDistance($latitude_utente, $longitude_utente, $prevA['latitude'], $prevA['longitude']);
+        $distA_next = calculateRoadDistance($latitude_utente, $longitude_utente, $nextA['latitude'], $nextA['longitude']);
+        $distA = min($distA_prev, $distA_next);
+    } elseif ($prevA) {
+        $distA = calculateRoadDistance($latitude_utente, $longitude_utente, $prevA['latitude'], $prevA['longitude']);
+    } elseif ($nextA) {
+        $distA = calculateRoadDistance($latitude_utente, $longitude_utente, $nextA['latitude'], $nextA['longitude']);
+    }
+
+    // --- SLOT B ---
+    $prevB = $find_prev($slotB, $appuntamenti_riferimento);
+    $nextB = $find_next($slotB, $appuntamenti_riferimento);
+    $distB = 9999;
+    if ($prevB && $nextB) {
+        $distB_prev = calculateRoadDistance($latitude_utente, $longitude_utente, $prevB['latitude'], $prevB['longitude']);
+        $distB_next = calculateRoadDistance($latitude_utente, $longitude_utente, $nextB['latitude'], $nextB['longitude']);
+        $distB = min($distB_prev, $distB_next);
+    } elseif ($prevB) {
+        $distB = calculateRoadDistance($latitude_utente, $longitude_utente, $prevB['latitude'], $prevB['longitude']);
+    } elseif ($nextB) {
+        $distB = calculateRoadDistance($latitude_utente, $longitude_utente, $nextB['latitude'], $nextB['longitude']);
+    }
+
+    // Ordina per distanza MINIMA
+    if ($distA != $distB) return $distA <=> $distB;
+
+    // Se distanza uguale, ordina per data/ora
+    $dtA = strtotime(($slotA['date'] ?? '') . ' ' . ($slotA['time'] ?? ''));
+    $dtB = strtotime(($slotB['date'] ?? '') . ' ' . ($slotB['time'] ?? ''));
+    return $dtA <=> $dtB;
+});
     
     // 1. Prima mostra gli slot adiacenti con la visualizzazione originale dettagliata
     if (!empty($slots_adiacenti)) {
         echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili vicino ad appuntamenti esistenti</h3>";
         $count_displayed_sel = 0;
+        
+        // Ordinamento dinamico degli slot adiacenti in base alle distanze da appuntamenti precedenti/successivi
+usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento) {
+    $slotA = $a['slot_details'];
+    $slotB = $b['slot_details'];
+
+    // Helper per trovare l'appuntamento precedente/successivo nel giorno
+    $find_prev = function($slot, $apps) {
+        $target_date = $slot['date'];
+        $target_time = $slot['time'];
+        $before = null;
+        foreach ($apps as $app) {
+            if (!empty($app['excluded_reason'])) continue;
+            if ($app['appointment_date'] == $target_date && $app['appointment_time'] < $target_time) {
+                if (!$before || $app['appointment_time'] > $before['appointment_time']) {
+                    $before = $app;
+                }
+            }
+        }
+        return $before;
+    };
+    $find_next = function($slot, $apps) {
+        $target_date = $slot['date'];
+        $target_time = $slot['time'];
+        $after = null;
+        foreach ($apps as $app) {
+            if (!empty($app['excluded_reason'])) continue;
+            if ($app['appointment_date'] == $target_date && $app['appointment_time'] > $target_time) {
+                if (!$after || $app['appointment_time'] < $after['appointment_time']) {
+                    $after = $app;
+                }
+            }
+        }
+        return $after;
+    };
+
+    // Calcola distanza da prev e next per entrambi gli slot
+    $distA = 9999; $distB = 9999;
+
+    $prevA = $find_prev($slotA, $appuntamenti_riferimento);
+    $nextA = $find_next($slotA, $appuntamenti_riferimento);
+    $prevB = $find_prev($slotB, $appuntamenti_riferimento);
+    $nextB = $find_next($slotB, $appuntamenti_riferimento);
+
+    // Funzione di priorità:
+    // 1. Se esiste prev, ordina per distanza crescente da prev (slot più vicino viene prima)
+    // 2. Se non esiste prev ma esiste next, ordina per distanza crescente da next
+    // 3. Se entrambi, usa solo prev
+    // Usa la funzione calculateRoadDistance per il calcolo
+
+    global $latitude_utente, $longitude_utente;
+
+    if ($prevA) {
+        $distA = calculateRoadDistance($latitude_utente, $longitude_utente, $prevA['latitude'], $prevA['longitude']);
+    } elseif ($nextA) {
+        $distA = calculateRoadDistance($latitude_utente, $longitude_utente, $nextA['latitude'], $nextA['longitude']);
+    }
+    if ($prevB) {
+        $distB = calculateRoadDistance($latitude_utente, $longitude_utente, $prevB['latitude'], $prevB['longitude']);
+    } elseif ($nextB) {
+        $distB = calculateRoadDistance($latitude_utente, $longitude_utente, $nextB['latitude'], $nextB['longitude']);
+    }
+
+    // Ordina per distanza crescente (slot più vicino sopra)
+    if ($distA != $distB) return $distA <=> $distB;
+    // Altrimenti ordina per data/ora
+    $dtA = strtotime(($slotA['date'] ?? '') . ' ' . ($slotA['time'] ?? ''));
+    $dtB = strtotime(($slotB['date'] ?? '') . ' ' . ($slotB['time'] ?? ''));
+    return $dtA <=> $dtB;
+});
+        
         
         foreach ($slots_adiacenti as $item) {
             $slot = $item['slot_details'];
