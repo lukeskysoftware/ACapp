@@ -2897,186 +2897,95 @@ if (!empty($slots_proposti_con_priorita)) {
         echo "<hr class='my-4'>";
     }
     
-    // 2. Poi mostra gli slot raggruppati per zona
-    if (!empty($slots_by_zone_and_date)) {
-        echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili per zona</h3>";
-        
-        // Determina zona principale
-        $zona_principale_id = $zona_utente['id'] ?? 0;
-        $zona_principale_name = $zona_utente['name'] ?? 'Zona principale';
-        
-        // Debug
-        error_log("DEBUG: zona_principale_id = $zona_principale_id, zona_principale_name = $zona_principale_name");
-        
-        // Log di tutte le zone trovate
-        foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
-            $date_count = count($zone_data['dates']);
-            error_log("DEBUG: Zona ID $zone_id ({$zone_data['zone_name']}) ha $date_count date");
+// 2. Poi mostra gli slot raggruppati per zona
+echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili per zona</h3>";
+
+$zona_principale_id = isset($zona_utente['id']) ? $zona_utente['id'] : null;
+$zona_principale_name = isset($zona_utente['name']) ? $zona_utente['name'] : 'Zona principale';
+$latitude_utente = isset($latitude_utente) ? $latitude_utente : null;
+$longitude_utente = isset($longitude_utente) ? $longitude_utente : null;
+
+if ($zona_principale_id) {
+    // Usa la funzione collaudata per trovare le prossime 3 date con slot disponibili
+    $slots_config_principale = getSlotsForZone($zona_principale_id);
+    $next3Days = getNext3AppointmentDates($slots_config_principale, $zona_principale_id, $latitude_utente, $longitude_utente);
+
+    if (!empty($next3Days)) {
+        echo "<h4 class='mb-3'>Date disponibili nella tua zona principale: {$zona_principale_name}</h4>";
+        foreach ($next3Days as $date => $availableSlots) {
+            $date_fmt = date('d/m/Y', strtotime($date));
+            $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+            $giorno_nome = $giorni[date('w', strtotime($date))];
+            echo "<div class='card mb-3'><div class='card-header bg-primary text-white'>";
+            echo "<h5 class='mb-0'>{$giorno_nome} {$date_fmt}</h5>";
+            echo "</div><div class='card-body'>";
+            foreach ($availableSlots as $slot_time) {
+                $slot_time_fmt = date('H:i', strtotime($slot_time));
+                $nameE = urlencode($name_utente); 
+                $surE = urlencode($surname_utente); 
+                $phE = urlencode($phone_utente); 
+                $addrE = urlencode($address_utente);
+                $book_url = "book_appointment.php?zone_id={$zona_principale_id}&date={$date}&time={$slot_time}&address={$addrE}&latitude={$latitude_utente}&longitude={$longitude_utente}&name={$nameE}&surname={$surE}&phone={$phE}";
+                echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a> ";
+            }
+            echo "</div></div>";
         }
-        
-        // 2.1. Prima mostra la zona principale se esiste
-        if (isset($slots_by_zone_and_date[$zona_principale_id])) {
-            $main_zone_data = $slots_by_zone_and_date[$zona_principale_id];
-            
-            echo "<h4 class='mb-3'>Date disponibili nella tua zona principale: {$main_zone_data['zone_name']}</h4>";
-            
-            // Ordina le date e limita a 3
-            $main_zone_dates = array_keys($main_zone_data['dates']);
-            sort($main_zone_dates);
-            $main_zone_dates = array_slice($main_zone_dates, 0, 3);
-            
-            // Per ogni data della zona principale
-            foreach ($main_zone_dates as $date) {
-                $slot_date_fmt = date('d/m/Y', strtotime($date));
-                $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                $giorno_nome = $giorni[date('w', strtotime($date))];
-                
-                echo "<div class='card mb-4 shadow'>";
-                echo "<div class='card-header bg-light'>";
-                echo "<h4 class='m-0'>{$giorno_nome} {$slot_date_fmt} - Zona: {$main_zone_data['zone_name']}</h4>";
-                echo "</div>";
-                echo "<div class='card-body'>";
-                echo "<div class='d-flex flex-wrap gap-2 mb-3'>";
-                
-                foreach ($main_zone_data['dates'][$date] as $item) {
-                    $slot = $item['slot_details'];
-                    $slot_time_fmt = date('H:i', strtotime($slot['time']));
-                    
-                    // Genera l'URL di prenotazione
-                    $nameE = urlencode($name_utente); 
-                    $surE = urlencode($surname_utente); 
-                    $phE = urlencode($phone_utente); 
-                    $addrE = urlencode($address_utente);
-                    $book_url = "book_appointment.php?zone_id=".urlencode($zona_principale_id)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
-                    
-                    // Crea pulsante per questo orario
-                    echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a>";
-                }
-                
-                echo "</div>";
-                echo "</div>";
-                echo "</div>";
-            }
-            
-            // Definisci il range di date per le zone confinanti
-            $min_date = !empty($main_zone_dates) ? min($main_zone_dates) : null;
-            $max_date = !empty($main_zone_dates) ? max($main_zone_dates) : null;
-            
-            // 2.2. Poi mostra le zone confinanti (escludi la zona principale)
-            // Assicurati che questo codice sia presente all'inizio del ciclo
-foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
-    // Aggiungi questo controllo per saltare la zona principale
-    if ($zone_id == $zona_principale_id) {
-        error_log("FASE B: Saltata zona principale ID {$zone_id} nel ciclo delle zone confinanti");
-        continue;
-    }
-                // Salta la zona principale
-                if ($zone_id == $zona_principale_id) continue;
-                
-                echo "<h4 class='mb-3 mt-4'>Date disponibili nella zona confinante: {$zone_data['zone_name']}</h4>";
-                
-                // Filtra le date solo nel range della zona principale
-                $neighbor_dates = array_keys($zone_data['dates']);
-                sort($neighbor_dates);
-                
-                // Se abbiamo un range definito dalla zona principale, filtra le date
-               $filtered_dates = array_filter($neighbor_dates, function($date) use ($max_date) {
-    return $date <= $max_date; // Solo non superare la data massima
-});
-                
-                // Se non ci sono date filtrate
-                if (empty($filtered_dates)) {
-                    echo "<div class='alert alert-info text-center mb-4'>Nessuna data disponibile in questa zona confinante nel periodo selezionato.</div>";
-                    continue;
-                }
-                
-                // Per ogni data filtrata
-                foreach ($filtered_dates as $date) {
-                    $slot_date_fmt = date('d/m/Y', strtotime($date));
-                    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                    $giorno_nome = $giorni[date('w', strtotime($date))];
-                    
-                    echo "<div class='card mb-4 shadow'>";
-                    echo "<div class='card-header bg-light'>";
-                    echo "<h4 class='m-0'>{$giorno_nome} {$slot_date_fmt} - Zona: {$zone_data['zone_name']} <span class='badge bg-info'>Zona confinante</span></h4>";
-                    echo "</div>";
-                    echo "<div class='card-body'>";
-                    echo "<div class='d-flex flex-wrap gap-2 mb-3'>";
-                    
-                    foreach ($zone_data['dates'][$date] as $item) {
-                        $slot = $item['slot_details'];
-                        $slot_time_fmt = date('H:i', strtotime($slot['time']));
-                        
-                        // Genera l'URL di prenotazione
-                        $nameE = urlencode($name_utente); 
-                        $surE = urlencode($surname_utente); 
-                        $phE = urlencode($phone_utente); 
-                        $addrE = urlencode($address_utente);
-                        $book_url = "book_appointment.php?zone_id=".urlencode($zone_id)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
-                        
-                        // Crea pulsante per questo orario
-                        echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a>";
-                    }
-                    
-                    echo "</div>";
-                    echo "</div>";
-                    echo "</div>";
-                }
-            }
-        } 
-        // Se la zona principale non ha slot, mostra solo le zone confinanti
-        else {
-            echo "<div class='alert alert-warning mb-4'>Nessuna data disponibile nella tua zona principale (ID: {$zona_principale_id}). Mostriamo le date disponibili nelle zone confinanti.</div>";
-            
-            foreach ($slots_by_zone_and_date as $zone_id => $zone_data) {
-    // Aggiungi questo controllo per saltare la zona principale 
- if ($zone_id == $zona_principale_id) {
-      error_log("FASE B: Saltata zona principale ID {$zone_id} nel ciclo alternativo");
-      continue;
-    }
-                echo "<h4 class='mb-3 mt-4'>Date disponibili nella zona confinante: {$zone_data['zone_name']}</h4>";
-                
-                // Ordina le date e limita a 3 per ogni zona confinante
-                $dates = array_keys($zone_data['dates']);
-                sort($dates);
-                $dates = array_slice($dates, 0, 3);
-                
-                foreach ($dates as $date) {
-                    $slot_date_fmt = date('d/m/Y', strtotime($date));
-                    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                    $giorno_nome = $giorni[date('w', strtotime($date))];
-                    
-                    echo "<div class='card mb-4 shadow'>";
-                    echo "<div class='card-header bg-light'>";
-                    echo "<h4 class='m-0'>{$giorno_nome} {$slot_date_fmt} - Zona: {$zone_data['zone_name']} <span class='badge bg-info'>Zona confinante</span></h4>";
-                    echo "</div>";
-                    echo "<div class='card-body'>";
-                    echo "<div class='d-flex flex-wrap gap-2 mb-3'>";
-                    
-                    foreach ($zone_data['dates'][$date] as $item) {
-                        $slot = $item['slot_details'];
-                        $slot_time_fmt = date('H:i', strtotime($slot['time']));
-                        
-                        // Genera l'URL di prenotazione
-                        $nameE = urlencode($name_utente); 
-                        $surE = urlencode($surname_utente); 
-                        $phE = urlencode($phone_utente); 
-                        $addrE = urlencode($address_utente);
-                        $book_url = "book_appointment.php?zone_id=".urlencode($zone_id)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
-                        
-                        // Crea pulsante per questo orario
-                        echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a>";
-                    }
-                    
-                    echo "</div>";
-                    echo "</div>";
-                    echo "</div>";
-                }
-            }
-        }
+        // Memorizza ultima data per filtrare le zone confinanti
+        $ultima_data_principale = array_key_last($next3Days) ? array_keys($next3Days)[2] : null;
     } else {
-        echo "<div class='alert alert-info text-center mt-3'>Nessuno slot di zona disponibile.</div>";
+        $ultima_data_principale = null;
+        echo "<div class='alert alert-info'>Nessuna data con almeno uno slot disponibile nella tua zona principale (ID: {$zona_principale_id}) nei prossimi 6 mesi.</div>";
     }
+} else {
+    $ultima_data_principale = null;
+    echo "<div class='alert alert-warning'>Zona principale non valorizzata.</div>";
+}
+
+// ----------- ZONE CONFINANTI -----------
+if (!empty($zone_confinanti)) {
+    echo "<h3 class='mb-4 mt-5'>Date disponibili nelle zone confinanti</h3>";
+    foreach ($zone_confinanti as $zona_conf) {
+        $zone_id_confinante = isset($zona_conf['id']) ? $zona_conf['id'] : null;
+        $zone_name_confinante = isset($zona_conf['name']) ? $zona_conf['name'] : 'Zona confinante';
+        if ($zone_id_confinante) {
+            $slots_config_conf = getSlotsForZone($zone_id_confinante);
+            // Trova le prossime 3 date, eventualmente limita la data massima a $ultima_data_principale
+            $next3DaysConf = getNext3AppointmentDates($slots_config_conf, $zone_id_confinante, $latitude_utente, $longitude_utente);
+
+            // Se vuoi filtrare per non andare oltre la data massima della zona principale:
+            if ($ultima_data_principale) {
+                $next3DaysConf = array_filter($next3DaysConf, function($date) use ($ultima_data_principale) {
+                    return $date <= $ultima_data_principale;
+                }, ARRAY_FILTER_USE_KEY);
+            }
+
+            if (!empty($next3DaysConf)) {
+                echo "<div class='card mb-4'>";
+                echo "<div class='card-header bg-info text-white'>";
+                echo "<h5 class='mb-0'>Zona confinante: {$zone_name_confinante}</h5>";
+                echo "</div><div class='card-body'>";
+                foreach ($next3DaysConf as $date => $availableSlots) {
+                    $date_fmt = date('d/m/Y', strtotime($date));
+                    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+                    $giorno_nome = $giorni[date('w', strtotime($date))];
+                    echo "<h6 class='mb-3'>{$giorno_nome} {$date_fmt}</h6>";
+                    foreach ($availableSlots as $slot_time) {
+                        $slot_time_fmt = date('H:i', strtotime($slot_time));
+                        $nameE = urlencode($name_utente); 
+                        $surE = urlencode($surname_utente); 
+                        $phE = urlencode($phone_utente); 
+                        $addrE = urlencode($address_utente);
+                        $book_url = "book_appointment.php?zone_id={$zone_id_confinante}&date={$date}&time={$slot_time}&address={$addrE}&latitude={$latitude_utente}&longitude={$longitude_utente}&name={$nameE}&surname={$surE}&phone={$phE}";
+                        echo "<a href='{$book_url}' class='btn btn-outline-success m-1 fw-bold'>{$slot_time_fmt}</a> ";
+                    }
+                }
+                echo "</div></div>";
+            }
+        }
+    }
+} else {
+    echo "<div class='alert alert-info text-center mt-3'>Nessuno slot di zona disponibile.</div>";
+}
     
     if (empty($slots_adiacenti) && empty($slots_by_zone_and_date)) {
         echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot selezionabile valido. Prova ad aumentare il raggio.</div>";
