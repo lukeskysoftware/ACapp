@@ -2911,14 +2911,18 @@ if ($zona_principale_id) {
     $next3Days = getNext3AppointmentDates($slots_config_principale, $zona_principale_id, $latitude_utente, $longitude_utente);
 
     if (!empty($next3Days)) {
-        echo "<h4 class='mb-3'>Date disponibili nella tua zona principale: {$zona_principale_name}</h4>";
+        // Intestazione: fondo bianco, scritta nera, nome zona in verde
+        echo "<h4 class='mb-3' style='color:#222;'>Date disponibili nella tua zona principale: <span style='color:#1B8B35; font-weight:bold;'>{$zona_principale_name}</span></h4>";
         foreach ($next3Days as $date => $availableSlots) {
             $date_fmt = date('d/m/Y', strtotime($date));
             $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
             $giorno_nome = $giorni[date('w', strtotime($date))];
-            echo "<div class='card mb-3'><div class='card-header bg-primary text-white'>";
-            echo "<h5 class='mb-0'>{$giorno_nome} {$date_fmt}</h5>";
-            echo "</div><div class='card-body'>";
+            echo "<div class='card mb-3 shadow'>";
+            echo "  <div class='card-header' style='background:#fff; color:#222; font-size:1.1em; font-weight:bold;'>";
+            echo "    <span><i class='bi bi-calendar3-event me-2'></i>{$giorno_nome} {$date_fmt}</span>";
+            echo "  </div>";
+            echo "  <div class='card-body'>";
+            echo "    <div class='d-flex flex-wrap'>";
             foreach ($availableSlots as $slot_time) {
                 $slot_time_fmt = date('H:i', strtotime($slot_time));
                 $nameE = urlencode($name_utente); 
@@ -2928,7 +2932,9 @@ if ($zona_principale_id) {
                 $book_url = "book_appointment.php?zone_id={$zona_principale_id}&date={$date}&time={$slot_time}&address={$addrE}&latitude={$latitude_utente}&longitude={$longitude_utente}&name={$nameE}&surname={$surE}&phone={$phE}";
                 echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a> ";
             }
-            echo "</div></div>";
+            echo "    </div>";
+            echo "  </div>";
+            echo "</div>";
         }
         // Memorizza ultima data per filtrare le zone confinanti
         $ultima_data_principale = array_key_last($next3Days) ? array_keys($next3Days)[2] : null;
@@ -2943,7 +2949,7 @@ if ($zona_principale_id) {
 
 // ----------- ZONE CONFINANTI -----------
 if (!empty($zone_confinanti)) {
-    echo "<h3 class='mb-4 mt-5'>Date disponibili nelle zone confinanti</h3>";
+    echo "<h3 class='mb-4 mt-5'>ZONE DINAMICHE - Date disponibili nelle zone confinanti</h3><h4>Scegliendo una di queste date consentirai alla zona di creare itinerari composti da due zone confinanti</h4>";
     foreach ($zone_confinanti as $zona_conf) {
         $zone_id_confinante = isset($zona_conf['id']) ? $zona_conf['id'] : null;
         $zone_name_confinante = isset($zona_conf['name']) ? $zona_conf['name'] : 'Zona confinante';
@@ -2961,8 +2967,9 @@ if (!empty($zone_confinanti)) {
 
             if (!empty($next3DaysConf)) {
                 echo "<div class='card mb-4'>";
-                echo "<div class='card-header bg-info text-white'>";
-                echo "<h5 class='mb-0'>Zona confinante: {$zone_name_confinante}</h5>";
+                // INTESTAZIONE MODIFICATA: fondo grigio, testo nero, solo nome zona
+                echo "<div class='card-header' style='background:#f3f3f3; color:#222; font-size:1.1em; font-weight:bold;'>";
+                echo "{$zone_name_confinante}";
                 echo "</div><div class='card-body'>";
                 foreach ($next3DaysConf as $date => $availableSlots) {
                     $date_fmt = date('d/m/Y', strtotime($date));
