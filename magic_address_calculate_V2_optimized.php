@@ -3060,11 +3060,7 @@ if ($dist_next !== null) {
     }
     
 // 2. Poi mostra gli slot raggruppati per zona
-
-echo '<div class="responsive-slot-tables">';
-
-echo '<div class="slot-table-container">';
-echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili per zona</h3>";
+echo "<h3 class='text-center mb-3 mt-4'>Date disponibili per zona di appartenenza</h3>";
 
 $zona_principale_id = isset($zona_utente['id']) ? $zona_utente['id'] : null;
 $zona_principale_name = isset($zona_utente['name']) ? $zona_utente['name'] : 'Zona principale';
@@ -3083,7 +3079,7 @@ if ($zona_principale_id) {
             $date_fmt = date('d/m/Y', strtotime($date));
             $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
             $giorno_nome = $giorni[date('w', strtotime($date))];
-            echo "<div class='card mb-3 shadow'>";
+            echo "<div class='card mb-3'>";
             echo "  <div class='card-header' style='background:#fff; color:#222; font-size:1.1em; font-weight:bold;'>";
             echo "    <span><i class='bi bi-calendar3-event me-2'></i>{$giorno_nome} {$date_fmt}</span>";
             echo "  </div>";
@@ -3112,9 +3108,7 @@ if ($zona_principale_id) {
     $ultima_data_principale = null;
     echo "<div class='alert alert-warning'>Zona principale non valorizzata.</div>";
 }
-echo '</div>';
 
-echo '<div class="slot-table-container">';
 // ----------- ZONE CONFINANTI -----------
 if (!empty($zone_confinanti)) {
     echo "<h3 class='mb-4 mt-5 text-center'>ZONE DINAMICHE<br>Date disponibili nelle zone confinanti</h3><h4 class='text-center'>Scegliendo una di queste date consentirai alla zona di creare itinerari composti fra due zone confinanti</h4>";
@@ -3143,7 +3137,7 @@ if (!empty($zone_confinanti)) {
                     $date_fmt = date('d/m/Y', strtotime($date));
                     $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
                     $giorno_nome = $giorni[date('w', strtotime($date))];
-                    echo "<h6 class='mb-3'>{$giorno_nome} {$date_fmt}</h6>";
+                    echo "<h5 class='mb-3'>{$giorno_nome} {$date_fmt}</h5>";
                     foreach ($availableSlots as $slot_time) {
                         $slot_time_fmt = date('H:i', strtotime($slot_time));
                         $nameE = urlencode($name_utente); 
@@ -3162,9 +3156,7 @@ if (!empty($zone_confinanti)) {
     echo "<div class='alert alert-info text-center mt-3'>Nessuno slot di zona disponibile.</div>";
 }
     
-    echo '</div>';
-
-echo '<div>';
+    
     
     if (empty($slots_adiacenti) && empty($slots_by_zone_and_date)) {
         echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot selezionabile valido. Prova ad aumentare il raggio.</div>";
@@ -3232,43 +3224,6 @@ echo "</div>"; // Chiude il container principale iniziato dopo il try
             <!-- Bootstrap Bundle with Popper -->
             <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
             <style>
-            .responsive-slot-tables {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 24px;
-}
-.slot-table-container {
-    flex: 1 1 400px;
-    min-width: 320px;
-    max-width: 650px;
-}
-@media (max-width: 900px) {
-    .responsive-slot-tables {
-        flex-direction: column;
-        gap: 16px;
-    }
-    .slot-table-container {
-        max-width: 100%;
-    }
-}
-/* Opzionale: migliora la leggibilità delle tabelle */
-.slot-table-container table {
-    width: 100%;
-    border-collapse: collapse;
-    background: #fff;
-    box-shadow: none !important;
-    margin-bottom: 24px;
-}
-.slot-table-container th, .slot-table-container td {
-    border: 1px solid #bbb !important;
-    padding: 8px 12px;
-}
-.slot-table-container th {
-    background: #f2f2f2;
-    font-weight: bold;
-    text-align: left;
-}
-            
                 .container {
                     max-width: 600px;
                     margin: 0 auto;
@@ -3470,7 +3425,7 @@ $(document).ready(function() {
     <h2>A quale indirizzo fare la visita?</h2>
     <div class="row justify-content-center">
         <div class="col-12 col-md-8 col-lg-6">
-            <form id="addressForm" method="POST" action="magic_address_calculate_V2_optimized.php" class="mb-4">
+            <form id="addressForm" method="POST" action="combined_address_calculate_v2.php" class="mb-4">
                 <div class="mb-3">
                     <label for="address" class="form-label fw-bold">Indirizzo:</label>
                     <input type="text" id="address" name="address" class="form-control" required>
@@ -3506,7 +3461,7 @@ $(document).ready(function() {
     <div class="container">
         <div id="appointmentForm" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
             <h2>Prenota Appuntamento</h2>
-            <form method="POST" action="magic_address_calculate_V2_optimized.php" class="pure-form pure-form-stacked">
+            <form method="POST" action="combined_address_calculate_v2.php" class="pure-form pure-form-stacked">
                 <input type="hidden" id="zone_id" name="zone_id">
                 <input type="hidden" id="date" name="date">
                 <input type="hidden" id="time" name="time">
