@@ -3060,6 +3060,10 @@ if ($dist_next !== null) {
     }
     
 // 2. Poi mostra gli slot raggruppati per zona
+
+echo '<div class="responsive-slot-tables">';
+
+echo '<div class="slot-table-container">';
 echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili per zona</h3>";
 
 $zona_principale_id = isset($zona_utente['id']) ? $zona_utente['id'] : null;
@@ -3108,7 +3112,9 @@ if ($zona_principale_id) {
     $ultima_data_principale = null;
     echo "<div class='alert alert-warning'>Zona principale non valorizzata.</div>";
 }
+echo '</div>';
 
+echo '<div class="slot-table-container">';
 // ----------- ZONE CONFINANTI -----------
 if (!empty($zone_confinanti)) {
     echo "<h3 class='mb-4 mt-5 text-center'>ZONE DINAMICHE<br>Date disponibili nelle zone confinanti</h3><h4 class='text-center'>Scegliendo una di queste date consentirai alla zona di creare itinerari composti fra due zone confinanti</h4>";
@@ -3156,7 +3162,9 @@ if (!empty($zone_confinanti)) {
     echo "<div class='alert alert-info text-center mt-3'>Nessuno slot di zona disponibile.</div>";
 }
     
-    
+    echo '</div>';
+
+echo '<div>';
     
     if (empty($slots_adiacenti) && empty($slots_by_zone_and_date)) {
         echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot selezionabile valido. Prova ad aumentare il raggio.</div>";
@@ -3224,6 +3232,43 @@ echo "</div>"; // Chiude il container principale iniziato dopo il try
             <!-- Bootstrap Bundle with Popper -->
             <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
             <style>
+            .responsive-slot-tables {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+}
+.slot-table-container {
+    flex: 1 1 400px;
+    min-width: 320px;
+    max-width: 650px;
+}
+@media (max-width: 900px) {
+    .responsive-slot-tables {
+        flex-direction: column;
+        gap: 16px;
+    }
+    .slot-table-container {
+        max-width: 100%;
+    }
+}
+/* Opzionale: migliora la leggibilità delle tabelle */
+.slot-table-container table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    box-shadow: none !important;
+    margin-bottom: 24px;
+}
+.slot-table-container th, .slot-table-container td {
+    border: 1px solid #bbb !important;
+    padding: 8px 12px;
+}
+.slot-table-container th {
+    background: #f2f2f2;
+    font-weight: bold;
+    text-align: left;
+}
+            
                 .container {
                     max-width: 600px;
                     margin: 0 auto;
