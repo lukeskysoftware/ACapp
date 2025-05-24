@@ -14,11 +14,8 @@ include 'utils_appointment.php';
 function getAppointments($filter = [], $search = '', $phone_search = '', $page = 1, $results_per_page = 15, $address_search = '') {
     global $conn;
     $conditions = [];
-    
-    // Mostra solo appuntamenti dalla data corrente in poi
     $today = date('Y-m-d');
     $conditions[] = "a.appointment_date >= '$today'";
-    
     if (!empty($filter['date'])) {
         $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
     }
@@ -55,11 +52,8 @@ function getAppointments($filter = [], $search = '', $phone_search = '', $page =
 function getTotalAppointments($filter = [], $search = '', $phone_search = '', $address_search = '') {
     global $conn;
     $conditions = [];
-    
-    // Mostra solo appuntamenti dalla data corrente in poi
     $today = date('Y-m-d');
     $conditions[] = "a.appointment_date >= '$today'";
-    
     if (!empty($filter['date'])) {
         $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
     }
@@ -176,6 +170,7 @@ if (isset($_POST['delete_confirm'])) {
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 $phone_search = isset($_GET['phone_search']) ? $_GET['phone_search'] : '';
 $results_per_page = 15;
+$address_search = isset($_GET['address_search']) ? $_GET['address_search'] : '';
 
 // Gestione del parametro highlight_appointment
 if (isset($_GET['highlight_appointment'])) {
@@ -357,6 +352,18 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
             background-color: #d1ecf1;
             border-color: #bee5eb;
         }
+        
+        
+        @media (max-width: 1200px) {
+  #filtro-riga-unica { min-width: 700px; }
+  #filtro-riga-unica input, #filtro-riga-unica select { width: 80px !important; }
+}
+@media (max-width: 900px) {
+  #filtro-riga-unica { min-width: 500px; font-size: 12px; }
+  #filtro-riga-unica input, #filtro-riga-unica select { width: 60px !important; }
+}
+        
+        
         /* Per schermi più piccoli */
         @media (max-width: 992px) {
             .notes-column {
@@ -485,55 +492,50 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
             document.getElementById('loading-indicator').style.display = 'none';
         }
 
-        function filterAppointments() {
-            showLoadingIndicator();
-            
-            const date = document.getElementById('date').value;
-            const zone = document.getElementById('zone').value;
-            const search = document.getElementById('search').value;
-            const phone_search = document.getElementById('phone_search').value;
-            
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}&phone_search=${encodeURIComponent(phone_search)}`, true);
-            
-            xhr.onreadystatechange = function() {
-                if (xhr.readyState === 4) {
-                    hideLoadingIndicator();
-                    
-                    if (xhr.status === 200) {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(xhr.responseText, 'text/html');
-                        const newTable = doc.querySelector('table');
-                        const tableElement = document.querySelector('table');
-                        
-                        if (newTable && newTable.querySelector('tbody').children.length > 0) {
-                            // Ottimizzazione: aggiorniamo solo tbody invece dell'intera tabella
-                            const newTbody = newTable.querySelector('tbody');
-                            const tbody = tableElement.querySelector('tbody');
-                            tbody.innerHTML = newTbody.innerHTML;
-                            
-                            tableElement.classList.remove('hidden');
-                            document.getElementById('no-appointments-message').classList.add('hidden');
-                            
-                            // Riapplica i gestori di eventi dopo l'aggiornamento della tabella
-                            reapplyEventHandlers();
-                        } else {
-                            tableElement.classList.add('hidden');
-                            document.getElementById('no-appointments-message').classList.remove('hidden');
-                        }
-                    }
+ function filterAppointments() {
+    showLoadingIndicator();
+    const date = document.getElementById('date').value;
+    const zone = document.getElementById('zone').value;
+    const search = document.getElementById('search').value;
+    const phone_search = document.getElementById('phone_search').value;
+    const address_search = document.getElementById('address_search').value;
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}&phone_search=${encodeURIComponent(phone_search)}&address_search=${encodeURIComponent(address_search)}&page=1`, true);
+
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            hideLoadingIndicator();
+            if (xhr.status === 200) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(xhr.responseText, 'text/html');
+                const newTable = doc.querySelector('table');
+                const tableElement = document.querySelector('table');
+                if (newTable && newTable.querySelector('tbody').children.length > 0) {
+                    const newTbody = newTable.querySelector('tbody');
+                    const tbody = tableElement.querySelector('tbody');
+                    tbody.innerHTML = newTbody.innerHTML;
+                    tableElement.classList.remove('hidden');
+                    document.getElementById('no-appointments-message').classList.add('hidden');
+                    reapplyEventHandlers();
+                } else {
+                    tableElement.classList.add('hidden');
+                    document.getElementById('no-appointments-message').classList.remove('hidden');
                 }
-            };
-            xhr.send();
+            }
         }
+    };
+    xhr.send();
+}
         
-        function clearFilters() {
-            document.getElementById('date').value = '';
-            document.getElementById('zone').value = '';
-            document.getElementById('search').value = '';
-            document.getElementById('phone_search').value = '';
-            filterAppointments();
-        }
+       function clearFilters() {
+    document.getElementById('date').value = '';
+    document.getElementById('zone').value = '';
+    document.getElementById('search').value = '';
+    document.getElementById('phone_search').value = '';
+    document.getElementById('address_search').value = '';
+    filterAppointments();
+}
     </script>
     
    
@@ -574,51 +576,71 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
 
 <!-- Div separato per i filtri -->
 <div class="pure-g aria">
-    <div style="max-width: 1024px; margin: 0 auto; width: 100%;">
-        <form onsubmit="event.preventDefault(); filterAppointments();" class="pure-form">
-            <!-- Prima riga per i filtri -->
-            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; margin-bottom: 15px; background-color: #f9f9f9; padding: 15px; border: 1px solid #ddd; border-radius: 5px;">
-                <div style="display: flex; align-items: center; margin-right: 10px; margin-bottom: 5px;">
-                    <label for="date" style="margin-right: 5px; font-weight: bold;">Data:</label>
-                    <input type="text" id="date" name="date" class="flatpickr" value="<?php echo htmlspecialchars($filter['date']); ?>" style="width: 120px;">
-                </div>
-                <div style="display: flex; align-items: center; margin-bottom: 5px;">
-    <label for="address_search" style="margin-right: 5px; font-weight: bold;">Indirizzo:</label>
-    <input type="text" id="address_search" name="address_search" value="<?php echo htmlspecialchars($address_search); ?>" style="width: 180px;">
-</div>
-                <div style="display: flex; align-items: center; margin-right: 10px; margin-bottom: 5px;">
-                    <label for="zone" style="margin-right: 5px; font-weight: bold;">Zona:</label>
-                    <select id="zone" name="zone" style="width: 120px;">
-                        <option value="">Seleziona</option>
-                        <?php foreach ($zones as $zone) { ?>
-                            <option value="<?php echo htmlspecialchars($zone); ?>"<?php echo ($filter['zone'] === $zone) ? ' selected' : ''; ?>><?php echo htmlspecialchars($zone); ?></option>
-                        <?php } ?>
-                    </select>
-                </div>
-                
-                <div style="display: flex; align-items: center; margin-right: 10px; margin-bottom: 5px;">
-                    <label for="search" style="margin-right: 5px; font-weight: bold;">Nome/Cognome:</label>
-                    <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>" style="width: 150px;">
-                </div>
-                
-                <div style="display: flex; align-items: center; margin-bottom: 5px;">
-                    <label for="phone_search" style="margin-right: 5px; font-weight: bold;">Telefono:</label>
-                    <input type="text" id="phone_search" name="phone_search" value="<?php echo htmlspecialchars($phone_search); ?>" style="width: 120px;">
-                </div>
-            </div>
-            
-            <!-- Seconda riga per i pulsanti -->
-            <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-                <button type="button" id="search-button" class="pure-button button-primary" style="margin-right: 10px;">Cerca</button>
-                <button type="button" id="clear-filters" class="pure-button">Cancella Filtri</button>
-                <span id="loading-indicator" style="display: none; margin-left: 10px;">
-                    <span class="spinner"></span> Caricamento...
-                </span>
-            </div>
-        </form>
+    
+<form onsubmit="event.preventDefault(); filterAppointments();" class="pure-form" style="margin: 0 auto;">
+    <div 
+        id="filtro-riga-unica"
+        style="
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 15px;
+            background-color: #f9f9f9;
+            padding: 15px 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow-x: auto;
+            width: 100%;
+            box-sizing: border-box;
+            min-width: 900px;
+        ">
+
+        <div style="display: flex; align-items: center; min-width: 170px;">
+            <label for="date" style="margin-right: 5px; font-weight: bold; white-space: nowrap;">Data:</label>
+            <input type="text" id="date" name="date" class="flatpickr" value="<?php echo htmlspecialchars($filter['date']); ?>" style="width: 110px;">
+        </div>
+
         
+
+        <div style="display: flex; align-items: center; min-width: 180px;">
+            <label for="search" style="margin-right: 5px; font-weight: bold; white-space: nowrap;">Nome/Cognome:</label>
+            <input type="text" id="search" name="search" value="<?php echo htmlspecialchars($search); ?>" style="width: 120px;">
+        </div>
+
+        <div style="display: flex; align-items: center; min-width: 170px;">
+            <label for="phone_search" style="margin-right: 5px; font-weight: bold; white-space: nowrap;">Telefono:</label>
+            <input type="text" id="phone_search" name="phone_search" value="<?php echo htmlspecialchars($phone_search); ?>" style="width: 110px;">
+        </div>
+
+        <div style="display: flex; align-items: center; min-width: 200px;">
+            <label for="address_search" style="margin-right: 5px; font-weight: bold; white-space: nowrap;">Indirizzo:</label>
+            <input type="text" id="address_search" name="address_search" value="<?php echo htmlspecialchars($address_search); ?>" style="width: 150px;">
+        </div>
+
+<div style="display: flex; align-items: center; min-width: 170px;">
+            <label for="zone" style="margin-right: 5px; font-weight: bold; white-space: nowrap;">Zona:</label>
+            <select id="zone" name="zone" style="width: 110px;">
+                <option value="">Seleziona</option>
+                <?php foreach ($zones as $zone) { ?>
+                    <option value="<?php echo htmlspecialchars($zone); ?>"<?php echo ($filter['zone'] === $zone) ? ' selected' : ''; ?>><?php echo htmlspecialchars($zone); ?></option>
+                <?php } ?>
+            </select>
+        </div>
         
+        <!-- Pulsanti -->
+        <div style="display: flex; align-items: center; min-width: 220px;">
+            <button type="button" id="search-button" class="pure-button button-primary" style="margin-right: 8px;">Cerca</button>
+            <button type="button" id="clear-filters" class="pure-button">Cancella Filtri</button>
+            <span id="loading-indicator" style="display: none; margin-left: 10px;">
+                <span class="spinner"></span> Caricamento...
+            </span>
+        </div>
     </div>
+</form>
+        
+        
+   
 </div>
 
 <p id="no-appointments-message" class="<?php echo $showTable ? 'hidden' : ''; ?> centrato aria">Non ci sono appuntamenti</p>
