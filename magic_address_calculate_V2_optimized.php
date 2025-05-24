@@ -3060,7 +3060,7 @@ if ($dist_next !== null) {
     }
     
 // 2. Poi mostra gli slot raggruppati per zona
-echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili per zona di appartenenza</h3>";
+echo "<h3 class='text-center mb-3 mt-4'>Date disponibili per zona di appartenenza</h3>";
 
 $zona_principale_id = isset($zona_utente['id']) ? $zona_utente['id'] : null;
 $zona_principale_name = isset($zona_utente['name']) ? $zona_utente['name'] : 'Zona principale';
