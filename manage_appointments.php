@@ -11,11 +11,11 @@ if (!isset($_SESSION['user_id'])) {
 include 'db.php';
 include 'utils_appointment.php';
 // Function to get all appointments with patient and zone information
-function getAppointments($filter = [], $search = '', $phone_search = '', $page = 1, $results_per_page = 15) {
+function getAppointments($filter = [], $search = '', $phone_search = '', $page = 1, $results_per_page = 15, $address_search = '') {
     global $conn;
     $conditions = [];
     
-    // Aggiungiamo la condizione per mostrare solo gli appuntamenti dalla data corrente in poi
+    // Mostra solo appuntamenti dalla data corrente in poi
     $today = date('Y-m-d');
     $conditions[] = "a.appointment_date >= '$today'";
     
@@ -30,6 +30,9 @@ function getAppointments($filter = [], $search = '', $phone_search = '', $page =
     }
     if (!empty($phone_search)) {
         $conditions[] = "p.phone LIKE '%" . mysqli_real_escape_string($conn, $phone_search) . "%'";
+    }
+    if (!empty($address_search)) {
+        $conditions[] = "a.address LIKE '%" . mysqli_real_escape_string($conn, $address_search) . "%'";
     }
     $offset = ($page - 1) * $results_per_page;
     $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, COALESCE(z.name, 'N/A') as zone
@@ -49,11 +52,11 @@ function getAppointments($filter = [], $search = '', $phone_search = '', $page =
 }
 
 // Function to get total number of appointments for pagination
-function getTotalAppointments($filter = [], $search = '', $phone_search = '') {
+function getTotalAppointments($filter = [], $search = '', $phone_search = '', $address_search = '') {
     global $conn;
     $conditions = [];
     
-    // Aggiungiamo la condizione per mostrare solo gli appuntamenti dalla data corrente in poi
+    // Mostra solo appuntamenti dalla data corrente in poi
     $today = date('Y-m-d');
     $conditions[] = "a.appointment_date >= '$today'";
     
@@ -68,6 +71,9 @@ function getTotalAppointments($filter = [], $search = '', $phone_search = '') {
     }
     if (!empty($phone_search)) {
         $conditions[] = "p.phone LIKE '%" . mysqli_real_escape_string($conn, $phone_search) . "%'";
+    }
+    if (!empty($address_search)) {
+        $conditions[] = "a.address LIKE '%" . mysqli_real_escape_string($conn, $address_search) . "%'";
     }
     $sql = "SELECT COUNT(*) as total
             FROM cp_appointments a
@@ -196,9 +202,10 @@ if (isset($_GET['highlight_appointment'])) {
             'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
         ];
         $page = 1;
-        $total_appointments = getTotalAppointments($filter, $search);
+        $total_appointments = getTotalAppointments($filter, $search, $phone_search, $address_search);
         $total_pages = ceil($total_appointments / $results_per_page);
-        $appointments = getAppointments($filter, $search, $page, $results_per_page);
+        $appointments = getAppointments($filter, $search, $phone_search, $page, $results_per_page, $address_search);
+
         $showTable = !empty($appointments);
     } else {
         // Appuntamento trovato e futuro, impostiamo il filtro per data e forziamo la pagina a 1
@@ -209,9 +216,9 @@ if (isset($_GET['highlight_appointment'])) {
         $page = 1; // Per assicurarsi di iniziare dalla prima pagina con questo filtro
         
         // Aggiorniamo i risultati con il nuovo filtro
-        $total_appointments = getTotalAppointments($filter, $search);
+        $total_appointments = getTotalAppointments($filter, $search, $phone_search, $address_search);
         $total_pages = ceil($total_appointments / $results_per_page);
-        $appointments = getAppointments($filter, $search, $page, $results_per_page);
+        $appointments = getAppointments($filter, $search, $phone_search, $page, $results_per_page, $address_search);
         $showTable = !empty($appointments);
         
         $_SESSION['info_message'] = "Mostrando l'appuntamento richiesto per " . $row['name'] . " " . $row['surname'] . " del " . date('d/m/Y', strtotime($row['appointment_date']));
@@ -226,9 +233,9 @@ if (isset($_GET['highlight_appointment'])) {
         'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
     ];
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
-    $total_appointments = getTotalAppointments($filter, $search, $phone_search);
+    $total_appointments = getTotalAppointments($filter, $search, $phone_search, $address_search);
     $total_pages = ceil($total_appointments / $results_per_page);
-    $appointments = getAppointments($filter, $search, $phone_search, $page, $results_per_page);
+    $appointments = getAppointments($filter, $search, $phone_search, $page, $results_per_page, $address_search);
     $showTable = !empty($appointments);
 }
 
@@ -575,7 +582,10 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
                     <label for="date" style="margin-right: 5px; font-weight: bold;">Data:</label>
                     <input type="text" id="date" name="date" class="flatpickr" value="<?php echo htmlspecialchars($filter['date']); ?>" style="width: 120px;">
                 </div>
-                
+                <div style="display: flex; align-items: center; margin-bottom: 5px;">
+    <label for="address_search" style="margin-right: 5px; font-weight: bold;">Indirizzo:</label>
+    <input type="text" id="address_search" name="address_search" value="<?php echo htmlspecialchars($address_search); ?>" style="width: 180px;">
+</div>
                 <div style="display: flex; align-items: center; margin-right: 10px; margin-bottom: 5px;">
                     <label for="zone" style="margin-right: 5px; font-weight: bold;">Zona:</label>
                     <select id="zone" name="zone" style="width: 120px;">
