@@ -3060,96 +3060,54 @@ if ($dist_next !== null) {
     }
     
 // 2. Poi mostra gli slot raggruppati per zona
-echo "<div class="responsive-slot-tables">
-    <div class="slot-table-container">
-        <h3 class="text-center mb-3 mt-4">Slot disponibili per zona di appartenenza</h3>
-        <?php
-        // --- Inizio blocco zona principale ---
-        if ($zona_principale_id) {
-            $slots_config_principale = getSlotsForZone($zona_principale_id);
-            $next3Days = getNext3AppointmentDates($slots_config_principale, $zona_principale_id, $latitude_utente, $longitude_utente);
+echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili per zona</h3>";
 
-            if (!empty($next3Days)) {
-                echo "<h4 class='mb-3' style='color:#222;'>Date disponibili nella tua zona principale: <span style='color:#1B8B35; font-weight:bold;'>{$zona_principale_name}</span></h4>";
-                foreach ($next3Days as $date => $availableSlots) {
-                    $date_fmt = date('d/m/Y', strtotime($date));
-                    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                    $giorno_nome = $giorni[date('w', strtotime($date))];
-                    echo "<table class='table table-bordered mb-3'><thead><tr><th colspan='" . count($availableSlots) . "'>{$giorno_nome} {$date_fmt}</th></tr></thead><tbody><tr>";
-                    foreach ($availableSlots as $slot_time) {
-                        $slot_time_fmt = date('H:i', strtotime($slot_time));
-                        $nameE = urlencode($name_utente); 
-                        $surE = urlencode($surname_utente); 
-                        $phE = urlencode($phone_utente); 
-                        $addrE = urlencode($address_utente);
-                        $book_url = "book_appointment.php?zone_id={$zona_principale_id}&date={$date}&time={$slot_time}&address={$addrE}&latitude={$latitude_utente}&longitude={$longitude_utente}&name={$nameE}&surname={$surE}&phone={$phE}";
-                        echo "<td><a href='{$book_url}' class='btn btn-success fw-bold w-100'>{$slot_time_fmt}</a></td>";
-                    }
-                    echo "</tr></tbody></table>";
-                }
-                $ultima_data_principale = array_key_last($next3Days) ? array_keys($next3Days)[2] : null;
-            } else {
-                $ultima_data_principale = null;
-                echo "<div class='alert alert-info'>Nessuna data con almeno uno slot disponibile nella tua zona principale (ID: {$zona_principale_id}) nei prossimi 6 mesi.</div>";
+$zona_principale_id = isset($zona_utente['id']) ? $zona_utente['id'] : null;
+$zona_principale_name = isset($zona_utente['name']) ? $zona_utente['name'] : 'Zona principale';
+$latitude_utente = isset($latitude_utente) ? $latitude_utente : null;
+$longitude_utente = isset($longitude_utente) ? $longitude_utente : null;
+
+if ($zona_principale_id) {
+    // Usa la funzione collaudata per trovare le prossime 3 date con slot disponibili
+    $slots_config_principale = getSlotsForZone($zona_principale_id);
+    $next3Days = getNext3AppointmentDates($slots_config_principale, $zona_principale_id, $latitude_utente, $longitude_utente);
+
+    if (!empty($next3Days)) {
+        // Intestazione: fondo bianco, scritta nera, nome zona in verde
+        echo "<h4 class='mb-3' style='color:#222;'>Date disponibili nella tua zona principale: <span style='color:#1B8B35; font-weight:bold;'>{$zona_principale_name}</span></h4>";
+        foreach ($next3Days as $date => $availableSlots) {
+            $date_fmt = date('d/m/Y', strtotime($date));
+            $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+            $giorno_nome = $giorni[date('w', strtotime($date))];
+            echo "<div class='card mb-3 shadow'>";
+            echo "  <div class='card-header' style='background:#fff; color:#222; font-size:1.1em; font-weight:bold;'>";
+            echo "    <span><i class='bi bi-calendar3-event me-2'></i>{$giorno_nome} {$date_fmt}</span>";
+            echo "  </div>";
+            echo "  <div class='card-body'>";
+            echo "    <div class='d-flex flex-wrap'>";
+            foreach ($availableSlots as $slot_time) {
+                $slot_time_fmt = date('H:i', strtotime($slot_time));
+                $nameE = urlencode($name_utente); 
+                $surE = urlencode($surname_utente); 
+                $phE = urlencode($phone_utente); 
+                $addrE = urlencode($address_utente);
+                $book_url = "book_appointment.php?zone_id={$zona_principale_id}&date={$date}&time={$slot_time}&address={$addrE}&latitude={$latitude_utente}&longitude={$longitude_utente}&name={$nameE}&surname={$surE}&phone={$phE}";
+                echo "<a href='{$book_url}' class='btn btn-success m-1 fw-bold'>{$slot_time_fmt}</a> ";
             }
-        } else {
-            $ultima_data_principale = null;
-            echo "<div class='alert alert-warning'>Zona principale non valorizzata.</div>";
+            echo "    </div>";
+            echo "  </div>";
+            echo "</div>";
         }
-        // --- Fine blocco zona principale ---
-        ?>
-    </div>
-    <div class="slot-table-container">
-        <h3 class="mb-4 mt-5 text-center">ZONE DINAMICHE<br>Date disponibili nelle zone confinanti</h3>
-        <h4 class='text-center'>Scegliendo una di queste date consentirai alla zona di creare itinerari dinamici</h4>
-        <?php
-        // --- Inizio blocco zone confinanti ---
-        if (!empty($zone_confinanti)) {
-            foreach ($zone_confinanti as $zona_conf) {
-                $zone_id_confinante = isset($zona_conf['id']) ? $zona_conf['id'] : null;
-                $zone_name_confinante = isset($zona_conf['name']) ? $zona_conf['name'] : 'Zona confinante';
-                if ($zone_id_confinante) {
-                    $slots_config_conf = getSlotsForZone($zone_id_confinante);
-                    $next3DaysConf = getNext3AppointmentDates($slots_config_conf, $zone_id_confinante, $latitude_utente, $longitude_utente);
-
-                    if ($ultima_data_principale) {
-                        $next3DaysConf = array_filter($next3DaysConf, function($date) use ($ultima_data_principale) {
-                            return $date <= $ultima_data_principale;
-                        }, ARRAY_FILTER_USE_KEY);
-                    }
-
-                    if (!empty($next3DaysConf)) {
-                        echo "<div class='zona-confinante-block mb-4'>";
-                        echo "<table class='table table-bordered'>";
-                        echo "<thead><tr><th colspan='100'>{$zone_name_confinante}</th></tr></thead>";
-                        foreach ($next3DaysConf as $date => $availableSlots) {
-                            $date_fmt = date('d/m/Y', strtotime($date));
-                            $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                            $giorno_nome = $giorni[date('w', strtotime($date))];
-                            echo "<tr><td colspan='" . count($availableSlots) . "' class='bg-light'><b>{$giorno_nome} {$date_fmt}</b></td></tr><tr>";
-                            foreach ($availableSlots as $slot_time) {
-                                $slot_time_fmt = date('H:i', strtotime($slot_time));
-                                $nameE = urlencode($name_utente); 
-                                $surE = urlencode($surname_utente); 
-                                $phE = urlencode($phone_utente); 
-                                $addrE = urlencode($address_utente);
-                                $book_url = "book_appointment.php?zone_id={$zone_id_confinante}&date={$date}&time={$slot_time}&address={$addrE}&latitude={$latitude_utente}&longitude={$longitude_utente}&name={$nameE}&surname={$surE}&phone={$phE}";
-                                echo "<td><a href='{$book_url}' class='btn btn-outline-success fw-bold w-100'>{$slot_time_fmt}</a></td>";
-                            }
-                            echo "</tr>";
-                        }
-                        echo "</table>";
-                        echo "</div>";
-                    }
-                }
-            }
-        } else {
-            echo "<div class='alert alert-info text-center mt-3'>Nessuno slot di zona disponibile.</div>";
-        }
-        // --- Fine blocco zone confinanti ---
-        ?>
-    </div>
-</div>
+        // Memorizza ultima data per filtrare le zone confinanti
+        $ultima_data_principale = array_key_last($next3Days) ? array_keys($next3Days)[2] : null;
+    } else {
+        $ultima_data_principale = null;
+        echo "<div class='alert alert-info'>Nessuna data con almeno uno slot disponibile nella tua zona principale (ID: {$zona_principale_id}) nei prossimi 6 mesi.</div>";
+    }
+} else {
+    $ultima_data_principale = null;
+    echo "<div class='alert alert-warning'>Zona principale non valorizzata.</div>";
+}
 
 // ----------- ZONE CONFINANTI -----------
 if (!empty($zone_confinanti)) {
@@ -3429,53 +3387,6 @@ echo "</div>"; // Chiude il container principale iniziato dopo il try
         padding: 20px;
         color: #6c757d;
     }
-    .responsive-slot-tables {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  justify-content: center;
-  align-items: flex-start;
-}
-.slot-table-container {
-  flex: 1 1 400px;
-  max-width: 640px;
-  min-width: 300px;
-}
-.slot-table-container table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-  box-shadow: none !important;
-  margin-bottom: 24px;
-}
-.slot-table-container th,
-.slot-table-container td {
-  border: 1px solid #bbb !important;
-  padding: 8px 12px;
-}
-.slot-table-container th {
-  background: #f2f2f2;
-  font-weight: bold;
-  text-align: left;
-}
-/* Elimina box-shadow da eventuali .card */
-.slot-table-container .card,
-.slot-table-container .card-body,
-.slot-table-container .card-header {
-  box-shadow: none !important;
-  border: none !important;
-  background: transparent !important;
-}
-/* Mobile: una sotto l'altra */
-@media (max-width: 900px) {
-  .responsive-slot-tables {
-    flex-direction: column;
-    gap: 16px;
-  }
-  .slot-table-container {
-    max-width: 100%;
-  }
-}
 </style>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
