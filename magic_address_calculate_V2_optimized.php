@@ -2449,7 +2449,22 @@ echo "</div></div><hr>";
         if (function_exists('displayAppointmentDetails')) {
             if (!empty($appuntamenti_riferimento)) {
                 error_log($log_prefix_main . "Chiamo displayAppointmentDetails con " . count($appuntamenti_riferimento) . " rif. e " . count($tutti_gli_slot_adiacenti_per_tabella) . " slot ad. totali.");
-                displayAppointmentDetails($appuntamenti_riferimento, $tutti_gli_slot_adiacenti_per_tabella); // USA FUNZIONE ORIGINALE
+                echo <<<HTML
+<div class="container mt-3">
+    <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#toggleTabellaApp" aria-expanded="false" aria-controls="toggleTabellaApp">
+        Visualizza i processi
+    </button>
+    <div class="collapse mt-3" id="toggleTabellaApp">
+        <div class="card card-body">
+HTML;
+
+displayAppointmentDetails($appuntamenti_riferimento, $tutti_gli_slot_adiacenti_per_tabella);
+
+echo <<<HTML
+        </div>
+    </div>
+</div>
+HTML; // USA FUNZIONE ORIGINALE
             } else {
                  echo "<div class='alert alert-info mt-3'>Nessun appuntamento di riferimento trovato nelle vicinanze per generare slot adiacenti.</div>";
             }
@@ -2797,6 +2812,16 @@ if (!empty($slots_proposti_con_priorita)) {
     return $dtA <=> $dtB;
 });
     
+    function format_distance_value($distance, $is_used, $radius) {
+    $formatted = number_format($distance, 1) . " km";
+    $in_red = ($distance > $radius); // rosso solo se maggiore STRETTO
+    if ($is_used && $in_red)   return "<b><span style='color:red;'>$formatted</span></b>";
+    if ($is_used)              return "<b>$formatted</b>";
+    if ($in_red)               return "<span style='color:red;'>$formatted</span>";
+    return $formatted;
+}
+    
+    
     // 1. Prima mostra gli slot adiacenti con la visualizzazione originale dettagliata
     if (!empty($slots_adiacenti)) {
         echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili vicino ad appuntamenti esistenti</h3>";
@@ -2931,41 +2956,44 @@ usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento) {
                 }
             }
             
-            // 3. Mostra SEMPRE prima l'appuntamento precedente (se esiste)
-            if ($closest_before) {
-                $prev_time_fmt = date('H:i', strtotime($closest_before['appointment_time']));
-                $prev_dist = calculateRoadDistance(
-                    $latitude_utente, $longitude_utente,
-                    $closest_before['latitude'], $closest_before['longitude']
-                );
-                
-                if ($prev_dist !== false) {
-                    echo "<span style='color:#28a745;'> - Distanza dal precedente ({$prev_time_fmt}): " . 
-                         number_format($prev_dist, 1) . " km</span><br>";
-                }
-            } else if ($slot['type'] == 'after') {
-                // Se non c'è un altro precedente ma lo slot è 'after', mostra il riferimento come precedente
-                echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ref_time_sel}): " . 
-                     number_format($item['travel_distance'], 1) . " km</span><br>";
-            }
-            
-            // 4. Mostra SEMPRE dopo l'appuntamento successivo (se esiste)
-            if ($closest_after) {
-                $next_time_fmt = date('H:i', strtotime($closest_after['appointment_time']));
-                $next_dist = calculateRoadDistance(
-                    $latitude_utente, $longitude_utente,
-                    $closest_after['latitude'], $closest_after['longitude']
-                );
-                
-                if ($next_dist !== false) {
-                    echo "<span style='color:#28a745;'> - Distanza dal successivo ({$next_time_fmt}): " . 
-                         number_format($next_dist, 1) . " km</span><br>";
-                }
-            } else if ($slot['type'] == 'before') {
-                // Se non c'è un altro successivo ma lo slot è 'before', mostra il riferimento come successivo
-                echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ref_time_sel}): " . 
-                     number_format($item['travel_distance'], 1) . " km</span><br>";
-            }
+            // --- Calcola distanze
+$dist_prev = $closest_before ? calculateRoadDistance(
+    $latitude_utente, $longitude_utente,
+    $closest_before['latitude'], $closest_before['longitude']
+) : null;
+$dist_next = $closest_after ? calculateRoadDistance(
+    $latitude_utente, $longitude_utente,
+    $closest_after['latitude'], $closest_after['longitude']
+) : null;
+
+// Determina quale distanza è usata per l'ordinamento (minima tra le due se entrambe esistono)
+if ($dist_prev !== null && $dist_next !== null) {
+    if ($dist_prev <= $dist_next) {
+        $dist_type = 'prev';
+    } else {
+        $dist_type = 'next';
+    }
+} elseif ($dist_prev !== null) {
+    $dist_type = 'prev';
+} elseif ($dist_next !== null) {
+    $dist_type = 'next';
+} else {
+    $dist_type = null;
+}
+
+// Stampa distanze
+if ($dist_prev !== null) {
+    $is_used = ($dist_type == 'prev');
+    $ora_prev = $closest_before ? date('H:i', strtotime($closest_before['appointment_time'])) : $ref_time_sel;
+    echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ora_prev}): " .
+        format_distance_value($dist_prev, $is_used, $display_radius_km) . "</span><br>";
+}
+if ($dist_next !== null) {
+    $is_used = ($dist_type == 'next');
+    $ora_next = $closest_after ? date('H:i', strtotime($closest_after['appointment_time'])) : $ref_time_sel;
+    echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ora_next}): " .
+        format_distance_value($dist_next, $is_used, $display_radius_km) . "</span><br>";
+}
             
             echo "<small class='text-muted'>Zona Slot: " . htmlspecialchars($zone_id_book);
 
@@ -3083,7 +3111,7 @@ if ($zona_principale_id) {
 
 // ----------- ZONE CONFINANTI -----------
 if (!empty($zone_confinanti)) {
-    echo "<h3 class='mb-4 mt-5'>ZONE DINAMICHE - Date disponibili nelle zone confinanti</h3><h4>Scegliendo una di queste date consentirai alla zona di creare itinerari composti da due zone confinanti</h4>";
+    echo "<h3 class='mb-4 mt-5 text-center'>ZONE DINAMICHE<br>Date disponibili nelle zone confinanti</h3><h4 class='text-center'>Scegliendo una di queste date consentirai alla zona di creare itinerari composti fra due zone confinanti</h4>";
     foreach ($zone_confinanti as $zona_conf) {
         $zone_id_confinante = isset($zona_conf['id']) ? $zona_conf['id'] : null;
         $zone_name_confinante = isset($zona_conf['name']) ? $zona_conf['name'] : 'Zona confinante';
@@ -3127,6 +3155,8 @@ if (!empty($zone_confinanti)) {
 } else {
     echo "<div class='alert alert-info text-center mt-3'>Nessuno slot di zona disponibile.</div>";
 }
+    
+    
     
     if (empty($slots_adiacenti) && empty($slots_by_zone_and_date)) {
         echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot selezionabile valido. Prova ad aumentare il raggio.</div>";
