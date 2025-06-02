@@ -562,7 +562,7 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
                 }
             }
 
-            $zone_id = isset($ref_app['zone_id']) ? $ref_app['zone_id'] : 0;
+            $zone_id = $ref_app['zone_id'] ?? ($ref_app['related_appointment']['zone_id'] ?? 0);
             $display_limits_text = "";
             if ($zone_id != 0) {
                 $slots_limit_sql = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ?";
@@ -2419,33 +2419,36 @@ echo "</div></div><hr>";
         }
         error_log($log_prefix_main . "FASE A: Fine. Slot ad. validi e nel raggio display: " . count(array_filter($slots_proposti_con_priorita, function($s){ return $s['source'] == 'adjacent_to_existing'; })));
 
-// --- INIZIO LOGICA SLOT EXTRA DOPO LIMITE ZONA ---
+// --- INIZIO LOGICA SLOT EXTRA UNIVERSALE (solo distanza 3km) ---
 
 $today = date('Y-m-d');
-$sql_zones = "SELECT DISTINCT zone_id FROM cp_appointments WHERE appointment_date = ? AND zone_id != 0";
-$stmt_zones = $conn->prepare($sql_zones);
-$stmt_zones->bind_param("s", $today);
-$stmt_zones->execute();
-$res_zones = $stmt_zones->get_result();
-$zone_ids = [];
-while ($row = $res_zones->fetch_assoc()) {
-    $zone_ids[] = $row['zone_id'];
+// Ottieni tutte le date future con appuntamenti
+$dates_sql = "SELECT DISTINCT appointment_date FROM cp_appointments WHERE appointment_date >= ?";
+$stmt_dates = $conn->prepare($dates_sql);
+$stmt_dates->bind_param("s", $today);
+$stmt_dates->execute();
+$res_dates = $stmt_dates->get_result();
+$date_list = [];
+while ($row = $res_dates->fetch_assoc()) {
+    $date_list[] = $row['appointment_date'];
 }
-$stmt_zones->close();
+$stmt_dates->close();
 
-foreach ($zone_ids as $zone_id) {
-    // Trova l'ultimo appuntamento della giornata nella zona
-    $sql_last = "SELECT * FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? ORDER BY appointment_time DESC LIMIT 1";
+foreach ($date_list as $thedate) {
+    // Trova l'ultimo appuntamento della giornata (indipendentemente dalla zona)
+    $sql_last = "SELECT * FROM cp_appointments WHERE appointment_date = ? ORDER BY appointment_time DESC LIMIT 1";
     $stmt_last = $conn->prepare($sql_last);
-    $stmt_last->bind_param("is", $zone_id, $today);
+    $stmt_last->bind_param("s", $thedate);
     $stmt_last->execute();
     $res_last = $stmt_last->get_result();
     if ($last_app = $res_last->fetch_assoc()) {
+        // Trova la zona effettiva dell'appuntamento (serve per orario massimo)
+        $zone_id = $last_app['zone_id'];
         $coords = getCoordinatesForAppointment($last_app['id'], $last_app['address']);
         if ($coords) {
             $distanza = calculateRoadDistance($latitude_utente, $longitude_utente, $coords['lat'], $coords['lng']);
             if ($distanza !== false && $distanza <= 3) {
-                // Recupera orario massimo di zona
+                // Recupera orario massimo della zona di quell'appuntamento
                 $sql_slot = "SELECT MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ?";
                 $stmt_slot = $conn->prepare($sql_slot);
                 $stmt_slot->bind_param("i", $zone_id);
@@ -2458,9 +2461,9 @@ foreach ($zone_ids as $zone_id) {
                     // Calcola lo slot extra (1 ora dopo l'ultimo slot)
                     $orario_extra = date('H:i:s', strtotime($zone_max_slot_time) + 3600);
                     // Verifica che non esista già un appuntamento a quell'orario
-                    $sql_check = "SELECT COUNT(*) as count FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? AND appointment_time = ?";
+                    $sql_check = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
                     $stmt_check = $conn->prepare($sql_check);
-                    $stmt_check->bind_param("iss", $zone_id, $today, $orario_extra);
+                    $stmt_check->bind_param("ss", $thedate, $orario_extra);
                     $stmt_check->execute();
                     $res_check = $stmt_check->get_result();
                     $row_check = $res_check->fetch_assoc();
@@ -2468,14 +2471,14 @@ foreach ($zone_ids as $zone_id) {
                     if ($row_check['count'] == 0) {
                         // Proponi slot extra!
                         $slot_extra = [
-                            'date' => $today,
+                            'date' => $thedate,
                             'time' => $orario_extra,
                             'type' => 'after_extra',
-                            'related_appointment' => $last_app,
+                            'related_appointment' => array_merge($last_app, ['zone_id' => $zone_id]), // assicura che zone_id sia sempre presente
                             'excluded' => false,
                             'excluded_reason' => '',
                             'debug_info' => [],
-                            'extra_warning' => "Slot fuori orario zona: proposto perché l'indirizzo è entro 3km dall’ultimo appuntamento della giornata (ID: {$last_app['id']})"
+                            'extra_warning' => "Slot fuori orario: proposto perché l'indirizzo è entro 3km (stradali) dall’ultimo appuntamento della giornata (ID: {$last_app['id']}, zona: $zone_id)"
                         ];
                         $slots_proposti_con_priorita[] = [
                             'slot_details' => $slot_extra,
@@ -2947,159 +2950,121 @@ usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento) {
 });
         
         
-        foreach ($slots_adiacenti as $item) {
-            $slot = $item['slot_details'];
-            $slot_date_fmt = date('d/m/Y', strtotime($slot['date']));
-            $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-            $giorno_nome = $giorni[date('w', strtotime($slot['date']))];
-            $slot_time_fmt = date('H:i', strtotime($slot['time']));
-
-            echo "<div class='card mb-3 shadow-sm'><div class='card-body'>"; // Card per slot selezionabile
-            echo "<h4 class='card-title'>{$giorno_nome} {$slot_date_fmt} ore {$slot_time_fmt}</h4>";
-            $related_sel = $slot['related_appointment']; 
-            $zone_id_book = $related_sel['zone_id'] ?? 'N/D_Zone';
-          
-            $ref_time_sel = isset($related_sel['appointment_time']) ? date('H:i', strtotime($related_sel['appointment_time'])) : 'N/D';
-            $type_desc_sel = ($slot['type'] == 'before') ? "Prima app. {$ref_time_sel} in" : "Dopo app. {$ref_time_sel} in";
-            echo "<p class='card-text'><strong>Proposto perché {$type_desc_sel}</strong>: " . htmlspecialchars($related_sel['address'] ?? 'N/D') . "<br>";
-            
-            // Intestazione per le distanze
-            echo "<span style='color:#28a745;font-weight:bold;'>Distanze di viaggio:</span><br>";
-            
-            // 1. Trova lo slot temporale dello slot proposto
-            $app_date = $slot['date'] ?? date('Y-m-d');
-            $app_time = $slot['time'];
-            
-            // 2. Cerca negli appuntamenti di riferimento già trovati per la data corretta
-            $same_day_appointments = [];
-            foreach ($appuntamenti_riferimento as $app_rif) {
-                if ($app_rif['appointment_date'] == $app_date && 
-                    !empty($app_rif['latitude']) && !empty($app_rif['longitude'])) {
-                    $same_day_appointments[] = $app_rif;
-                }
-            }
-            
-            // Ordina gli appuntamenti per orario
-            usort($same_day_appointments, function($a, $b) {
-                return strtotime($a['appointment_time']) - strtotime($b['appointment_time']);
-            });
-            
-            // Trova l'appuntamento più vicino prima e dopo lo slot proposto
-            $app_time_ts = strtotime($app_time);
-            $closest_before = null;
-            $closest_after = null;
-            
-            foreach ($same_day_appointments as $app) {
-                $app_ts = strtotime($app['appointment_time']);
-                
-                if ($app_ts < $app_time_ts) {
-                    // È prima dello slot proposto
-                    if (!$closest_before || strtotime($app['appointment_time']) > strtotime($closest_before['appointment_time'])) {
-                        $closest_before = $app; // Mantiene quello più vicino (più recente)
-                    }
-                } else if ($app_ts > $app_time_ts) {
-                    // È dopo lo slot proposto
-                    if (!$closest_after || strtotime($app['appointment_time']) < strtotime($closest_after['appointment_time'])) {
-                        $closest_after = $app; // Mantiene quello più vicino (più imminente)
-                    }
-                }
-            }
-            
-            // --- Calcola distanze
-$dist_prev = $closest_before ? calculateRoadDistance(
-    $latitude_utente, $longitude_utente,
-    $closest_before['latitude'], $closest_before['longitude']
-) : null;
-$dist_next = $closest_after ? calculateRoadDistance(
-    $latitude_utente, $longitude_utente,
-    $closest_after['latitude'], $closest_after['longitude']
-) : null;
-
-// Determina quale distanza è usata per l'ordinamento (minima tra le due se entrambe esistono)
-if ($dist_prev !== null && $dist_next !== null) {
-    if ($dist_prev <= $dist_next) {
-        $dist_type = 'prev';
-    } else {
-        $dist_type = 'next';
+ foreach ($slots_adiacenti as $item) {
+    $slot = $item['slot_details'];
+    $slot_date_fmt = date('d/m/Y', strtotime($slot['date']));
+    $giorni = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    $giorno_nome = $giorni[date('w', strtotime($slot['date']))];
+    $slot_time_fmt = date('H:i', strtotime($slot['time']));
+    $related_sel = $slot['related_appointment']; 
+    $zone_id_book = $related_sel['zone_id'] ?? 'N/D_Zone';
+    $ref_time_sel = isset($related_sel['appointment_time']) ? date('H:i', strtotime($related_sel['appointment_time'])) : 'N/D';
+    $type_desc_sel = ($slot['type'] == 'before') ? "Prima app. {$ref_time_sel} in" : (($slot['type'] == 'after' || $slot['type'] == 'after_extra') ? "Dopo app. {$ref_time_sel} in" : "Slot speciale");
+    
+    // Evidenziazione rossa per gli slot extra
+    $card_class = 'card mb-3 shadow-sm';
+    if ($slot['type'] == 'after_extra' || isset($slot['extra_warning'])) {
+        $card_class .= ' border-danger';
     }
-} elseif ($dist_prev !== null) {
-    $dist_type = 'prev';
-} elseif ($dist_next !== null) {
-    $dist_type = 'next';
-} else {
-    $dist_type = null;
-}
 
-// Stampa distanze
-if ($dist_prev !== null) {
-    $is_used = ($dist_type == 'prev');
-    $ora_prev = $closest_before ? date('H:i', strtotime($closest_before['appointment_time'])) : $ref_time_sel;
-    echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ora_prev}): " .
-        format_distance_value($dist_prev, $is_used, $display_radius_km) . "</span><br>";
-}
-if ($dist_next !== null) {
-    $is_used = ($dist_type == 'next');
-    $ora_next = $closest_after ? date('H:i', strtotime($closest_after['appointment_time'])) : $ref_time_sel;
-    echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ora_next}): " .
-        format_distance_value($dist_next, $is_used, $display_radius_km) . "</span><br>";
-}
-            
-            echo "<small class='text-muted'>Zona Slot: " . htmlspecialchars($zone_id_book);
+    echo "<div class='$card_class'><div class='card-body'>";
+    echo "<h4 class='card-title'>{$giorno_nome} {$slot_date_fmt} ore {$slot_time_fmt}</h4>";
 
-            // Aggiungi informazioni sulla zona confinante se presente
-            if (isset($slot['related_appointment']['is_neighboring_zone']) && $slot['related_appointment']['is_neighboring_zone']) {
-                echo " <span class='badge bg-info'>Zona confinante</span>";
-            }
+    // Messaggio rosso di warning per gli slot extra
+    if (isset($slot['extra_warning'])) {
+        echo "<div class='alert alert-danger fw-bold mb-2'>{$slot['extra_warning']}</div>";
+    }
 
-            echo "</small></p>";
-            
-            // Bottoni e script per gli slot adiacenti
-            $unique_sfx = preg_replace('/[^a-zA-Z0-9]/','',$slot['date'].$slot['time'].$zone_id_book).rand(100,999);
-            $coll_id = "ag_coll_".$unique_sfx; $cont_id = "ag_cont_".$unique_sfx;
-            
-            // Lasciamo il pulsante Vedi agenda per gli slot incastrati
-            echo "<button class='btn btn-sm btn-outline-info mt-1 me-2' type='button' data-bs-toggle='collapse' data-bs-target='#{$coll_id}' aria-expanded='false'><i class='bi bi-calendar3'></i> Vedi agenda</button>";
-            
-            $nameE=urlencode($name_utente); $surE=urlencode($surname_utente); $phE=urlencode($phone_utente); $addrE=urlencode($address_utente);
-            $book_url = "book_appointment.php?zone_id=".urlencode($zone_id_book)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name=".$nameE."&surname=".$surE."&phone=".$phE;
-            echo "<a href='{$book_url}' class='btn btn-success mt-1 fw-bold'><i class='bi bi-check-circle'></i> Seleziona</a>";
-            
-            // Aggiunta del div collapsable per l'agenda
-            echo "<div class='collapse mt-2' id='{$coll_id}'><div class='card card-body bg-light' id='{$cont_id}'><div class='text-center'><div class='spinner-border spinner-border-sm'></div> Caricamento...</div></div></div>";
-            
-            // Script per caricare l'agenda quando viene espansa
-            echo "<script>
-                document.addEventListener('DOMContentLoaded', function() {
-                    var collapseEl = document.getElementById('{$coll_id}');
-                    var contentEl = document.getElementById('{$cont_id}');
-                    
-                    if (collapseEl && contentEl) {
-                        collapseEl.addEventListener('shown.bs.collapse', function() {
-                            fetch('get_appointments_modal.php', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/x-www-form-urlencoded',
-                                },
-                                body: 'appointment_date={$slot['date']}'
-                            })
-                            .then(function(response) {
-                                if (!response.ok) throw new Error('Errore di rete');
-                                return response.text();
-                            })
-                            .then(function(html) {
-                                contentEl.innerHTML = html;
-                            })
-                            .catch(function(error) {
-                                contentEl.innerHTML = '<div class=\"alert alert-danger\"><p>Si è verificato un errore: ' + error.message + '</p></div>';
-                            });
-                        });
-                    }
-                });
-            </script>";
-            
-            echo "</div></div>";
-            $count_displayed_sel++;
+    echo "<p class='card-text'><strong>Proposto perché {$type_desc_sel}</strong>: " . htmlspecialchars($related_sel['address'] ?? 'N/D') . "<br>";
+
+    // Distanze e dettagli (puoi mantenerli come nel tuo blocco originale)
+    echo "<span style='color:#28a745;font-weight:bold;'>Distanze di viaggio:</span><br>";
+
+    // Trova appuntamenti dello stesso giorno per calcolo distanze
+    $app_date = $slot['date'] ?? date('Y-m-d');
+    $app_time = $slot['time'];
+    $same_day_appointments = [];
+    foreach ($appuntamenti_riferimento as $app_rif) {
+        if ($app_rif['appointment_date'] == $app_date && 
+            !empty($app_rif['latitude']) && !empty($app_rif['longitude'])) {
+            $same_day_appointments[] = $app_rif;
         }
+    }
+    usort($same_day_appointments, function($a, $b) {
+        return strtotime($a['appointment_time']) - strtotime($b['appointment_time']);
+    });
+    $app_time_ts = strtotime($app_time);
+    $closest_before = null; $closest_after = null;
+    foreach ($same_day_appointments as $app) {
+        $app_ts = strtotime($app['appointment_time']);
+        if ($app_ts < $app_time_ts) {
+            if (!$closest_before || strtotime($app['appointment_time']) > strtotime($closest_before['appointment_time'])) {
+                $closest_before = $app;
+            }
+        } else if ($app_ts > $app_time_ts) {
+            if (!$closest_after || strtotime($app['appointment_time']) < strtotime($closest_after['appointment_time'])) {
+                $closest_after = $app;
+            }
+        }
+    }
+
+    // Calcola distanze
+    $dist_prev = $closest_before ? calculateRoadDistance(
+        $latitude_utente, $longitude_utente,
+        $closest_before['latitude'], $closest_before['longitude']
+    ) : null;
+    $dist_next = $closest_after ? calculateRoadDistance(
+        $latitude_utente, $longitude_utente,
+        $closest_after['latitude'], $closest_after['longitude']
+    ) : null;
+
+    if ($dist_prev !== null) {
+        $ora_prev = $closest_before ? date('H:i', strtotime($closest_before['appointment_time'])) : $ref_time_sel;
+        echo "<span style='color:#28a745;'> - Distanza dal precedente ({$ora_prev}): " . number_format($dist_prev, 2) . " km</span><br>";
+    }
+    if ($dist_next !== null) {
+        $ora_next = $closest_after ? date('H:i', strtotime($closest_after['appointment_time'])) : $ref_time_sel;
+        echo "<span style='color:#28a745;'> - Distanza dal successivo ({$ora_next}): " . number_format($dist_next, 2) . " km</span><br>";
+    }
+    
+    echo "<small class='text-muted'>Zona Slot: " . htmlspecialchars($zone_id_book);
+    if (isset($slot['related_appointment']['is_neighboring_zone']) && $slot['related_appointment']['is_neighboring_zone']) {
+        echo " <span class='badge bg-info'>Zona confinante</span>";
+    }
+    echo "</small></p>";
+
+    // Bottoni
+    $unique_sfx = preg_replace('/[^a-zA-Z0-9]/','',$slot['date'].$slot['time'].$zone_id_book).rand(100,999);
+    $coll_id = "ag_coll_".$unique_sfx; $cont_id = "ag_cont_".$unique_sfx;
+    echo "<button class='btn btn-sm btn-outline-info mt-1 me-2' type='button' data-bs-toggle='collapse' data-bs-target='#{$coll_id}' aria-expanded='false'><i class='bi bi-calendar3'></i> Vedi agenda</button>";
+    $nameE=urlencode($name_utente); $surE=urlencode($surname_utente); $phE=urlencode($phone_utente); $addrE=urlencode($address_utente);
+    $book_url = "book_appointment.php?zone_id=".urlencode($zone_id_book)."&date=".urlencode($slot['date'])."&time=".urlencode($slot_time_fmt)."&address=".$addrE."&latitude=".urlencode($latitude_utente)."&longitude=".urlencode($longitude_utente)."&name={$nameE}&surname={$surE}&phone={$phE}";
+    echo "<a href='{$book_url}' class='btn btn-success mt-1 fw-bold'><i class='bi bi-check-circle'></i> Seleziona</a>";
+
+    // Collapsible agenda
+    echo "<div class='collapse mt-2' id='{$coll_id}'><div class='card card-body bg-light' id='{$cont_id}'><div class='text-center'><div class='spinner-border spinner-border-sm'></div> Caricamento...</div></div></div>";
+    echo "<script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var collapseEl = document.getElementById('{$coll_id}');
+            var contentEl = document.getElementById('{$cont_id}');
+            if (collapseEl && contentEl) {
+                collapseEl.addEventListener('shown.bs.collapse', function() {
+                    fetch('get_appointments_modal.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'appointment_date={$slot['date']}'
+                    })
+                    .then(function(response) { if (!response.ok) throw new Error('Errore di rete'); return response.text(); })
+                    .then(function(html) { contentEl.innerHTML = html; })
+                    .catch(function(error) { contentEl.innerHTML = '<div class=\"alert alert-danger\"><p>Si è verificato un errore: ' + error.message + '</p></div>'; });
+                });
+            }
+        });
+    </script>";
+
+    echo "</div></div>";
+    $count_displayed_sel++;
+}
         
         if ($count_displayed_sel == 0) {
             echo "<div class='alert alert-warning text-center mt-3'>Nessuno slot adiacente disponibile.</div>";
