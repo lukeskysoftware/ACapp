@@ -2419,6 +2419,81 @@ echo "</div></div><hr>";
         }
         error_log($log_prefix_main . "FASE A: Fine. Slot ad. validi e nel raggio display: " . count(array_filter($slots_proposti_con_priorita, function($s){ return $s['source'] == 'adjacent_to_existing'; })));
 
+// --- INIZIO LOGICA SLOT EXTRA DOPO LIMITE ZONA ---
+
+$today = date('Y-m-d');
+$sql_zones = "SELECT DISTINCT zone_id FROM cp_appointments WHERE appointment_date = ? AND zone_id != 0";
+$stmt_zones = $conn->prepare($sql_zones);
+$stmt_zones->bind_param("s", $today);
+$stmt_zones->execute();
+$res_zones = $stmt_zones->get_result();
+$zone_ids = [];
+while ($row = $res_zones->fetch_assoc()) {
+    $zone_ids[] = $row['zone_id'];
+}
+$stmt_zones->close();
+
+foreach ($zone_ids as $zone_id) {
+    // Trova l'ultimo appuntamento della giornata nella zona
+    $sql_last = "SELECT * FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? ORDER BY appointment_time DESC LIMIT 1";
+    $stmt_last = $conn->prepare($sql_last);
+    $stmt_last->bind_param("is", $zone_id, $today);
+    $stmt_last->execute();
+    $res_last = $stmt_last->get_result();
+    if ($last_app = $res_last->fetch_assoc()) {
+        $coords = getCoordinatesForAppointment($last_app['id'], $last_app['address']);
+        if ($coords) {
+            $distanza = calculateRoadDistance($latitude_utente, $longitude_utente, $coords['lat'], $coords['lng']);
+            if ($distanza !== false && $distanza <= 3) {
+                // Recupera orario massimo di zona
+                $sql_slot = "SELECT MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ?";
+                $stmt_slot = $conn->prepare($sql_slot);
+                $stmt_slot->bind_param("i", $zone_id);
+                $stmt_slot->execute();
+                $res_slot = $stmt_slot->get_result();
+                $slot_row = $res_slot->fetch_assoc();
+                $zone_max_slot_time = $slot_row ? $slot_row['latest_slot'] : null;
+                $stmt_slot->close();
+                if ($zone_max_slot_time) {
+                    // Calcola lo slot extra (1 ora dopo l'ultimo slot)
+                    $orario_extra = date('H:i:s', strtotime($zone_max_slot_time) + 3600);
+                    // Verifica che non esista già un appuntamento a quell'orario
+                    $sql_check = "SELECT COUNT(*) as count FROM cp_appointments WHERE zone_id = ? AND appointment_date = ? AND appointment_time = ?";
+                    $stmt_check = $conn->prepare($sql_check);
+                    $stmt_check->bind_param("iss", $zone_id, $today, $orario_extra);
+                    $stmt_check->execute();
+                    $res_check = $stmt_check->get_result();
+                    $row_check = $res_check->fetch_assoc();
+                    $stmt_check->close();
+                    if ($row_check['count'] == 0) {
+                        // Proponi slot extra!
+                        $slot_extra = [
+                            'date' => $today,
+                            'time' => $orario_extra,
+                            'type' => 'after_extra',
+                            'related_appointment' => $last_app,
+                            'excluded' => false,
+                            'excluded_reason' => '',
+                            'debug_info' => [],
+                            'extra_warning' => "Slot fuori orario zona: proposto perché l'indirizzo è entro 3km dall’ultimo appuntamento della giornata (ID: {$last_app['id']})"
+                        ];
+                        $slots_proposti_con_priorita[] = [
+                            'slot_details' => $slot_extra,
+                            'priority_score' => 10000 + $distanza,
+                            'travel_distance' => $distanza,
+                            'source' => 'extra_after_last'
+                        ];
+                        $tutti_gli_slot_adiacenti_per_tabella[] = $slot_extra;
+                    }
+                }
+            }
+        }
+    }
+    $stmt_last->close();
+}
+// --- FINE LOGICA SLOT EXTRA ---
+
+
         // -------- CHIAMATA A displayAppointmentDetails (ORIGINALE) --------
         if (function_exists('displayAppointmentDetails')) {
             if (!empty($appuntamenti_riferimento)) {
