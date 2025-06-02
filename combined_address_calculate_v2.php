@@ -1396,6 +1396,7 @@ function isTimeSlotAvailable($zone_id, $date, $time, $duration = 60) {
             )";
     
     $stmt1 = $conn->prepare($sql1);
+    $count1 = 0; 
     if (!$stmt1) {
         error_log("Errore nella preparazione della query isTimeSlotAvailable (stessa zona): " . $conn->error);
         return false;
@@ -3170,16 +3171,16 @@ echo "</div>";
 
 if ($proceedSearchAnyway_div_open) echo "</div>"; // Chiude #proceedSearchAnyway
 echo "</div>"; // Chiude il container principale iniziato dopo il try
-
-
-    } catch (Exception $e) {
+} 
+catch (Exception $e) {
         error_log($log_prefix_main . "ECCEZIONE: " . $e->getMessage() . " File: " . $e->getFile() . " Riga: " . $e->getLine());
         if (ob_get_level() > 0) ob_end_clean(); 
         echo '<!DOCTYPE html><html lang="it">...mostra errore critico HTML...</html>'; // Sostituisci con il tuo HTML di errore
     }
     error_log($log_prefix_main . "FINE.");
     exit; 
-} // Fine del blocco POST principale
+    }
+// Fine del blocco POST principale
 
         
         if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['zone_id']) && isset($_POST['date']) && isset($_POST['time']) && isset($_POST['name']) && isset($_POST['surname']) && isset($_POST['phone']) && isset($_POST['address'])) {
