@@ -319,10 +319,10 @@ if ($auto_update_date) {
  *
  * @param float $user_latitude Latitudine dell'utente
  * @param float $user_longitude Longitudine dell'utente
- * @param float $radius_km Raggio in km (default 7)
+ * @param float $radius_km Raggio in km (default 3)
  * @return array Array di appuntamenti, ognuno con 'excluded_reason' popolato se non idoneo come riferimento.
  */
-function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 7) {
+function findNearbyAppointments($user_latitude, $user_longitude, $radius_km = 3) {
     global $conn;
     $appointments_evaluated = []; 
     $debug_info_collection = []; 
@@ -1198,9 +1198,9 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
             if ($distance_from_prev === false || $distance_from_prev < 0) { // Assumendo che -1 sia errore
                 $exclude_before = true;
                 $before_slot_excluded_reason = "Errore calcolo distanza da app. precedente ({$prev_appointment_details_for_distance['id']}).";
-            } elseif ($distance_from_prev > 7) {
+            } elseif ($distance_from_prev > 3) {
                 $exclude_before = true;
-                $before_slot_excluded_reason = "Distanza da app. precedente ({$prev_appointment_details_for_distance['id']}: " . number_format($distance_from_prev,1) . " km) > 7 km";
+                $before_slot_excluded_reason = "Distanza da app. precedente ({$prev_appointment_details_for_distance['id']}: " . number_format($distance_from_prev,1) . " km) > 3 km";
             }
         } else {
             $exclude_before = true;
@@ -1280,9 +1280,9 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
             if ($distance_to_next === false || $distance_to_next < 0) { // Assumendo che -1 sia errore
                 $exclude_after = true;
                 $after_slot_excluded_reason = "Errore calcolo distanza da app. successivo ({$next_appointment_details_for_distance['id']}).";
-            } elseif ($distance_to_next > 7) {
+            } elseif ($distance_to_next > 3) {
                 $exclude_after = true;
-                $after_slot_excluded_reason = "Distanza da app. successivo ({$next_appointment_details_for_distance['id']}: " . number_format($distance_to_next,1) . " km) > 7 km";
+                $after_slot_excluded_reason = "Distanza da app. successivo ({$next_appointment_details_for_distance['id']}: " . number_format($distance_to_next,1) . " km) > 3 km";
             }
         } else {
             $exclude_after = true;
@@ -1622,8 +1622,8 @@ if ($prevAppointment && !empty($prevAppointment['address'])) {
             return false;
         }
         
-        if ($distance > 7) {
-            error_log("Appuntamento non disponibile: distanza stradale dall'appuntamento precedente ($distance km) > 7 km");
+        if ($distance > 3) {
+            error_log("Appuntamento non disponibile: distanza stradale dall'appuntamento precedente ($distance km) > 3 km");
             return false;
         }
     }
@@ -1644,8 +1644,8 @@ if ($nextAppointment && !empty($nextAppointment['address'])) {
             return false;
         }
         
-        if ($distance > 7) {
-            error_log("Appuntamento non disponibile: distanza stradale dall'appuntamento successivo ($distance km) > 7 km");
+        if ($distance > 3) {
+            error_log("Appuntamento non disponibile: distanza stradale dall'appuntamento successivo ($distance km) > 3 km");
             return false;
         }
     }
@@ -2073,8 +2073,8 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
 
                         error_log("Data " . $formattedDate . " - Appuntamento ID " . $appId . " - Distanza: " . $distance . " km");
 
-                        if ($distance > 7) {
-                            error_log("Data " . $formattedDate . " saltata: UNICO appuntamento esistente a più di 7km (" . $distance . " km)");
+                        if ($distance > 3) {
+                            error_log("Data " . $formattedDate . " saltata: UNICO appuntamento esistente a più di 3km (" . $distance . " km)");
                             continue; // Skip this date
                         } else {
                             error_log("Data " . $formattedDate . " - UNICO appuntamento esistente entro 7km (" . $distance . " km)");
@@ -2099,9 +2099,9 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
 
                             error_log("Data " . $formattedDate . " - Appuntamento ID " . $app['id'] . " - Distanza: " . $distance . " km");
 
-                            if ($distance > 7) {
+                            if ($distance > 3) {
                                 $allWithinRadius = false;
-                                error_log("Data " . $formattedDate . " saltata: appuntamento esistente a più di 7km");
+                                error_log("Data " . $formattedDate . " saltata: appuntamento esistente a più di 3km");
                                 break;
                             }
                         } else {
@@ -2276,8 +2276,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
     $address_utente = trim($_POST['address']);
     $latitude_utente = (float)$_POST['latitude'];
     $longitude_utente = (float)$_POST['longitude'];
-    $display_radius_km = isset($_POST['display_radius']) ? (int)$_POST['display_radius'] : 7; 
-    if ($display_radius_km <= 0) $display_radius_km = 7;
+    $display_radius_km = isset($_POST['display_radius']) ? (int)$_POST['display_radius'] : 3; 
+    if ($display_radius_km <= 0) $display_radius_km = 3;
     $name_utente = isset($_POST['name']) ? trim($_POST['name']) : ($name ?? ''); // $name da GET originale
     $surname_utente = isset($_POST['surname']) ? trim($_POST['surname']) : ($surname ?? ''); // $surname da GET originale
     $phone_utente = isset($_POST['phone']) ? trim($_POST['phone']) : ($phone ?? ''); // $phone da GET originale
@@ -3444,7 +3444,7 @@ $(document).ready(function() {
                 <!-- NUOVO CAMPO PER IL RAGGIO DI VISUALIZZAZIONE -->
                 <div class="mb-3">
                     <label for="display_radius" class="form-label fw-bold">Raggio Ricerca/Visualizzazione (km):</label>
-                    <input type="number" id="display_radius" name="display_radius" class="form-control" value="7" min="1" max="50">
+                    <input type="number" id="display_radius" name="display_radius" class="form-control" value="3" min="1" max="50">
                 </div>
                 <input type="hidden" id="name" name="name" value="<?php echo htmlspecialchars($name); ?>">
                 <input type="hidden" id="surname" name="surname" value="<?php echo htmlspecialchars($surname); ?>">
