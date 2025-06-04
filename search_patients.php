@@ -86,7 +86,7 @@ $search_date = isset($_GET['search_date']) ? $_GET['search_date'] : '';
 <body>
 <?php include 'menu.php'; ?>
 <div class="container mt-4">
-    <h2 class="mb-4 text-primary">Ricerca Pazienti e Appuntamenti</h2>
+    <h1 class="mb-4 text-center" style="color:#222;">Ricerca Pazienti e Appuntamenti</h1>
     <form method="GET" class="mb-4" id="searchForm">
         <div class="row mb-3">
             <div class="col-md-4">
@@ -108,8 +108,9 @@ $search_date = isset($_GET['search_date']) ? $_GET['search_date'] : '';
         </div>
         <div class="row">
             <div class="col-md-10"></div>
-            <div class="col-md-2 text-end">
+            <div class="col-md-2 text-end" style="display: flex; gap: 6px;">
                 <button type="submit" class="btn btn-primary">Cerca</button>
+                <button type="button" class="btn btn-outline-secondary" id="clearFiltersBtn">Cancella filtri</button>
             </div>
         </div>
     </form>
@@ -119,6 +120,19 @@ $search_date = isset($_GET['search_date']) ? $_GET['search_date'] : '';
             document.getElementById('search_by_patient').style.display = this.value == 'patient' ? '' : 'none';
             document.getElementById('search_by_date').style.display = this.value == 'date' ? '' : 'none';
         });
+    });
+
+    // Bottone cancella filtri
+    document.getElementById('clearFiltersBtn').addEventListener('click', function() {
+        // Svuota i campi della form
+        if(document.querySelector('input[name="query"]')) document.querySelector('input[name="query"]').value = '';
+        if(document.querySelector('input[name="search_date"]')) document.querySelector('input[name="search_date"]').value = '';
+        // Reset radio su "Cerca Paziente"
+        document.getElementById('typePatient').checked = true;
+        document.getElementById('search_by_patient').style.display = '';
+        document.getElementById('search_by_date').style.display = 'none';
+        // Ricarica la pagina SENZA parametri GET
+        window.location.href = window.location.pathname;
     });
     </script>
 
@@ -219,8 +233,13 @@ if ($appointments) {
         $appDateTime = strtotime($app['appointment_date'] . ' ' . $app['appointment_time']);
         $now = time();
         if ($appDateTime > $now) {
-            echo " [<a href='manage_appointments.php?highlight_appointment={$app['id']}'>Gestisci Appuntamento</a>]";
-        }
+    echo " <a href='manage_appointments.php?highlight_appointment={$app['id']}' 
+            class='btn btn-sm btn-outline-info px-2 py-0 ms-2' 
+            style='font-size:0.8em;line-height:1.1;vertical-align:baseline;' 
+            title='Gestisci Appuntamento'>
+            <i class='bi bi-pencil-square'></i> Gestisci appuntamento
+        </a>";
+}
         echo "</li>";
     }
 } else {
