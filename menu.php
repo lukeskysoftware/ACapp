@@ -35,7 +35,14 @@ $isAdmin = ($_SESSION['user_id'] == 6 || $_SESSION['user_id'] == 9);
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-
+<style type="text/css">
+    
+    .bi {
+	font-size: 120%;
+	padding: 0 3px 0 7px;
+	border-left: 1px solid grey;
+}
+</style>
 
 <nav class="navbar navbar-expand-lg navbar-light bg-light">
     <div class="container-fluid">
@@ -73,6 +80,9 @@ $isAdmin = ($_SESSION['user_id'] == 6 || $_SESSION['user_id'] == 9);
                 </li>
                 <li class="nav-item">
                     <a class="nav-link text-dark" href="view_appointments.php"><i class="bi bi-journal-text" style="color: DodgerBlue"></i>Vedi Appuntamenti</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-dark" href="search_patients.php"><i class="bi bi-search" style="color: #4fc1e9;"></i>Ricerca Pazienti</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link text-dark" href="logout.php"><i class="bi bi-x"></i>Logout</a>
