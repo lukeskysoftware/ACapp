@@ -27,6 +27,24 @@ if ($result && mysqli_num_rows($result) > 0) {
 $name = isset($_GET['name']) ? $_GET['name'] : '';
 $surname = isset($_GET['surname']) ? $_GET['surname'] : '';
 $phone = isset($_GET['phone']) ? $_GET['phone'] : '';
+$address = isset($_GET['address']) ? $_GET['address'] : '';
+// Precompila lat/lng se address presente e trovato in address_cache
+$prefill_lat = '';
+$prefill_lng = '';
+if ($address) {
+    $sql = "SELECT latitude, longitude FROM address_cache WHERE address = ? LIMIT 1";
+    $stmt = $conn->prepare($sql);
+    if ($stmt) {
+        $stmt->bind_param("s", $address);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($row = $result->fetch_assoc()) {
+            $prefill_lat = $row['latitude'];
+            $prefill_lng = $row['longitude'];
+        }
+        $stmt->close();
+    }
+}
 
 // Set locale to Italian
 setlocale(LC_TIME, 'it_IT.UTF-8');
@@ -3452,15 +3470,15 @@ $(document).ready(function() {
             <form id="addressForm" method="POST" action="combined_address_calculate_v2.php" class="mb-4">
                 <div class="mb-3">
                     <label for="address" class="form-label fw-bold">Indirizzo:</label>
-                    <input type="text" id="address" name="address" class="form-control" required>
+                    <input type="text" id="address" name="address" class="form-control" required value="<?php echo htmlspecialchars($address); ?>">
                 </div>
                 <div class="mb-3">
                     <label for="latitude" class="form-label fw-bold">Latitudine:</label>
-                    <input type="text" id="latitude" name="latitude" class="form-control" readonly>
+                    <input type="text" id="latitude" name="latitude" class="form-control" readonly value="<?php echo htmlspecialchars($prefill_lat); ?>">
                 </div>
                 <div class="mb-3">
                     <label for="longitude" class="form-label fw-bold">Longitudine:</label>
-                    <input type="text" id="longitude" name="longitude" class="form-control" readonly>
+                    <input type="text" id="longitude" name="longitude" class="form-control" readonly value="<?php echo htmlspecialchars($prefill_lng); ?>">
                 </div>
                 <!-- NUOVO CAMPO PER IL RAGGIO DI VISUALIZZAZIONE -->
                 <div class="mb-3">
@@ -3492,30 +3510,30 @@ $(document).ready(function() {
                                 <div style="display: flex; flex-wrap: wrap; gap: 15px;">
                     <div style="flex: 1; min-width: 250px;">
                         <label for="form_name">Nome:</label>
-                        <input type="text" id="form_name" name="name" style="width: 100%;" required>
+                        <input type="text" id="form_name" name="name" style="width: 100%;" required value="<?php echo htmlspecialchars($name); ?>">
                     </div>
                     <div style="flex: 1; min-width: 250px;">
                         <label for="form_surname">Cognome:</label>
-                        <input type="text" id="form_surname" name="surname" style="width: 100%;" required>
+                        <input type="text" id="form_surname" name="surname" style="width: 100%;" required value="<?php echo htmlspecialchars($surname); ?>">
                     </div>
                 </div>
                 
                 <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px;">
                     <div style="flex: 1; min-width: 250px;">
                         <label for="form_phone">Telefono:</label>
-                        <input type="text" id="form_phone" name="phone" style="width: 100%;" required>
+                       <input type="text" id="form_phone" name="phone" style="width: 100%;" required value="<?php echo htmlspecialchars($phone); ?>">
                     </div>
                     <div style="flex: 1; min-width: 250px;">
                         <label for="form_address">Indirizzo:</label>
-                        <input type="text" id="form_address" name="address" readonly style="width: 100%;">
+                        <input type="text" id="form_address" name="address" readonly style="width: 100%;" value="<?php echo htmlspecialchars($address); ?>">
                     </div>
                 </div>
-                <input type="hidden" id="form_latitude" name="latitude">
-                <input type="hidden" id="form_longitude" name="longitude">
+                <input type="hidden" id="form_latitude" name="latitude" value="<?php echo htmlspecialchars($prefill_lat); ?>">
+                <input type="hidden" id="form_longitude" name="longitude" value="<?php echo htmlspecialchars($prefill_lng); ?>">
                 
                 <div style="margin-top: 15px;">
                     <label for="notes">Note:</label>
-                    <textarea id="notes" name="notes" rows="4" style="width: 100%;"></textarea>
+                    <textarea id="notes" name="notes" rows="4" style="width: 100%;"><?php echo isset($_POST['notes']) ? htmlspecialchars($_POST['notes']) : ''; ?></textarea>
                 </div>
                 
                 <div style="margin-top: 20px; text-align: center;">
