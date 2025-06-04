@@ -5,6 +5,8 @@ ob_start();
 include 'db.php';
 include 'utils_appointment.php';
 
+
+
 // Fetch Google Maps API key from the config table
 $apiKey = '';
 $sql = "SELECT value FROM config WHERE name = 'GOOGLE_MAPS_API_KEY'";
@@ -22,10 +24,14 @@ mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 $nome = isset($_GET['name']) ? htmlspecialchars($_GET['name']) : "";
 $cognome = isset($_GET['surname']) ? htmlspecialchars($_GET['surname']) : "";
 $telefono = isset($_GET['phone']) ? htmlspecialchars($_GET['phone']) : "";
-$indirizzo = $data = $ora = $zona = $notes = "";
+$indirizzo = isset($_GET['address']) ? htmlspecialchars($_GET['address']) : "";
+$data = $ora = $zona = $notes = "";
 $success = $error = "";
 
-// Function to search patients by surname
+// Decidi se mostrare la form completa subito
+$showForm = (!empty($nome) && !empty($cognome) && !empty($telefono));
+
+// Function to search patients by surname (AJAX)
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     $surname_search = htmlspecialchars($_POST['surname_search']);
     $stmt = $conn->prepare("SELECT p.id, p.name, p.surname, p.phone, a.address 
@@ -47,14 +53,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['surname_search'])) {
     foreach ($patients as $patient) {
         $key = $patient['surname'] . '|' . $patient['address'];
         if (!isset($seen[$key])) {
-            echo '<div style="cursor: pointer;" onclick="selectPatient(' . $patient['id'] . ', \'' . $patient['name'] . '\', \'' . $patient['surname'] . '\', \'' . $patient['phone'] . '\', \'' . $patient['address'] . '\')">' . $patient['name'] . ' ' . $patient['surname'] . '</div>';
+            echo '<div style="cursor: pointer;" onclick="selectPatient(' . $patient['id'] . ', \'' . addslashes($patient['name']) . '\', \'' . addslashes($patient['surname']) . '\', \'' . addslashes($patient['phone']) . '\', \'' . addslashes($patient['address']) . '\')">';
+            echo htmlspecialchars($patient['surname'] . ' ' . $patient['name'] . " (" . $patient['phone'] . ") - " . $patient['address']);
+            echo '</div>';
             $seen[$key] = true;
         }
     }
     echo '</div>';
     exit;
 }
-
 
 // Function to insert a new appointment
 if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
@@ -67,11 +74,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && !isset($_POST['surname_search'])) {
     $zona = isset($_POST['zone_id']) ? htmlspecialchars($_POST['zone_id']) : 0; // Imposta a 0 se non esiste
     $notes = htmlspecialchars($_POST['notes']);
     
-     // Prima verifica se il giorno/ora è disponibile (non è un unavailable slot)
-     // Calcola l'orario di fine (ad esempio, 1 ora dopo l'inizio)
-$end_time = date('H:i:s', strtotime($ora . ' +1 hour'));
-$availability = isSlotAvailable($data, $ora, $end_time, $zona);
-   // $availability = isSlotAvailable($data, $ora, null, $zona);
+    // Prima verifica se il giorno/ora è disponibile (non è un unavailable slot)
+    $end_time = date('H:i:s', strtotime($ora . ' +1 hour'));
+    $availability = isSlotAvailable($data, $ora, $end_time, $zona);
     if (!$availability['available']) {
         $error = "Impossibile prenotare l'appuntamento: " . $availability['reason'];
     } else {
@@ -87,51 +92,49 @@ $availability = isSlotAvailable($data, $ora, $end_time, $zona);
             if ($row['count'] > 0) {
                 $error = "Esiste già un appuntamento nella stessa data e ora.";
             } else {
-            // Check if the patient already exists
-            $stmt = $conn->prepare("SELECT id FROM cp_patients WHERE name = ? AND surname = ? AND phone = ?");
-            if ($stmt === false) {
-                $error = 'Errore nella preparazione della query: ' . $conn->error;
-            } else {
-                $stmt->bind_param("sss", $nome, $cognome, $telefono);
-                $stmt->execute();
-                $result = $stmt->get_result();
-                if ($result->num_rows > 0) {
-                    $row = $result->fetch_assoc();
-                    $patient_id = $row['id'];
+                // Check if the patient already exists
+                $stmt = $conn->prepare("SELECT id FROM cp_patients WHERE name = ? AND surname = ? AND phone = ?");
+                if ($stmt === false) {
+                    $error = 'Errore nella preparazione della query: ' . $conn->error;
                 } else {
-                    // If the patient does not exist, create a new one
-                    $stmt = $conn->prepare("INSERT INTO cp_patients (name, surname, phone) VALUES (?, ?, ?)");
-                    if ($stmt === false) {
-                        $error = 'Errore nella preparazione della query: ' . $conn->error;
+                    $stmt->bind_param("sss", $nome, $cognome, $telefono);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    if ($result->num_rows > 0) {
+                        $row = $result->fetch_assoc();
+                        $patient_id = $row['id'];
                     } else {
-                        $stmt->bind_param("sss", $nome, $cognome, $telefono);
-                        $stmt->execute();
-                        $patient_id = $stmt->insert_id;
-                    }
-                }
-
-                // Insert appointment data into the database
-                if (!$error) {
-                    $stmt = $conn->prepare("INSERT INTO cp_appointments (patient_id, appointment_date, appointment_time, address, zone_id, notes) VALUES (?, ?, ?, ?, ?, ?)");
-                    if ($stmt === false) {
-                        $error = 'Errore nella preparazione della query: ' . $conn->error;
-                    } else {
-                        $stmt->bind_param("isssis", $patient_id, $data, $ora, $indirizzo, $zona, $notes);
-
-                        if ($stmt->execute()) {
-                            $success = "Nuovo appuntamento inserito con successo";
+                        // If the patient does not exist, create a new one
+                        $stmt = $conn->prepare("INSERT INTO cp_patients (name, surname, phone) VALUES (?, ?, ?)");
+                        if ($stmt === false) {
+                            $error = 'Errore nella preparazione della query: ' . $conn->error;
                         } else {
-                            $error = "Errore: " . $stmt->error;
+                            $stmt->bind_param("sss", $nome, $cognome, $telefono);
+                            $stmt->execute();
+                            $patient_id = $stmt->insert_id;
                         }
+                    }
 
-                        // Close the connection
-                        $stmt->close();
+                    // Insert appointment data into the database
+                    if (!$error) {
+                        $stmt = $conn->prepare("INSERT INTO cp_appointments (patient_id, appointment_date, appointment_time, address, zone_id, notes) VALUES (?, ?, ?, ?, ?, ?)");
+                        if ($stmt === false) {
+                            $error = 'Errore nella preparazione della query: ' . $conn->error;
+                        } else {
+                            $stmt->bind_param("isssis", $patient_id, $data, $ora, $indirizzo, $zona, $notes);
+
+                            if ($stmt->execute()) {
+                                $success = "Nuovo appuntamento inserito con successo";
+                            } else {
+                                $error = "Errore: " . $stmt->error;
+                            }
+                            $stmt->close();
+                        }
                     }
                 }
             }
         }
     }
-}
     $conn->close();
 }
 ?>
@@ -152,9 +155,6 @@ $availability = isSlotAvailable($data, $ora, $end_time, $zona);
         }
         .card {
             margin-top: 20px;
-        }
-        #appointmentSection {
-            display: <?php echo $success ? 'none' : 'block'; ?>;
         }
     </style>
     <script>
@@ -266,15 +266,17 @@ $availability = isSlotAvailable($data, $ora, $end_time, $zona);
                             </div>
                         <?php endif; ?>
                         <div id="appointmentSection">
-                            <form method="POST" action="insert_appointment.php">
-                                <div class="mb-3">
-                                    <label for="surname_search" class="form-label">Cerca Paziente per Cognome:</label>
-                                    <input type="text" id="surname_search" name="surname_search" class="form-control" oninput="searchSurname()">
-                                </div>
-                                <div id="patientsList"></div>
-                            </form>
-                            <button onclick="skipResults()" class="btn btn-secondary">Salta la ricerca e crea nuovo appuntamento</button>
-                            <form method="POST" action="insert_appointment.php" id="appointmentForm" style="display:none;">
+                            <?php if (!$showForm): ?>
+                                <form method="POST" action="insert_appointment.php">
+                                    <div class="mb-3">
+                                        <label for="surname_search" class="form-label">Cerca Paziente per Cognome:</label>
+                                        <input type="text" id="surname_search" name="surname_search" class="form-control" oninput="searchSurname()">
+                                    </div>
+                                    <div id="patientsList"></div>
+                                </form>
+                                <button onclick="skipResults()" class="btn btn-secondary">Salta la ricerca e crea nuovo appuntamento</button>
+                            <?php endif; ?>
+                            <form method="POST" action="insert_appointment.php" id="appointmentForm" style="<?php echo $showForm ? '' : 'display:none;'; ?>">
                                 <input type="hidden" name="zone_id" value="0">
                                 <div class="mb-3">
                                     <label for="data" class="form-label">Data:</label>
@@ -298,7 +300,8 @@ $availability = isSlotAvailable($data, $ora, $end_time, $zona);
                                 </div>
                                 <div class="mb-3">
                                     <label for="indirizzo" class="form-label">Indirizzo:</label>
-                                    <input type="text" id="indirizzo" name="indirizzo" class="form-control pac-target-input" placeholder="Inserisci una posizione" autocomplete="off" required>
+                                    
+                                    <input type="text" id="indirizzo" name="indirizzo" class="form-control pac-target-input" placeholder="Inserisci una posizione" autocomplete="off" value="<?php echo $indirizzo; ?>" required>
                                 </div>
                                 <div class="mb-3">
                                     <label for="notes" class="form-label">Note:</label>
@@ -316,3 +319,4 @@ $availability = isSlotAvailable($data, $ora, $end_time, $zona);
     </div>
 </body>
 </html>
+<?php ob_end_flush(); ?>
