@@ -1330,7 +1330,7 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
  * @param int $buffer_minutes
  * @return array
  */
-function findOptimizedMixedDaySlots($new_lat, $new_lng, $radius_km = $display_radius_km, $buffer_minutes = 60) {
+function findOptimizedMixedDaySlots($new_lat, $new_lng, $radius_km = 3, $buffer_minutes = 60) {
     global $conn;
     $results = [];
     $today = date('Y-m-d');
@@ -3218,7 +3218,7 @@ usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento) {
     
     
     // --- SLOT GIORNATE MISTE OTTIMIZZATE (proposte automatiche) ---
-$mixed_slots = findOptimizedMixedDaySlots($latitude_utente, $longitude_utente, $display_radius_km, 60);
+$mixed_slots = findOptimizedMixedDaySlots($latitude_utente, $longitude_utente,  $display_radius_km, 60);
 if (!empty($mixed_slots)) {
     echo "<h3 class='mb-3 mt-4 text-center text-success'>Slot ottimizzati in giornate miste (altre zone)</h3>";
     foreach ($mixed_slots as $s) {
