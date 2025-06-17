@@ -1316,6 +1316,120 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     }
     return $available_slots;
 }
+
+
+
+/**
+ * Trova slot in giornate di altre zone dove esistono già appuntamenti 
+ * e almeno uno è entro $radius_km dal nuovo indirizzo.
+ * Ritorna un array di slot: data, orario, zona, motivazione.
+ *
+ * @param float $new_lat
+ * @param float $new_lng
+ * @param int $radius_km
+ * @param int $buffer_minutes
+ * @return array
+ */
+function findOptimizedMixedDaySlots($new_lat, $new_lng, $radius_km = 3, $buffer_minutes = 60) {
+    global $conn;
+    $results = [];
+    $today = date('Y-m-d');
+
+    // Trova tutte le giornate future con appuntamenti
+    $sql_dates = "SELECT DISTINCT appointment_date FROM cp_appointments WHERE appointment_date >= ? ORDER BY appointment_date ASC";
+    $stmt_dates = $conn->prepare($sql_dates);
+    $stmt_dates->bind_param("s", $today);
+    $stmt_dates->execute();
+    $res_dates = $stmt_dates->get_result();
+    $date_list = [];
+    while ($row = $res_dates->fetch_assoc()) {
+        $date_list[] = $row['appointment_date'];
+    }
+    $stmt_dates->close();
+
+    foreach ($date_list as $thedate) {
+        // Prendi tutti gli appuntamenti di quella giornata (tutte zone)
+        $sql = "SELECT id, appointment_time, address, zone_id FROM cp_appointments WHERE appointment_date = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("s", $thedate);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $apps = [];
+        while ($a = $res->fetch_assoc()) {
+            $coords = getCoordinatesFromAddress($a['address'], $a['id']);
+            if (!$coords) continue;
+            $a['latitude'] = $coords['lat'];
+            $a['longitude'] = $coords['lng'];
+            $apps[] = $a;
+        }
+        $stmt->close();
+        if (empty($apps)) continue;
+
+        // Trova slot liberi in tutte le zone di questi appuntamenti
+        $zone_ids = array_unique(array_column($apps, 'zone_id'));
+        foreach ($zone_ids as $zone_id) {
+            // Prendi slot operativi della zona per quel giorno della settimana
+            $day_of_week = date('N', strtotime($thedate));
+            $sql_slot = "SELECT time FROM cp_slots WHERE zone_id = ? AND day = ?";
+            $stmt_slot = $conn->prepare($sql_slot);
+            $stmt_slot->bind_param("is", $zone_id, $day_of_week);
+            $stmt_slot->execute();
+            $res_slot = $stmt_slot->get_result();
+            $zone_slots = [];
+            while ($row = $res_slot->fetch_assoc()) $zone_slots[] = $row['time'];
+            $stmt_slot->close();
+            if (empty($zone_slots)) continue;
+
+            // Prendi orari già occupati in questa zona e data
+            $occupied = [];
+            foreach ($apps as $a) {
+                if ($a['zone_id'] == $zone_id) $occupied[] = $a['appointment_time'];
+            }
+
+            // Per ogni slot libero, controlla compatibilità logistica
+            foreach ($zone_slots as $slot_time) {
+                if (in_array($slot_time, $occupied)) continue; // slot occupato
+                // Il nuovo indirizzo sarebbe entro il raggio da almeno uno degli appuntamenti di quella giornata?
+                foreach ($apps as $a) {
+                    $dist = calculateRoadDistance($new_lat, $new_lng, $a['latitude'], $a['longitude']);
+                    if ($dist === false || $dist > $radius_km) continue;
+                    // Controlla anche buffer temporale
+                    $conflict = false;
+                    foreach ($apps as $b) {
+                        if ($b['zone_id'] != $zone_id) continue;
+                        $dt1 = strtotime($thedate.' '.$slot_time);
+                        $dt2 = strtotime($thedate.' '.$b['appointment_time']);
+                        if (abs($dt1 - $dt2) < $buffer_minutes*60) $conflict = true;
+                    }
+                    if ($conflict) continue;
+                    // Verifica che non sia slot unavailable
+                    $slot_end = date('H:i:s', strtotime($slot_time) + $buffer_minutes*60);
+                    $availability = isSlotAvailable($thedate, $slot_time, $slot_end, $zone_id);
+                    if (!$availability['available']) continue;
+                    // Proponi lo slot!
+                    $results[] = [
+                        'date' => $thedate,
+                        'time' => $slot_time,
+                        'zone_id' => $zone_id,
+                        'motivation' => "Ottimizzato: slot vicino a un appuntamento già presente ($dist km)",
+                        'distance' => $dist
+                    ];
+                    break; // basta che uno sia vicino
+                }
+            }
+        }
+    }
+    // Ordina per data e ora
+    usort($results, function($a, $b) {
+        $dtA = strtotime($a['date'].' '.$a['time']);
+        $dtB = strtotime($b['date'].' '.$b['time']);
+        return $dtA <=> $dtB;
+    });
+    return $results;
+}
+
+
+
         // Function to get slots for a specific zone
 function getSlotsForZone($zoneId) {
     global $conn;
@@ -3100,6 +3214,30 @@ usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento) {
         
         echo "<hr class='my-4'>";
     }
+    
+    
+    
+    // --- SLOT GIORNATE MISTE OTTIMIZZATE (proposte automatiche) ---
+$mixed_slots = findOptimizedMixedDaySlots($latitude_utente, $longitude_utente, 3, 60);
+if (!empty($mixed_slots)) {
+    echo "<h3 class='mb-3 mt-4 text-center text-success'>Slot ottimizzati in giornate miste (altre zone)</h3>";
+    foreach ($mixed_slots as $s) {
+        $giorno_nome = giornoSettimana($s['date']);
+        $time_fmt = date('H:i', strtotime($s['time']));
+        echo "<div class='card mb-2 border-success'><div class='card-body'>";
+        echo "<b>{$giorno_nome} {$s['date']} ore {$time_fmt}</b> (Zona ID: {$s['zone_id']})<br>";
+        echo "<span class='badge bg-success'>{$s['motivation']}</span> ";
+        echo "<span class='ms-2'><i class='bi bi-geo-alt'></i> Distanza: <b>" . number_format($s['distance'],1) . " km</b></span><br>";
+        // bottone prenota, simile agli altri slot
+        $book_url = "book_appointment.php?zone_id={$s['zone_id']}&date={$s['date']}&time={$s['time']}&address=".urlencode($address_utente)."&latitude={$latitude_utente}&longitude={$longitude_utente}&name=".urlencode($name_utente)."&surname=".urlencode($surname_utente)."&phone=".urlencode($phone_utente);
+        echo "<a href='{$book_url}' class='btn btn-success mt-2 fw-bold'><i class='bi bi-check-circle'></i> Seleziona</a>";
+        echo "</div></div>";
+    }
+}
+    
+    
+    
+    
     
 // 2. Poi mostra gli slot raggruppati per zona
 echo "<h3 class='text-center mb-3 mt-4'>Date disponibili per zona di appartenenza</h3>";
