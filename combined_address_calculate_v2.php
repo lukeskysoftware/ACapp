@@ -49,6 +49,27 @@ if ($address) {
 // Set locale to Italian
 setlocale(LC_TIME, 'it_IT.UTF-8');
 
+
+// Funzione batch che aggiorna la cache indirizzi per tutti gli appuntamenti futuri senza lat/lng
+function batchUpdateAddressCache($conn) {
+    $sql = "SELECT a.id, a.address
+            FROM cp_appointments a
+            LEFT JOIN address_cache c ON a.id = c.appointment_id
+            WHERE (c.latitude IS NULL OR c.longitude IS NULL OR c.latitude = '' OR c.longitude = '')
+              AND a.address != ''";
+    $result = $conn->query($sql);
+    $count = 0;
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            getCoordinatesFromAddress($row['address'], $row['id']);
+            $count++;
+        }
+        error_log('BatchUpdateAddressCache: aggiornati ' . $count . ' indirizzi senza lat/lng.');
+    } else {
+        error_log('BatchUpdateAddressCache: errore query: ' . $conn->error);
+    }
+}
+
    /**
  * Funzione per calcolare la distanza stradale tramite Google Maps API con firma digitale
  * @param float $origin_lat Latitudine dell'origine
@@ -2365,6 +2386,7 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                   
 // Gestione del POST per la ricerca di appuntamenti
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
+        batchUpdateAddressCache($conn);
     // Validazione iniziale delle coordinate (come nel tuo originale adattato)
     if (!isset($_POST['latitude']) || !isset($_POST['longitude']) || empty($_POST['latitude']) || empty($_POST['longitude'])) {
         if (ob_get_level() > 0) ob_end_clean();
@@ -2503,12 +2525,13 @@ echo "</div></div><hr>";
                     $tutti_gli_slot_adiacenti_per_tabella[] = ['type' => 'N/A_REF_EXCLUDED', 'related_appointment' => $ref_app, 'excluded' => true, 'excluded_reason' => "Rif. escluso da findNearby: " . $ref_app['excluded_reason'], 'debug_info' => ['reason' => $ref_app['excluded_reason']]];
                     continue;
                 }
-                if (!isset($ref_app['zone_id']) || $ref_app['zone_id'] == 0 || !isset($ref_app['latitude']) || !isset($ref_app['longitude'])) {
-                    $missing_data_reason = "Dati rif. incompleti (zona/lat/lng) per ID {$ref_app_id_log}.";
-                    error_log($log_prefix_main . "FASE A: " . $missing_data_reason);
-                    $tutti_gli_slot_adiacenti_per_tabella[] = ['type' => 'N/A_REF_INVALID_DATA', 'related_appointment' => $ref_app, 'excluded' => true, 'excluded_reason' => $missing_data_reason, 'debug_info' => ['reason' => $missing_data_reason]];
-                    continue;
-                }
+               if (!isset($ref_app['latitude']) || !isset($ref_app['longitude']) || $ref_app['latitude'] === '' || $ref_app['longitude'] === '') {
+    $missing_data_reason = "Dati rif. incompleti (lat/lng) per ID {$ref_app_id_log}.";
+    error_log($log_prefix_main . "FASE A: " . $missing_data_reason);
+    $tutti_gli_slot_adiacenti_per_tabella[] = ['type' => 'N/A_REF_INVALID_DATA', 'related_appointment' => $ref_app, 'excluded' => true, 'excluded_reason' => $missing_data_reason, 'debug_info' => []];
+    continue;
+}
+// Non escludere per zona mancante!
 
                 error_log($log_prefix_main . "FASE A: Analizzo RefApp ID {$ref_app_id_log} ({$ref_app['address']}) con checkAvailableSlotsNearAppointment (ORIGINALE).");
                 $slot_adiacenti_da_originale = checkAvailableSlotsNearAppointment($ref_app); // USA FUNZIONE ORIGINALE
@@ -3116,33 +3139,50 @@ usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento) {
         // Distanze di viaggio
         echo "<span style='color:#28a745;font-weight:bold;'>Distanze di viaggio:</span><br>";
 
-        // Appuntamenti stessi giorno per il calcolo distanze
-        $app_date = $slot['date'] ?? date('Y-m-d');
-        $app_time = $slot['time'];
-        $same_day_appointments = [];
-        foreach ($appuntamenti_riferimento as $app_rif) {
-            if ($app_rif['appointment_date'] == $app_date &&
-                !empty($app_rif['latitude']) && !empty($app_rif['longitude'])) {
-                $same_day_appointments[] = $app_rif;
-            }
+      // Appuntamenti stessi giorno per il calcolo distanze
+$app_date = $slot['date'] ?? date('Y-m-d');
+$app_time = $slot['time'];
+
+// Recupera TUTTI gli appuntamenti fissati in quel giorno, senza filtri di distanza o zona
+$same_day_appointments = [];
+$sql = "SELECT * FROM cp_appointments WHERE appointment_date = ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("s", $app_date);
+$stmt->execute();
+$res = $stmt->get_result();
+while ($row = $res->fetch_assoc()) {
+    // Recupera anche lat/lng per ogni appuntamento se mancante
+    if (empty($row['latitude']) || empty($row['longitude'])) {
+        $coords = getCoordinatesForAppointment($row['id'], $row['address']);
+        if ($coords) {
+            $row['latitude'] = $coords['lat'];
+            $row['longitude'] = $coords['lng'];
         }
-        usort($same_day_appointments, function($a, $b) {
-            return strtotime($a['appointment_time']) - strtotime($b['appointment_time']);
-        });
-        $app_time_ts = strtotime($app_time);
-        $closest_before = null; $closest_after = null;
-        foreach ($same_day_appointments as $app) {
-            $app_ts = strtotime($app['appointment_time']);
-            if ($app_ts < $app_time_ts) {
-                if (!$closest_before || strtotime($app['appointment_time']) > strtotime($closest_before['appointment_time'])) {
-                    $closest_before = $app;
-                }
-            } else if ($app_ts > $app_time_ts) {
-                if (!$closest_after || strtotime($app['appointment_time']) < strtotime($closest_after['appointment_time'])) {
-                    $closest_after = $app;
-                }
-            }
+    }
+    $same_day_appointments[] = $row;
+}
+$stmt->close();
+
+// Ordina per orario crescente
+usort($same_day_appointments, function($a, $b) {
+    return strtotime($a['appointment_time']) - strtotime($b['appointment_time']);
+});
+
+$app_time_ts = strtotime($app_time);
+$closest_before = null;
+$closest_after = null;
+foreach ($same_day_appointments as $app) {
+    $app_ts = strtotime($app['appointment_time']);
+    if ($app_ts < $app_time_ts) {
+        if (!$closest_before || strtotime($app['appointment_time']) > strtotime($closest_before['appointment_time'])) {
+            $closest_before = $app;
         }
+    } else if ($app_ts > $app_time_ts) {
+        if (!$closest_after || strtotime($app['appointment_time']) < strtotime($closest_after['appointment_time'])) {
+            $closest_after = $app;
+        }
+    }
+}
 
         // Calcola distanze
         $dist_prev = $closest_before ? calculateRoadDistance(
