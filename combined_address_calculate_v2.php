@@ -2524,54 +2524,46 @@ echo "<div class='container mt-4' style='text-align:left;'>";
 echo "<div class='card mb-4'><div class='card-body'>";
 echo "<h2 class='card-title text-center mb-3'>Risultati Ricerca per: <span style='color:green; font-weight:bold;'>{$address_utente}</span></h2>";
 
-// Aggiunta: Ottieni informazioni sulle zone dell'indirizzo
-$zona_principale = getZoneForCoordinates($latitude_utente, $longitude_utente);
+// Aggiunta: Ottieni informazioni sulle zone dell'indirizzo (MULTI-ZONA)
+$zone_list = getZonesForAddress($address_utente); // tutte le zone associate all'indirizzo
 $zone_info_text = "";
 
-if ($zona_principale) {
-    $zona_info_text = "Zona principale: <strong>{$zona_principale['name']} (ID: {$zona_principale['id']})</strong>";
-    
-    // Cerca anche eventuali zone confinanti entro un raggio ravvicinato (1-2 km)
-    $raggio_vicino = 2; // km
+if (!empty($zone_list)) {
+    $zone_info_text = "Zone associate a questo indirizzo:<br>";
+    $raggio_vicino = 2; // km per definire "confinante"
     $altre_zone_vicine = [];
-    
-    $sql_zone_vicine = "SELECT id, name, latitude AS zone_lat, longitude AS zone_lng, radius_km FROM cp_zones WHERE id != ?";
-    $stmt_zone_vicine = $conn->prepare($sql_zone_vicine);
-    
-    if ($stmt_zone_vicine) {
-        $stmt_zone_vicine->bind_param("i", $zona_principale['id']);
-        $stmt_zone_vicine->execute();
-        $result_zone_vicine = $stmt_zone_vicine->get_result();
-        
-        while ($altra_zona = $result_zone_vicine->fetch_assoc()) {
-            $distanza = calculateDistance(
-                [$latitude_utente, $longitude_utente],
-                [(float)$altra_zona['zone_lat'], (float)$altra_zona['zone_lng']]
-            );
-            
-            // Se l'indirizzo è vicino al confine di un'altra zona
-            if ($distanza <= $raggio_vicino + (float)$altra_zona['radius_km']) {
-                $altra_zona['distance'] = $distanza;
-                $altre_zone_vicine[] = $altra_zona;
-            }
-        }
-        
-        if (!empty($altre_zone_vicine)) {
-            $zona_info_text .= "<br>Zone confinanti: ";
+
+    foreach ($zone_list as $zona) {
+        $zone_info_text .= "<strong>{$zona['name']} (ID: {$zona['zone_id']})</strong><br>";
+
+        // Cerca anche eventuali zone confinanti (vicine) per ogni zona associata
+        $sql_zone_vicine = "SELECT id, name, latitude AS zone_lat, longitude AS zone_lng, radius_km FROM cp_zones WHERE id != ?";
+        $stmt_zone_vicine = $conn->prepare($sql_zone_vicine);
+        if ($stmt_zone_vicine) {
+            $stmt_zone_vicine->bind_param("i", $zona['zone_id']);
+            $stmt_zone_vicine->execute();
+            $result_zone_vicine = $stmt_zone_vicine->get_result();
             $zone_names = [];
-            
-            foreach ($altre_zone_vicine as $zona_vicina) {
-                $dist_km = number_format($zona_vicina['distance'], 1);
-                $zone_names[] = "<strong>{$zona_vicina['name']} (ID: {$zona_vicina['id']}, {$dist_km} km)</strong>";
+
+            while ($altra_zona = $result_zone_vicine->fetch_assoc()) {
+                $distanza = calculateDistance(
+                    [$latitude_utente, $longitude_utente],
+                    [(float)$altra_zona['zone_lat'], (float)$altra_zona['zone_lng']]
+                );
+                // Se è al confine (vicina)
+                if ($distanza <= $raggio_vicino + (float)$altra_zona['radius_km']) {
+                    $dist_km = number_format($distanza, 1);
+                    $zone_names[] = "<strong>{$altra_zona['name']} (ID: {$altra_zona['id']}, {$dist_km} km)</strong>";
+                }
             }
-            
-            $zona_info_text .= implode(", ", $zone_names);
+            if (!empty($zone_names)) {
+                $zone_info_text .= 'Zone confinanti: ' . implode(', ', $zone_names) . '<br>';
+            }
+            $stmt_zone_vicine->close();
         }
-        
-        $stmt_zone_vicine->close();
     }
 } else {
-    $zona_info_text = "Indirizzo non appartiene a nessuna zona configurata";
+    $zone_info_text = "Indirizzo non appartiene a nessuna zona configurata";
 }
 
 echo "<p class='text-center'>{$zona_info_text}</p>";
@@ -2803,7 +2795,8 @@ function hasWiderTimeRange($zona_conf_ranges, $zona_utente_ranges) {
 // Nella FASE B dove viene determinata la zona dell'utente e vengono cercati gli slot disponibili
 
 error_log($log_prefix_main . "FASE B: Ricerca slot di zona con getNext3AppointmentDates (ORIGINALE).");
-$zona_utente = getZoneForCoordinates($latitude_utente, $longitude_utente); // Funzione helper già presente
+// Recupera tutte le zone associate all'indirizzo dell'utente
+$zone_list_utente = getZonesForAddress($address_utente);
 
 // NUOVO: Cerca anche zone confinanti entro un raggio ragionevole (es. 3km)
 $zone_confinanti = [];
