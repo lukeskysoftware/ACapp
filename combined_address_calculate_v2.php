@@ -70,6 +70,35 @@ function batchUpdateAddressCache($conn) {
     }
 }
 
+function batchUpdateZoneForAppointments($conn) {
+    // Prendi tutti gli appuntamenti futuri senza zona
+    $sql = "SELECT id, latitude, longitude FROM cp_appointments WHERE (zone_id IS NULL OR zone_id = 0) AND appointment_date >= CURDATE()";
+    $result = $conn->query($sql);
+    $count = 0;
+    if ($result) {
+        while ($row = $result->fetch_assoc()) {
+            $id = $row['id'];
+            $lat = $row['latitude'];
+            $lng = $row['longitude'];
+            if (!$lat || !$lng) continue; // Solo se già calcolate le coordinate
+
+            // Trova la zona più vicina
+            $zone = getZoneForCoordinates($lat, $lng);
+            if ($zone && isset($zone['id'])) {
+                $zone_id = $zone['id'];
+                $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
+                $update_stmt = $conn->prepare($update_sql);
+                $update_stmt->bind_param("ii", $zone_id, $id);
+                $update_stmt->execute();
+                $count++;
+            }
+        }
+        error_log('BatchUpdateZoneForAppointments: aggiornate ' . $count . ' zone_id mancanti.');
+    } else {
+        error_log('BatchUpdateZoneForAppointments: errore query: ' . $conn->error);
+    }
+}
+
    /**
  * Funzione per calcolare la distanza stradale tramite Google Maps API con firma digitale
  * @param float $origin_lat Latitudine dell'origine
@@ -2387,6 +2416,7 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
 // Gestione del POST per la ricerca di appuntamenti
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
         batchUpdateAddressCache($conn);
+        batchUpdateZoneForAppointments($conn);
     // Validazione iniziale delle coordinate (come nel tuo originale adattato)
     if (!isset($_POST['latitude']) || !isset($_POST['longitude']) || empty($_POST['latitude']) || empty($_POST['longitude'])) {
         if (ob_get_level() > 0) ob_end_clean();
