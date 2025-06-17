@@ -70,34 +70,7 @@ function batchUpdateAddressCache($conn) {
     }
 }
 
-function batchUpdateZoneForAppointments($conn) {
-    // Prendi tutti gli appuntamenti futuri senza zona
-    $sql = "SELECT id, latitude, longitude FROM cp_appointments WHERE (zone_id IS NULL OR zone_id = 0) AND appointment_date >= CURDATE()";
-    $result = $conn->query($sql);
-    $count = 0;
-    if ($result) {
-        while ($row = $result->fetch_assoc()) {
-            $id = $row['id'];
-            $lat = $row['latitude'];
-            $lng = $row['longitude'];
-            if (!$lat || !$lng) continue; // Solo se già calcolate le coordinate
 
-            // Trova la zona più vicina
-            $zone = getZoneForCoordinates($lat, $lng);
-            if ($zone && isset($zone['id'])) {
-                $zone_id = $zone['id'];
-                $update_sql = "UPDATE cp_appointments SET zone_id = ? WHERE id = ?";
-                $update_stmt = $conn->prepare($update_sql);
-                $update_stmt->bind_param("ii", $zone_id, $id);
-                $update_stmt->execute();
-                $count++;
-            }
-        }
-        error_log('BatchUpdateZoneForAppointments: aggiornate ' . $count . ' zone_id mancanti.');
-    } else {
-        error_log('BatchUpdateZoneForAppointments: errore query: ' . $conn->error);
-    }
-}
 
    /**
  * Funzione per calcolare la distanza stradale tramite Google Maps API con firma digitale
@@ -276,6 +249,42 @@ function calculateDistance($origin, $destination) {
     error_log("Distanza stimata: $estimatedRoadDistance km tra [$origin[0],$origin[1]] e [$destination[0],$destination[1]]");
     
     return $estimatedRoadDistance;
+}
+
+// Aggiorna la relazione address_cache_zone_map per un address_cache_id
+function updateAddressZoneMap($address_cache_id, $lat, $lng) {
+    global $conn;
+    $conn->query("DELETE FROM address_cache_zone_map WHERE address_cache_id = $address_cache_id");
+    $sql = "SELECT id, latitude, longitude, radius_km FROM cp_zones";
+    $zones = $conn->query($sql);
+    if ($zones) {
+        while ($z = $zones->fetch_assoc()) {
+            $dist = calculateDistance([$lat, $lng], [$z['latitude'], $z['longitude']]);
+            if ($dist <= $z['radius_km']) {
+                $stmt = $conn->prepare("INSERT INTO address_cache_zone_map (address_cache_id, zone_id) VALUES (?, ?)");
+                $stmt->bind_param("ii", $address_cache_id, $z['id']);
+                $stmt->execute();
+            }
+        }
+    }
+}
+
+// Restituisce tutte le zone associate a un indirizzo
+function getZonesForAddress($address) {
+    global $conn;
+    $sql = "SELECT acz.zone_id, z.name FROM address_cache_zone_map acz
+            JOIN address_cache ac ON acz.address_cache_id = ac.id
+            JOIN cp_zones z ON acz.zone_id = z.id
+            WHERE ac.address = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("s", $address);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $zone_ids = [];
+    while ($row = $result->fetch_assoc()) {
+        $zone_ids[] = $row;
+    }
+    return $zone_ids;
 }
 
 function precalculateDistancesForDate($date) {
@@ -1810,12 +1819,12 @@ return true;
 // Funzione per ottenere coordinate da un indirizzo
 function getCoordinatesFromAddress($address, $appointment_id = null) {
     global $conn;
-    
+
     // Log dell'operazione
     error_log("Tentativo di geocodifica per indirizzo: " . $address);
 
     // Controlla se abbiamo già le coordinate per questo indirizzo
-    $sql = "SELECT latitude, longitude FROM address_cache WHERE address = ? LIMIT 1";
+    $sql = "SELECT id, latitude, longitude FROM address_cache WHERE address = ? LIMIT 1";
     $stmt = $conn->prepare($sql);
     if ($stmt) {
         $stmt->bind_param("s", $address);
@@ -1824,14 +1833,19 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
         if ($row = $result->fetch_assoc()) {
             // Se abbiamo l'ID appuntamento, aggiorniamo la cache
             if ($appointment_id) {
-                $insertSql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
-                             VALUES (?, ?, ?, ?) 
-                             ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
+                $insertSql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude)
+                              VALUES (?, ?, ?, ?)
+                              ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
                 $insertStmt = $conn->prepare($insertSql);
                 if ($insertStmt) {
                     $insertStmt->bind_param("isdd", $appointment_id, $address, $row['latitude'], $row['longitude']);
                     $insertStmt->execute();
                 }
+            }
+            // Aggiorna la relazione zone anche quando già presente
+            $address_cache_id = $row['id'];
+            if ($address_cache_id) {
+                updateAddressZoneMap($address_cache_id, $row['latitude'], $row['longitude']);
             }
             error_log("Coordinate recuperate dalla cache per: " . $address);
             return ['lat' => $row['latitude'], 'lng' => $row['longitude']];
@@ -1849,14 +1863,14 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
         error_log('Errore nel recupero della chiave API di Google Maps: ' . mysqli_error($conn));
         return null;
     }
-    
+
     if (empty($apiKey)) {
         error_log("API key non trovata per la geocodifica");
         return null;
     }
-    
+
     $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
-    
+
     // Usa cURL invece di file_get_contents
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
@@ -1864,26 +1878,26 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_USERAGENT, 'PHP Geocoding Application');
     $response = curl_exec($ch);
-    
+
     if ($response === false) {
         error_log("Errore cURL durante la chiamata all'API di geocodifica: " . curl_error($ch));
         curl_close($ch);
         return null;
     }
-    
+
     curl_close($ch);
-    
+
     $data = json_decode($response, true);
-    
+
     if ($data['status'] == 'OK') {
         $lat = $data['results'][0]['geometry']['location']['lat'];
         $lng = $data['results'][0]['geometry']['location']['lng'];
-        
+
         // Salva nella cache
         if ($appointment_id) {
-            $sql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
-                   VALUES (?, ?, ?, ?) 
-                   ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
+            $sql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude)
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
             $stmt = $conn->prepare($sql);
             if ($stmt) {
                 $stmt->bind_param("isdd", $appointment_id, $address, $lat, $lng);
@@ -1892,18 +1906,45 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
                 } else {
                     error_log("Cache aggiornata con successo per appointment_id=$appointment_id");
                 }
+                $address_cache_id = $conn->insert_id;
+                if (!$address_cache_id) {
+                    // Se è un update, recupera id
+                    $id_stmt = $conn->prepare("SELECT id FROM address_cache WHERE address = ? LIMIT 1");
+                    $id_stmt->bind_param("s", $address);
+                    $id_stmt->execute();
+                    $id_res = $id_stmt->get_result();
+                    if ($id_row = $id_res->fetch_assoc()) $address_cache_id = $id_row['id'];
+                    $id_stmt->close();
+                }
+                if ($address_cache_id) {
+                    updateAddressZoneMap($address_cache_id, $lat, $lng);
+                }
             }
         } else {
             // Cache senza appointment_id (per indirizzi temporanei)
-            $sql = "INSERT INTO address_cache (address, latitude, longitude) 
-                   VALUES (?, ?, ?)";
+            $sql = "INSERT INTO address_cache (address, latitude, longitude)
+                    VALUES (?, ?, ?)
+                    ON DUPLICATE KEY UPDATE latitude = VALUES(latitude), longitude = VALUES(longitude)";
             $stmt = $conn->prepare($sql);
             if ($stmt) {
                 $stmt->bind_param("sdd", $address, $lat, $lng);
                 $stmt->execute();
+                $address_cache_id = $conn->insert_id;
+                if (!$address_cache_id) {
+                    // Se è un update, recupera id
+                    $id_stmt = $conn->prepare("SELECT id FROM address_cache WHERE address = ? LIMIT 1");
+                    $id_stmt->bind_param("s", $address);
+                    $id_stmt->execute();
+                    $id_res = $id_stmt->get_result();
+                    if ($id_row = $id_res->fetch_assoc()) $address_cache_id = $id_row['id'];
+                    $id_stmt->close();
+                }
+                if ($address_cache_id) {
+                    updateAddressZoneMap($address_cache_id, $lat, $lng);
+                }
             }
         }
-        
+
         error_log("Geocodifica riuscita per: " . $address);
         return ['lat' => $lat, 'lng' => $lng];
     } else {
@@ -2416,7 +2457,7 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
 // Gestione del POST per la ricerca di appuntamenti
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['address'])) {
         batchUpdateAddressCache($conn);
-        batchUpdateZoneForAppointments($conn);
+        
     // Validazione iniziale delle coordinate (come nel tuo originale adattato)
     if (!isset($_POST['latitude']) || !isset($_POST['longitude']) || empty($_POST['latitude']) || empty($_POST['longitude'])) {
         if (ob_get_level() > 0) ob_end_clean();
