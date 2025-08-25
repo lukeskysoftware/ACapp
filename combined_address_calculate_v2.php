@@ -251,42 +251,6 @@ function calculateDistance($origin, $destination) {
     return $estimatedRoadDistance;
 }
 
-// Aggiorna la relazione address_cache_zone_map per un address_cache_id
-function updateAddressZoneMap($address_cache_id, $lat, $lng) {
-    global $conn;
-    $conn->query("DELETE FROM address_cache_zone_map WHERE address_cache_id = $address_cache_id");
-    $sql = "SELECT id, latitude, longitude, radius_km FROM cp_zones";
-    $zones = $conn->query($sql);
-    if ($zones) {
-        while ($z = $zones->fetch_assoc()) {
-            $dist = calculateDistance([$lat, $lng], [$z['latitude'], $z['longitude']]);
-            if ($dist <= $z['radius_km']) {
-                $stmt = $conn->prepare("INSERT INTO address_cache_zone_map (address_cache_id, zone_id) VALUES (?, ?)");
-                $stmt->bind_param("ii", $address_cache_id, $z['id']);
-                $stmt->execute();
-            }
-        }
-    }
-}
-
-// Restituisce tutte le zone associate a un indirizzo
-function getZonesForAddress($address) {
-    global $conn;
-    $sql = "SELECT acz.zone_id, z.name FROM address_cache_zone_map acz
-            JOIN address_cache ac ON acz.address_cache_id = ac.id
-            JOIN cp_zones z ON acz.zone_id = z.id
-            WHERE ac.address = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $address);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $zone_ids = [];
-    while ($row = $result->fetch_assoc()) {
-        $zone_ids[] = $row;
-    }
-    return $zone_ids;
-}
-
 function precalculateDistancesForDate($date) {
     global $conn;
     $stats = [
@@ -1819,12 +1783,12 @@ return true;
 // Funzione per ottenere coordinate da un indirizzo
 function getCoordinatesFromAddress($address, $appointment_id = null) {
     global $conn;
-
+    
     // Log dell'operazione
     error_log("Tentativo di geocodifica per indirizzo: " . $address);
 
     // Controlla se abbiamo già le coordinate per questo indirizzo
-    $sql = "SELECT id, latitude, longitude FROM address_cache WHERE address = ? LIMIT 1";
+    $sql = "SELECT latitude, longitude FROM address_cache WHERE address = ? LIMIT 1";
     $stmt = $conn->prepare($sql);
     if ($stmt) {
         $stmt->bind_param("s", $address);
@@ -1833,19 +1797,14 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
         if ($row = $result->fetch_assoc()) {
             // Se abbiamo l'ID appuntamento, aggiorniamo la cache
             if ($appointment_id) {
-                $insertSql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude)
-                              VALUES (?, ?, ?, ?)
-                              ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
+                $insertSql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
+                             VALUES (?, ?, ?, ?) 
+                             ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
                 $insertStmt = $conn->prepare($insertSql);
                 if ($insertStmt) {
                     $insertStmt->bind_param("isdd", $appointment_id, $address, $row['latitude'], $row['longitude']);
                     $insertStmt->execute();
                 }
-            }
-            // Aggiorna la relazione zone anche quando già presente
-            $address_cache_id = $row['id'];
-            if ($address_cache_id) {
-                updateAddressZoneMap($address_cache_id, $row['latitude'], $row['longitude']);
             }
             error_log("Coordinate recuperate dalla cache per: " . $address);
             return ['lat' => $row['latitude'], 'lng' => $row['longitude']];
@@ -1863,14 +1822,14 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
         error_log('Errore nel recupero della chiave API di Google Maps: ' . mysqli_error($conn));
         return null;
     }
-
+    
     if (empty($apiKey)) {
         error_log("API key non trovata per la geocodifica");
         return null;
     }
-
+    
     $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . urlencode($address) . "&key=" . $apiKey;
-
+    
     // Usa cURL invece di file_get_contents
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
@@ -1878,26 +1837,26 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     curl_setopt($ch, CURLOPT_USERAGENT, 'PHP Geocoding Application');
     $response = curl_exec($ch);
-
+    
     if ($response === false) {
         error_log("Errore cURL durante la chiamata all'API di geocodifica: " . curl_error($ch));
         curl_close($ch);
         return null;
     }
-
+    
     curl_close($ch);
-
+    
     $data = json_decode($response, true);
-
+    
     if ($data['status'] == 'OK') {
         $lat = $data['results'][0]['geometry']['location']['lat'];
         $lng = $data['results'][0]['geometry']['location']['lng'];
-
+        
         // Salva nella cache
         if ($appointment_id) {
-            $sql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude)
-                    VALUES (?, ?, ?, ?)
-                    ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
+            $sql = "INSERT INTO address_cache (appointment_id, address, latitude, longitude) 
+                   VALUES (?, ?, ?, ?) 
+                   ON DUPLICATE KEY UPDATE address = VALUES(address), latitude = VALUES(latitude), longitude = VALUES(longitude)";
             $stmt = $conn->prepare($sql);
             if ($stmt) {
                 $stmt->bind_param("isdd", $appointment_id, $address, $lat, $lng);
@@ -1906,45 +1865,18 @@ function getCoordinatesFromAddress($address, $appointment_id = null) {
                 } else {
                     error_log("Cache aggiornata con successo per appointment_id=$appointment_id");
                 }
-                $address_cache_id = $conn->insert_id;
-                if (!$address_cache_id) {
-                    // Se è un update, recupera id
-                    $id_stmt = $conn->prepare("SELECT id FROM address_cache WHERE address = ? LIMIT 1");
-                    $id_stmt->bind_param("s", $address);
-                    $id_stmt->execute();
-                    $id_res = $id_stmt->get_result();
-                    if ($id_row = $id_res->fetch_assoc()) $address_cache_id = $id_row['id'];
-                    $id_stmt->close();
-                }
-                if ($address_cache_id) {
-                    updateAddressZoneMap($address_cache_id, $lat, $lng);
-                }
             }
         } else {
             // Cache senza appointment_id (per indirizzi temporanei)
-            $sql = "INSERT INTO address_cache (address, latitude, longitude)
-                    VALUES (?, ?, ?)
-                    ON DUPLICATE KEY UPDATE latitude = VALUES(latitude), longitude = VALUES(longitude)";
+            $sql = "INSERT INTO address_cache (address, latitude, longitude) 
+                   VALUES (?, ?, ?)";
             $stmt = $conn->prepare($sql);
             if ($stmt) {
                 $stmt->bind_param("sdd", $address, $lat, $lng);
                 $stmt->execute();
-                $address_cache_id = $conn->insert_id;
-                if (!$address_cache_id) {
-                    // Se è un update, recupera id
-                    $id_stmt = $conn->prepare("SELECT id FROM address_cache WHERE address = ? LIMIT 1");
-                    $id_stmt->bind_param("s", $address);
-                    $id_stmt->execute();
-                    $id_res = $id_stmt->get_result();
-                    if ($id_row = $id_res->fetch_assoc()) $address_cache_id = $id_row['id'];
-                    $id_stmt->close();
-                }
-                if ($address_cache_id) {
-                    updateAddressZoneMap($address_cache_id, $lat, $lng);
-                }
             }
         }
-
+        
         error_log("Geocodifica riuscita per: " . $address);
         return ['lat' => $lat, 'lng' => $lng];
     } else {
@@ -2434,23 +2366,37 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                     
                     // Function to add appointment information to the cp_appointments table
                     function addAppointment($zoneId, $patientId, $appointmentDate, $appointmentTime, $address) {
-                        global $conn;
-                        $formattedDate = date('Y-m-d', strtotime($appointmentDate)); // Ensure correct date format
-                        $sql = "INSERT INTO cp_appointments (zone_id, patient_id, appointment_date, appointment_time, address) VALUES (?, ?, ?, ?, ?)";
-                        $stmt = $conn->prepare($sql);
-                    
-                        if (!$stmt) {
-                            error_log("Database prepare failed for adding appointment: " . mysqli_error($conn));
-                            throw new Exception("Database prepare failed for adding appointment: " . mysqli_error($conn));
-                        }
-                    
-                        $stmt->bind_param("iisss", $zoneId, $patientId, $formattedDate, $appointmentTime, $address);
-                    
-                        if (!$stmt->execute()) {
-                            error_log("Database query failed for adding appointment: " . mysqli_error($conn));
-                            throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
-                        }
-                    }
+    global $conn;
+    $formattedDate = date('Y-m-d', strtotime($appointmentDate)); // Ensure correct format
+
+    // PATCH: Se zoneId non passato o == 0, ricava la zona dall'indirizzo
+    if (!$zoneId || $zoneId == 0) {
+        $zone_sql = "SELECT zone_id FROM address_cache_zone_map aczm JOIN address_cache ac ON aczm.address_cache_id = ac.id WHERE ac.address = ? LIMIT 1";
+        $zone_stmt = $conn->prepare($zone_sql);
+        $zone_stmt->bind_param("s", $address);
+        $zone_stmt->execute();
+        $zone_res = $zone_stmt->get_result();
+        if ($zone_row = $zone_res->fetch_assoc()) {
+            $zoneId = $zone_row['zone_id'];
+        }
+        $zone_stmt->close();
+    }
+
+    $sql = "INSERT INTO cp_appointments (zone_id, patient_id, appointment_date, appointment_time, address) VALUES (?, ?, ?, ?, ?)";
+    $stmt = $conn->prepare($sql);
+
+    if (!$stmt) {
+        error_log("Database prepare failed for adding appointment: " . mysqli_error($conn));
+        throw new Exception("Database prepare failed for adding appointment: " . mysqli_error($conn));
+    }
+
+    $stmt->bind_param("iisss", $zoneId, $patientId, $formattedDate, $appointmentTime, $address);
+
+    if (!$stmt->execute()) {
+        error_log("Database query failed for adding appointment: " . mysqli_error($conn));
+        throw new Exception("Database query failed for adding appointment: " . mysqli_error($conn));
+    }
+}
                    
                    
                   
@@ -2524,46 +2470,54 @@ echo "<div class='container mt-4' style='text-align:left;'>";
 echo "<div class='card mb-4'><div class='card-body'>";
 echo "<h2 class='card-title text-center mb-3'>Risultati Ricerca per: <span style='color:green; font-weight:bold;'>{$address_utente}</span></h2>";
 
-// Aggiunta: Ottieni informazioni sulle zone dell'indirizzo (MULTI-ZONA)
-$zone_list = getZonesForAddress($address_utente); // tutte le zone associate all'indirizzo
+// Aggiunta: Ottieni informazioni sulle zone dell'indirizzo
+$zona_principale = getZoneForCoordinates($latitude_utente, $longitude_utente);
 $zone_info_text = "";
 
-if (!empty($zone_list)) {
-    $zone_info_text = "Zone associate a questo indirizzo:<br>";
-    $raggio_vicino = 2; // km per definire "confinante"
+if ($zona_principale) {
+    $zona_info_text = "Zona principale: <strong>{$zona_principale['name']} (ID: {$zona_principale['id']})</strong>";
+    
+    // Cerca anche eventuali zone confinanti entro un raggio ravvicinato (1-2 km)
+    $raggio_vicino = 2; // km
     $altre_zone_vicine = [];
-
-    foreach ($zone_list as $zona) {
-        $zone_info_text .= "<strong>{$zona['name']} (ID: {$zona['zone_id']})</strong><br>";
-
-        // Cerca anche eventuali zone confinanti (vicine) per ogni zona associata
-        $sql_zone_vicine = "SELECT id, name, latitude AS zone_lat, longitude AS zone_lng, radius_km FROM cp_zones WHERE id != ?";
-        $stmt_zone_vicine = $conn->prepare($sql_zone_vicine);
-        if ($stmt_zone_vicine) {
-            $stmt_zone_vicine->bind_param("i", $zona['zone_id']);
-            $stmt_zone_vicine->execute();
-            $result_zone_vicine = $stmt_zone_vicine->get_result();
-            $zone_names = [];
-
-            while ($altra_zona = $result_zone_vicine->fetch_assoc()) {
-                $distanza = calculateDistance(
-                    [$latitude_utente, $longitude_utente],
-                    [(float)$altra_zona['zone_lat'], (float)$altra_zona['zone_lng']]
-                );
-                // Se è al confine (vicina)
-                if ($distanza <= $raggio_vicino + (float)$altra_zona['radius_km']) {
-                    $dist_km = number_format($distanza, 1);
-                    $zone_names[] = "<strong>{$altra_zona['name']} (ID: {$altra_zona['id']}, {$dist_km} km)</strong>";
-                }
+    
+    $sql_zone_vicine = "SELECT id, name, latitude AS zone_lat, longitude AS zone_lng, radius_km FROM cp_zones WHERE id != ?";
+    $stmt_zone_vicine = $conn->prepare($sql_zone_vicine);
+    
+    if ($stmt_zone_vicine) {
+        $stmt_zone_vicine->bind_param("i", $zona_principale['id']);
+        $stmt_zone_vicine->execute();
+        $result_zone_vicine = $stmt_zone_vicine->get_result();
+        
+        while ($altra_zona = $result_zone_vicine->fetch_assoc()) {
+            $distanza = calculateDistance(
+                [$latitude_utente, $longitude_utente],
+                [(float)$altra_zona['zone_lat'], (float)$altra_zona['zone_lng']]
+            );
+            
+            // Se l'indirizzo è vicino al confine di un'altra zona
+            if ($distanza <= $raggio_vicino + (float)$altra_zona['radius_km']) {
+                $altra_zona['distance'] = $distanza;
+                $altre_zone_vicine[] = $altra_zona;
             }
-            if (!empty($zone_names)) {
-                $zone_info_text .= 'Zone confinanti: ' . implode(', ', $zone_names) . '<br>';
-            }
-            $stmt_zone_vicine->close();
         }
+        
+        if (!empty($altre_zone_vicine)) {
+            $zona_info_text .= "<br>Zone confinanti: ";
+            $zone_names = [];
+            
+            foreach ($altre_zone_vicine as $zona_vicina) {
+                $dist_km = number_format($zona_vicina['distance'], 1);
+                $zone_names[] = "<strong>{$zona_vicina['name']} (ID: {$zona_vicina['id']}, {$dist_km} km)</strong>";
+            }
+            
+            $zona_info_text .= implode(", ", $zone_names);
+        }
+        
+        $stmt_zone_vicine->close();
     }
 } else {
-    $zone_info_text = "Indirizzo non appartiene a nessuna zona configurata";
+    $zona_info_text = "Indirizzo non appartiene a nessuna zona configurata";
 }
 
 echo "<p class='text-center'>{$zona_info_text}</p>";
@@ -2795,8 +2749,7 @@ function hasWiderTimeRange($zona_conf_ranges, $zona_utente_ranges) {
 // Nella FASE B dove viene determinata la zona dell'utente e vengono cercati gli slot disponibili
 
 error_log($log_prefix_main . "FASE B: Ricerca slot di zona con getNext3AppointmentDates (ORIGINALE).");
-// Recupera tutte le zone associate all'indirizzo dell'utente
-$zone_list_utente = getZonesForAddress($address_utente);
+$zona_utente = getZoneForCoordinates($latitude_utente, $longitude_utente); // Funzione helper già presente
 
 // NUOVO: Cerca anche zone confinanti entro un raggio ragionevole (es. 3km)
 $zone_confinanti = [];
