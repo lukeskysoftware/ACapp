@@ -689,12 +689,16 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
 function isTimeSlotCompletelyFree($date, $time, $duration_minutes = 60, $exclude_appointment_id = null) {
     global $conn;
     
+    error_log("isTimeSlotCompletelyFree: Verifico slot {$date} {$time} (durata: {$duration_minutes} min)");
+    
     $slot_start = new DateTime($date . ' ' . $time);
     $slot_end = clone $slot_start;
     $slot_end->modify("+{$duration_minutes} minutes");
     
-    // Ottieni tutti gli appuntamenti del giorno
-    $sql = "SELECT id, appointment_time FROM cp_appointments WHERE appointment_date = ?";
+    error_log("isTimeSlotCompletelyFree: Slot da verificare: " . $slot_start->format('Y-m-d H:i:s') . " - " . $slot_end->format('Y-m-d H:i:s'));
+    
+    // Ottieni TUTTI gli appuntamenti del giorno (non solo della stessa zona!)
+    $sql = "SELECT id, appointment_time, address FROM cp_appointments WHERE appointment_date = ?";
     if ($exclude_appointment_id) {
         $sql .= " AND id != ?";
     }
@@ -710,21 +714,29 @@ function isTimeSlotCompletelyFree($date, $time, $duration_minutes = 60, $exclude
     $stmt->execute();
     $result = $stmt->get_result();
     
+    $found_appointments = [];
     while ($row = $result->fetch_assoc()) {
+        $found_appointments[] = $row;
+        
         $existing_start = new DateTime($date . ' ' . $row['appointment_time']);
         $existing_end = clone $existing_start;
         $existing_end->modify("+{$duration_minutes} minutes");
+        
+        error_log("isTimeSlotCompletelyFree: Appuntamento esistente ID {$row['id']}: " . $existing_start->format('H:i') . " - " . $existing_end->format('H:i') . " ({$row['address']})");
         
         // Verifica sovrapposizione: il nuovo slot si sovrappone con quello esistente?
         if (($slot_start < $existing_end) && ($slot_end > $existing_start)) {
             $stmt->close();
             error_log("isTimeSlotCompletelyFree: OCCUPATO - Slot {$time} si sovrappone con app. esistente {$row['appointment_time']} (ID: {$row['id']})");
+            error_log("isTimeSlotCompletelyFree: SOVRAPPOSIZIONE DETTAGLI:");
+            error_log("  - Nuovo slot: " . $slot_start->format('H:i') . " - " . $slot_end->format('H:i'));
+            error_log("  - App esistente: " . $existing_start->format('H:i') . " - " . $existing_end->format('H:i'));
             return false;
         }
     }
     
     $stmt->close();
-    error_log("isTimeSlotCompletelyFree: LIBERO - Slot {$time} completamente disponibile");
+    error_log("isTimeSlotCompletelyFree: LIBERO - Slot {$time} completamente disponibile. Controllati " . count($found_appointments) . " appuntamenti esistenti");
     return true;
 }
 
@@ -2394,13 +2406,14 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                 $slotAvailability = isSlotAvailable($formattedDate, $slotTime, $endTime, $zoneId);
 
                 if ($slotAvailability['available']) {
-                    // CORREZIONE CRITICA: Usa la nuova funzione per verificare sovrapposizioni complete
-                    if (isTimeSlotCompletelyFree($formattedDate, $slotTime, 60)) {
-                        $availableSlots[] = $slotTime;
-                        error_log("Slot {$formattedDate} {$slotTime} aggiunto come disponibile");
-                    } else {
-                        error_log("Slot {$formattedDate} {$slotTime} escluso per sovrapposizione con appuntamenti esistenti");
-                    }
+                   // CORREZIONE CRITICA: Usa la nuova funzione per verificare sovrapposizioni complete
+error_log("getNext3AppointmentDates: Verifico disponibilità slot {$formattedDate} {$slotTime}");
+if (isTimeSlotCompletelyFree($formattedDate, $slotTime, 60)) {
+    $availableSlots[] = $slotTime;
+    error_log("getNext3AppointmentDates: ✓ Slot {$formattedDate} {$slotTime} aggiunto come DISPONIBILE");
+} else {
+    error_log("getNext3AppointmentDates: ✗ Slot {$formattedDate} {$slotTime} ESCLUSO per sovrapposizione");
+}
                 } else {
                     // Log per debug
                     error_log("Slot " . $formattedDate . " " . $slotTime . " non disponibile: " . $slotAvailability['reason']);
