@@ -103,6 +103,62 @@ function isSlotAvailable($date, $start_time = null, $end_time = null, $zone_id =
 }
 
 /**
+ * Funzione combinata che verifica sia unavailable_slots che appuntamenti esistenti
+ * Combina la logica di isSlotAvailable (unavailable_slots) con il controllo degli appuntamenti esistenti
+ */
+function isSlotCompletelyAvailable($date, $time, $duration_minutes = 60, $zone_id = null, $exclude_appointment_id = null) {
+    global $conn;
+    
+    // STEP 1: Verifica unavailable_slots usando la funzione esistente
+    $end_time = date('H:i:s', strtotime($time . " +{$duration_minutes} minutes"));
+    $slot_availability = isSlotAvailable($date, $time, $end_time, $zone_id);
+    
+    if (!$slot_availability['available']) {
+        error_log("SLOT BLOCKED by unavailable_slots: {$date} {$time} - {$slot_availability['reason']}");
+        return ['available' => false, 'reason' => $slot_availability['reason']];
+    }
+    
+    // STEP 2: Verifica appuntamenti esistenti
+    $slot_start = new DateTime($date . ' ' . $time);
+    $slot_end = clone $slot_start;
+    $slot_end->modify("+{$duration_minutes} minutes");
+    
+    // Ottieni TUTTI gli appuntamenti del giorno
+    $sql = "SELECT id, appointment_time, address FROM cp_appointments WHERE appointment_date = ?";
+    if ($exclude_appointment_id) {
+        $sql .= " AND id != ?";
+    }
+    $sql .= " ORDER BY appointment_time";
+    
+    $stmt = $conn->prepare($sql);
+    if ($exclude_appointment_id) {
+        $stmt->bind_param("si", $date, $exclude_appointment_id);
+    } else {
+        $stmt->bind_param("s", $date);
+    }
+    
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    while ($row = $result->fetch_assoc()) {
+        $existing_start = new DateTime($date . ' ' . $row['appointment_time']);
+        $existing_end = clone $existing_start;
+        $existing_end->modify("+{$duration_minutes} minutes");
+        
+        // Verifica sovrapposizione
+        if (($slot_start < $existing_end) && ($slot_end > $existing_start)) {
+            $stmt->close();
+            error_log("OVERLAP DETECTED: Slot {$time} conflicts with existing appointment {$row['appointment_time']} (ID: {$row['id']})");
+            return ['available' => false, 'reason' => "Sovrapposizione con appuntamento esistente alle {$row['appointment_time']} (ID: {$row['id']})"];
+        }
+    }
+    
+    $stmt->close();
+    error_log("SLOT FREE: {$date} {$time} completely available");
+    return ['available' => true, 'reason' => ''];
+}
+
+/**
  * Trova le prossime N date disponibili a partire da una data
  * 
  * @param string $start_date Data di inizio in formato Y-m-d
