@@ -689,15 +689,11 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
 function isTimeSlotCompletelyFree($date, $time, $duration_minutes = 60, $exclude_appointment_id = null) {
     global $conn;
     
-    error_log("isTimeSlotCompletelyFree: Verifico slot {$date} {$time} (durata: {$duration_minutes} min)");
-    
     $slot_start = new DateTime($date . ' ' . $time);
     $slot_end = clone $slot_start;
     $slot_end->modify("+{$duration_minutes} minutes");
     
-    error_log("isTimeSlotCompletelyFree: Slot da verificare: " . $slot_start->format('Y-m-d H:i:s') . " - " . $slot_end->format('Y-m-d H:i:s'));
-    
-    // Ottieni TUTTI gli appuntamenti del giorno (non solo della stessa zona!)
+    // Ottieni TUTTI gli appuntamenti del giorno
     $sql = "SELECT id, appointment_time, address FROM cp_appointments WHERE appointment_date = ?";
     if ($exclude_appointment_id) {
         $sql .= " AND id != ?";
@@ -714,29 +710,21 @@ function isTimeSlotCompletelyFree($date, $time, $duration_minutes = 60, $exclude
     $stmt->execute();
     $result = $stmt->get_result();
     
-    $found_appointments = [];
     while ($row = $result->fetch_assoc()) {
-        $found_appointments[] = $row;
-        
         $existing_start = new DateTime($date . ' ' . $row['appointment_time']);
         $existing_end = clone $existing_start;
         $existing_end->modify("+{$duration_minutes} minutes");
         
-        error_log("isTimeSlotCompletelyFree: Appuntamento esistente ID {$row['id']}: " . $existing_start->format('H:i') . " - " . $existing_end->format('H:i') . " ({$row['address']})");
-        
-        // Verifica sovrapposizione: il nuovo slot si sovrappone con quello esistente?
+        // Verifica sovrapposizione
         if (($slot_start < $existing_end) && ($slot_end > $existing_start)) {
             $stmt->close();
-            error_log("isTimeSlotCompletelyFree: OCCUPATO - Slot {$time} si sovrappone con app. esistente {$row['appointment_time']} (ID: {$row['id']})");
-            error_log("isTimeSlotCompletelyFree: SOVRAPPOSIZIONE DETTAGLI:");
-            error_log("  - Nuovo slot: " . $slot_start->format('H:i') . " - " . $slot_end->format('H:i'));
-            error_log("  - App esistente: " . $existing_start->format('H:i') . " - " . $existing_end->format('H:i'));
+            error_log("OVERLAP DETECTED: Slot {$time} conflicts with existing appointment {$row['appointment_time']} (ID: {$row['id']})");
             return false;
         }
     }
     
     $stmt->close();
-    error_log("isTimeSlotCompletelyFree: LIBERO - Slot {$time} completamente disponibile. Controllati " . count($found_appointments) . " appuntamenti esistenti");
+    error_log("SLOT FREE: {$date} {$time} available");
     return true;
 }
 
@@ -2240,7 +2228,6 @@ function getNextAppointmentDatesForZone($slots_config, $zoneId, $user_latitude, 
         // Verifica blocchi totali per la data o zona (usando isSlotAvailable da utils_appointment.php)
         $date_availability = isSlotAvailable($check_date_str, null, null, $zoneId); // Verifica l'intera giornata
         if (!$date_availability['available']) {
-            error_log("getNextAppointmentDatesForZone: Data {$check_date_str} bloccata per zona {$zoneId}. Motivo: " . $date_availability['reason']);
             continue;
         }
 
@@ -2269,34 +2256,23 @@ function getNextAppointmentDatesForZone($slots_config, $zoneId, $user_latitude, 
             $slot_specific_availability = isSlotAvailable($check_date_str, $slot_start_time, $slot_end_time, $zoneId);
 
             if (!$slot_specific_availability['available']) {
-                 error_log("getNextAppointmentDatesForZone: Slot {$check_date_str} {$slot_start_time} bloccato per zona {$zoneId}. Motivo: " . $slot_specific_availability['reason']);
                 continue;
             }
 
-            // Verifica se lo slot è GIA' OCCUPATO in cp_appointments (controllo base)
-            $check_booked_sql = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
-            // Potremmo voler limitare a zone_id o controllare globalmente a seconda delle regole aziendali
-            $chk_stmt = $conn->prepare($check_booked_sql);
-            $chk_stmt->bind_param("ss", $check_date_str, $slot_time_str);
-            $chk_stmt->execute();
-            $is_occupied = ($chk_stmt->get_result()->fetch_assoc()['count'] > 0);
-            $chk_stmt->close();
-
-            if (!$is_occupied) {
+            // CORREZIONE CRITICA: Usa sempre il controllo sovrapposizioni
+            if (isTimeSlotCompletelyFree($check_date_str, $slot_time_str, 60)) {
                 $valid_times_for_date[] = $slot_time_str;
             }
         }
 
         if (!empty($valid_times_for_date)) {
-            // Qui andrebbe inserita la logica più avanzata di getNext3AppointmentDates (righe 1222-1384)
-            // per verificare la prossimità ad altri appuntamenti GIA' ESISTENTI quel giorno,
-            // usando $max_operator_hop_km. Per ora, la omettiamo per semplicità.
-            // Se quella logica esclude la data, si farebbe: continue;
             $available_dates_with_times[$check_date_str] = $valid_times_for_date;
         }
-         if (count($available_dates_with_times) >= ($weeks_to_search * 2) && $weeks_to_search <=2 ) break; // Limita il numero di giorni con risultati per non eccedere.
-         if (count($available_dates_with_times) >= 10 && $weeks_to_search > 2 ) break; // Limita a 10 giorni se la ricerca è più lunga
+        
+        if (count($available_dates_with_times) >= ($weeks_to_search * 2) && $weeks_to_search <= 2) break; // Limita il numero di giorni con risultati per non eccedere.
+        if (count($available_dates_with_times) >= 10 && $weeks_to_search > 2) break; // Limita a 10 giorni se la ricerca è più lunga
     }
+    
     ksort($available_dates_with_times);
     return $available_dates_with_times;
 }
@@ -2308,9 +2284,6 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
     $currentDate = new DateTime();
     $iterationCount = 0;
 
-    // Aggiungi log per debug
-    error_log("INIZIO getNext3AppointmentDates per zona ID: " . $zoneId);
-
     while (count($next3Days) < 3 && $iterationCount < 14) {
         // Esamina i giorni successivi (fino a 28 giorni = 4 settimane)
         for ($dayOffset = $iterationCount * 7; $dayOffset < ($iterationCount + 1) * 7; $dayOffset++) {
@@ -2319,59 +2292,22 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
             $checkDayOfWeek = $checkDate->format('N'); // 1-7 (Lun-Dom)
             $formattedDate = $checkDate->format('Y-m-d');
 
-            error_log("Controllo data: " . $formattedDate . " (giorno della settimana: " . $checkDayOfWeek . ")");
-
             // Verifica se questa data è disponibile negli unavailable slots
             $dateAvailability = isSlotAvailable($formattedDate, null, null, $zoneId);
-
             if (!$dateAvailability['available']) {
-                error_log("Data " . $formattedDate . " saltata: " . $dateAvailability['reason']);
                 continue;
             }
 
-            // CORREZIONE: Verifica appuntamenti esistenti con controllo distanza migliorato
-            $existingAppsSql = "SELECT a.id, a.address FROM cp_appointments a WHERE a.appointment_date = ?";
+            // CORREZIONE: Conta appuntamenti esistenti ma NON escludere l'intera giornata per distanza
+            $existingAppsSql = "SELECT id, address FROM cp_appointments WHERE appointment_date = ?";
             $existingStmt = $conn->prepare($existingAppsSql);
             $existingStmt->bind_param("s", $formattedDate);
             $existingStmt->execute();
             $existingResult = $existingStmt->get_result();
             $existingAppCount = $existingResult->num_rows;
 
-            error_log("Data " . $formattedDate . " - Numero di appuntamenti esistenti: " . $existingAppCount);
-
-            // Se esistono appuntamenti e abbiamo coordinate dell'utente, verifica la distanza
-            if ($existingAppCount > 0 && $userLatitude !== null && $userLongitude !== null) {
-                $allWithinRadius = true;
-                $existingResult->data_seek(0); // Reset del puntatore
-
-                while ($app = $existingResult->fetch_assoc()) {
-                    $appCoords = getCoordinatesFromAddress($app['address'], $app['id']);
-
-                    if ($appCoords) {
-                        $distance = calculateRoadDistance(
-                            $userLatitude, $userLongitude,
-                            $appCoords['lat'], $appCoords['lng']
-                        );
-
-                        error_log("Data " . $formattedDate . " - Appuntamento ID " . $app['id'] . " - Distanza: " . $distance . " km");
-
-                        if ($distance > 3) {
-                            $allWithinRadius = false;
-                            error_log("Data " . $formattedDate . " saltata: appuntamento esistente a più di 3km");
-                            break;
-                        }
-                    } else {
-                        $allWithinRadius = false;
-                        error_log("Data " . $formattedDate . " saltata: impossibile ottenere coordinate");
-                        break;
-                    }
-                }
-                
-                if (!$allWithinRadius) {
-                    continue; // Salta questa data
-                }
-            } else {
-                error_log("Data " . $formattedDate . " - Nessun appuntamento esistente o coordinate mancanti.");
+            if ($existingAppCount > 0) {
+                error_log("Date {$formattedDate}: {$existingAppCount} existing appointments found");
             }
 
             // Filtra gli slot configurati per questo giorno della settimana
@@ -2381,7 +2317,6 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
             });
 
             if (empty($daySlots)) {
-                error_log("Nessuno slot configurato per il giorno " . $checkDayOfWeek);
                 continue;
             }
 
@@ -2406,30 +2341,21 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
                 $slotAvailability = isSlotAvailable($formattedDate, $slotTime, $endTime, $zoneId);
 
                 if ($slotAvailability['available']) {
-                   // CORREZIONE CRITICA: Usa la nuova funzione per verificare sovrapposizioni complete
-error_log("getNext3AppointmentDates: Verifico disponibilità slot {$formattedDate} {$slotTime}");
-if (isTimeSlotCompletelyFree($formattedDate, $slotTime, 60)) {
-    $availableSlots[] = $slotTime;
-    error_log("getNext3AppointmentDates: ✓ Slot {$formattedDate} {$slotTime} aggiunto come DISPONIBILE");
-} else {
-    error_log("getNext3AppointmentDates: ✗ Slot {$formattedDate} {$slotTime} ESCLUSO per sovrapposizione");
-}
-                } else {
-                    // Log per debug
-                    error_log("Slot " . $formattedDate . " " . $slotTime . " non disponibile: " . $slotAvailability['reason']);
+                    // CORREZIONE CRITICA: Usa sempre il controllo sovrapposizioni
+                    if (isTimeSlotCompletelyFree($formattedDate, $slotTime, 60)) {
+                        $availableSlots[] = $slotTime;
+                    }
                 }
             }
 
             // Se ci sono almeno 2 slot disponibili, aggiungi questa data
             if (count($availableSlots) >= 2) {
                 $next3Days[$formattedDate] = $availableSlots;
-                error_log("Data " . $formattedDate . " aggiunta con " . count($availableSlots) . " slot disponibili");
+                error_log("Date {$formattedDate} added with " . count($availableSlots) . " available slots");
 
                 if (count($next3Days) >= 3) {
                     break; // Abbiamo raggiunto le 3 date
                 }
-            } else {
-                error_log("Data " . $formattedDate . " scartata: solo " . count($availableSlots) . " slot disponibili (servono almeno 2)");
             }
         }
 
@@ -2439,7 +2365,6 @@ if (isTimeSlotCompletelyFree($formattedDate, $slotTime, 60)) {
     // Ordina per data
     ksort($next3Days);
 
-    error_log("FINE getNext3AppointmentDates - Trovate " . count($next3Days) . " date con slot disponibili");
     return array_slice($next3Days, 0, 3, true);
 }
                     
