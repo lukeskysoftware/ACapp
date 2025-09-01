@@ -718,13 +718,13 @@ function isTimeSlotCompletelyFree($date, $time, $duration_minutes = 60, $exclude
         // Verifica sovrapposizione
         if (($slot_start < $existing_end) && ($slot_end > $existing_start)) {
             $stmt->close();
-        //    error_log("OVERLAP DETECTED: Slot {$time} conflicts with existing appointment {$row['appointment_time']} (ID: {$row['id']})");
+            error_log("OVERLAP DETECTED: Slot {$time} conflicts with existing appointment {$row['appointment_time']} (ID: {$row['id']})");
             return false;
         }
     }
     
     $stmt->close();
- //   error_log("SLOT FREE: {$date} {$time} available");
+    error_log("SLOT FREE: {$date} {$time} available");
     return true;
 }
 
@@ -2184,7 +2184,7 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
             $existingAppCount = $existingResult->num_rows;
 
             if ($existingAppCount > 0) {
-          //      error_log("Date {$formattedDate}: {$existingAppCount} existing appointments found");
+               error_log("Date {$formattedDate}: {$existingAppCount} existing appointments found");
             }
 
             // Filtra gli slot configurati per questo giorno della settimana
@@ -2228,7 +2228,7 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
             // Se ci sono almeno 2 slot disponibili, aggiungi questa data
             if (count($availableSlots) >= 2) {
                 $next3Days[$formattedDate] = $availableSlots;
-         //       error_log("Date {$formattedDate} added with " . count($availableSlots) . " available slots");
+              error_log("Date {$formattedDate} added with " . count($availableSlots) . " available slots");
 
                 if (count($next3Days) >= 3) {
                     break; // Abbiamo raggiunto le 3 date
