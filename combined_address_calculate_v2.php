@@ -1127,6 +1127,7 @@ function checkAvailableSlotsNearRef_v2($ref_appointmentData, $newUser_latitude, 
  * Funzione per verificare slot disponibili prima/dopo un appuntamento esistente.
  * Rispetta i limiti MIN e MAX degli slot configurati in cp_slots per la zona,
  * e integra i controlli di distanza e occupazione.
+ * CORREZIONE: Aggiunge controllo sovrapposizione temporale di 90 minuti
  *
  * @param array $appointmentData Dati dell'appuntamento di riferimento
  * @param int $buffer_minutes Durata dello slot/buffer (default 60)
@@ -1174,7 +1175,7 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     }
 
     if (!$zone_actual_min_slot_time || !$zone_actual_max_slot_time) {
-        error_log("checkAvailableSlotsNearAppointment: Impossibile determinare limiti slot validi da cp_slots per zona {$zone_id} (o zone_id è 0) per app. ID {$appointment_id_ref}. Nessuno slot adiacente proposto.");
+        error_log("checkAvailableSlotsNearAppointment: Impossibile determinare limiti slot validi da cp_slots per zona {$zone_id} (o zone_id è 0) per app. ID {$appointment_id_ref}.");
         return [];
     }
 
@@ -1228,7 +1229,28 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
         $before_slot_excluded_reason = "Slot proposto {$proposed_before_time_str} è prima del primo slot operativo della zona ({$zone_actual_min_slot_time})";
     }
 
-    // Check distanza dal precedente
+    // CONTROLLO SOVRAPPOSIZIONE TEMPORALE 90 MINUTI
+    if (!$exclude_before) {
+        $check_overlap_sql = "SELECT COUNT(*) as count, GROUP_CONCAT(appointment_time) as conflicting_times 
+                             FROM cp_appointments 
+                             WHERE appointment_date = ? 
+                             AND appointment_time BETWEEN 
+                                 SUBTIME(?, '01:30:00') AND ADDTIME(?, '01:30:00')";
+        $check_stmt = $conn->prepare($check_overlap_sql);
+        if ($check_stmt) {
+            $check_stmt->bind_param("sss", $proposed_before_date_str, $proposed_before_time_str, $proposed_before_time_str);
+            $check_stmt->execute();
+            $result = $check_stmt->get_result();
+            $row = $result->fetch_assoc();
+            if ($row['count'] > 0) {
+                $exclude_before = true;
+                $before_slot_excluded_reason = "Slot {$proposed_before_time_str} si sovrappone con appuntamenti esistenti (entro 90 min): {$row['conflicting_times']}";
+            }
+            $check_stmt->close();
+        }
+    }
+
+    // Check distanza dal precedente (LOGICA ORIGINALE MANTENUTA)
     if (!$exclude_before && $prev_appointment_details_for_distance && !empty($prev_appointment_details_for_distance['address'])) {
         $coords_ref_for_prev_dist = getCoordinatesFromAddress($appointment_address_ref, $appointment_id_ref);
         $coords_prev_for_dist = getCoordinatesFromAddress($prev_appointment_details_for_distance['address'], $prev_appointment_details_for_distance['id']);
@@ -1257,22 +1279,6 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
         }
     }
     
-    // Check slot già occupato
-    if (!$exclude_before) {
-        $check_booked_sql = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
-        $check_booked_stmt = $conn->prepare($check_booked_sql);
-        if ($check_booked_stmt) {
-            $check_booked_stmt->bind_param("ss", $proposed_before_date_str, $proposed_before_time_str);
-            $check_booked_stmt->execute();
-            $check_result = $check_booked_stmt->get_result()->fetch_assoc();
-            if ($check_result['count'] > 0) {
-                $exclude_before = true;
-                $before_slot_excluded_reason = "Slot {$proposed_before_time_str} del {$proposed_before_date_str} risulta già occupato";
-            }
-            $check_booked_stmt->close();
-        }
-    }
-    
     $available_slots[] = [
         'date' => $proposed_before_date_str,
         'time' => $proposed_before_time_str,
@@ -1294,7 +1300,7 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     $debug_info_after = ['evaluated_slot' => $proposed_after_date_str . ' ' . $proposed_after_time_str];
 
     if (strtotime($proposed_after_time_str) > strtotime($zone_actual_max_slot_time)) {
-        // SLOT EXTRA: solo se entro 3km dall'ultimo della giornata
+        // SLOT EXTRA: solo se entro 3km dall'ultimo della giornata (LOGICA ORIGINALE MANTENUTA)
         if ($last_appointment_of_day && !empty($last_appointment_of_day['latitude']) && !empty($last_appointment_of_day['longitude']) && $latitude && $longitude) {
             $distanza = calculateRoadDistance(
                 $latitude, $longitude,
@@ -1309,11 +1315,11 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
                     'excluded' => false,
                     'excluded_reason' => '',
                     'debug_info' => $debug_info_after,
-                    'extra_warning' => "Slot fuori orario zona: proposto perché l'indirizzo è entro 3km dall’ultimo appuntamento della giornata (ID: {$last_appointment_of_day['id']})"
+                    'extra_warning' => "Slot fuori orario zona: proposto perché l'indirizzo è entro 3km dall'ultimo appuntamento della giornata (ID: {$last_appointment_of_day['id']})"
                 ];
             } else {
                 $exclude_after = true;
-                $after_slot_excluded_reason = "Slot fuori orario e troppo distante dall’ultimo appuntamento della giornata";
+                $after_slot_excluded_reason = "Slot fuori orario e troppo distante dall'ultimo appuntamento della giornata";
             }
         } else {
             $exclude_after = true;
@@ -1321,6 +1327,29 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
         }
     } else {
         // Orario regolare zona
+
+        // CONTROLLO SOVRAPPOSIZIONE TEMPORALE 90 MINUTI
+        if (!$exclude_after) {
+            $check_overlap_sql_after = "SELECT COUNT(*) as count, GROUP_CONCAT(appointment_time) as conflicting_times 
+                                       FROM cp_appointments 
+                                       WHERE appointment_date = ? 
+                                       AND appointment_time BETWEEN 
+                                           SUBTIME(?, '01:30:00') AND ADDTIME(?, '01:30:00')";
+            $check_stmt_after = $conn->prepare($check_overlap_sql_after);
+            if ($check_stmt_after) {
+                $check_stmt_after->bind_param("sss", $proposed_after_date_str, $proposed_after_time_str, $proposed_after_time_str);
+                $check_stmt_after->execute();
+                $result_after = $check_stmt_after->get_result();
+                $row_after = $result_after->fetch_assoc();
+                if ($row_after['count'] > 0) {
+                    $exclude_after = true;
+                    $after_slot_excluded_reason = "Slot {$proposed_after_time_str} si sovrappone con appuntamenti esistenti (entro 90 min): {$row_after['conflicting_times']}";
+                }
+                $check_stmt_after->close();
+            }
+        }
+
+        // Check distanza dal successivo (LOGICA ORIGINALE MANTENUTA)
         if (!$exclude_after && $next_appointment_details_for_distance && !empty($next_appointment_details_for_distance['address'])) {
             $coords_ref_for_next_dist = getCoordinatesFromAddress($appointment_address_ref, $appointment_id_ref);
             $coords_next_for_dist = getCoordinatesFromAddress($next_appointment_details_for_distance['address'], $next_appointment_details_for_distance['id']);
@@ -1346,22 +1375,6 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
                 $exclude_after = true;
                 $after_slot_excluded_reason = "Impossibile ottenere coordinate per calcolo distanza da app. successivo ({$next_appointment_details_for_distance['id']}).";
                 $debug_info_after['coord_error_next'] = $after_slot_excluded_reason;
-            }
-        }
-
-        // Check slot già occupato
-        if (!$exclude_after) {
-            $check_booked_sql_after = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
-            $check_booked_stmt_after = $conn->prepare($check_booked_sql_after);
-            if ($check_booked_stmt_after) {
-                $check_booked_stmt_after->bind_param("ss", $proposed_after_date_str, $proposed_after_time_str);
-                $check_booked_stmt_after->execute();
-                $check_result_after = $check_booked_stmt_after->get_result()->fetch_assoc();
-                if ($check_result_after['count'] > 0) {
-                    $exclude_after = true;
-                    $after_slot_excluded_reason = "Slot {$proposed_after_time_str} del {$proposed_after_date_str} risulta già occupato";
-                }
-                $check_booked_stmt_after->close();
             }
         }
 
