@@ -64,9 +64,7 @@ function batchUpdateAddressCache($conn) {
             getCoordinatesFromAddress($row['address'], $row['id']);
             $count++;
         }
-        error_log('BatchUpdateAddressCache: aggiornati ' . $count . ' indirizzi senza lat/lng.');
     } else {
-        error_log('BatchUpdateAddressCache: errore query: ' . $conn->error);
     }
 }
 
@@ -2240,7 +2238,6 @@ function getNextAppointmentDatesForZone($slots_config, $zoneId, $user_latitude, 
         // Verifica blocchi totali per la data o zona (usando isSlotAvailable da utils_appointment.php)
         $date_availability = isSlotAvailable($check_date_str, null, null, $zoneId); // Verifica l'intera giornata
         if (!$date_availability['available']) {
-            error_log("getNextAppointmentDatesForZone: Data {$check_date_str} bloccata per zona {$zoneId}. Motivo: " . $date_availability['reason']);
             continue;
         }
 
@@ -2269,20 +2266,11 @@ function getNextAppointmentDatesForZone($slots_config, $zoneId, $user_latitude, 
             $slot_specific_availability = isSlotAvailable($check_date_str, $slot_start_time, $slot_end_time, $zoneId);
 
             if (!$slot_specific_availability['available']) {
-                 error_log("getNextAppointmentDatesForZone: Slot {$check_date_str} {$slot_start_time} bloccato per zona {$zoneId}. Motivo: " . $slot_specific_availability['reason']);
                 continue;
             }
 
-            // Verifica se lo slot è GIA' OCCUPATO in cp_appointments (controllo base)
-            $check_booked_sql = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
-            // Potremmo voler limitare a zone_id o controllare globalmente a seconda delle regole aziendali
-            $chk_stmt = $conn->prepare($check_booked_sql);
-            $chk_stmt->bind_param("ss", $check_date_str, $slot_time_str);
-            $chk_stmt->execute();
-            $is_occupied = ($chk_stmt->get_result()->fetch_assoc()['count'] > 0);
-            $chk_stmt->close();
-
-            if (!$is_occupied) {
+            // CORREZIONE: Usa la funzione completa per verificare sovrapposizioni di 60 minuti
+            if (isTimeSlotCompletelyFree($check_date_str, $slot_time_str, 60)) {
                 $valid_times_for_date[] = $slot_time_str;
             }
         }
@@ -2321,60 +2309,14 @@ function getNext3AppointmentDates($slots, $zoneId, $userLatitude = null, $userLo
 
             error_log("Controllo data: " . $formattedDate . " (giorno della settimana: " . $checkDayOfWeek . ")");
 
-            // Verifica se questa data è disponibile negli unavailable slots
+            // Check if date is available in unavailable slots
             $dateAvailability = isSlotAvailable($formattedDate, null, null, $zoneId);
 
             if (!$dateAvailability['available']) {
-                error_log("Data " . $formattedDate . " saltata: " . $dateAvailability['reason']);
                 continue;
             }
 
-            // CORREZIONE: Verifica appuntamenti esistenti con controllo distanza migliorato
-            $existingAppsSql = "SELECT a.id, a.address FROM cp_appointments a WHERE a.appointment_date = ?";
-            $existingStmt = $conn->prepare($existingAppsSql);
-            $existingStmt->bind_param("s", $formattedDate);
-            $existingStmt->execute();
-            $existingResult = $existingStmt->get_result();
-            $existingAppCount = $existingResult->num_rows;
-
-            error_log("Data " . $formattedDate . " - Numero di appuntamenti esistenti: " . $existingAppCount);
-
-            // Se esistono appuntamenti e abbiamo coordinate dell'utente, verifica la distanza
-            if ($existingAppCount > 0 && $userLatitude !== null && $userLongitude !== null) {
-                $allWithinRadius = true;
-                $existingResult->data_seek(0); // Reset del puntatore
-
-                while ($app = $existingResult->fetch_assoc()) {
-                    $appCoords = getCoordinatesFromAddress($app['address'], $app['id']);
-
-                    if ($appCoords) {
-                        $distance = calculateRoadDistance(
-                            $userLatitude, $userLongitude,
-                            $appCoords['lat'], $appCoords['lng']
-                        );
-
-                        error_log("Data " . $formattedDate . " - Appuntamento ID " . $app['id'] . " - Distanza: " . $distance . " km");
-
-                        if ($distance > 3) {
-                            $allWithinRadius = false;
-                            error_log("Data " . $formattedDate . " saltata: appuntamento esistente a più di 3km");
-                            break;
-                        }
-                    } else {
-                        $allWithinRadius = false;
-                        error_log("Data " . $formattedDate . " saltata: impossibile ottenere coordinate");
-                        break;
-                    }
-                }
-                
-                if (!$allWithinRadius) {
-                    continue; // Salta questa data
-                }
-            } else {
-                error_log("Data " . $formattedDate . " - Nessun appuntamento esistente o coordinate mancanti.");
-            }
-
-            // Filtra gli slot configurati per questo giorno della settimana
+            // Get configured slots for this day of the week
             $daySlots = array_filter($slots, function($slot) use ($checkDayOfWeek) {
                 $slotDayOfWeek = date('N', strtotime($slot['day']));
                 return $slotDayOfWeek == $checkDayOfWeek;
@@ -2415,21 +2357,16 @@ if (isTimeSlotCompletelyFree($formattedDate, $slotTime, 60)) {
     error_log("getNext3AppointmentDates: ✗ Slot {$formattedDate} {$slotTime} ESCLUSO per sovrapposizione");
 }
                 } else {
-                    // Log per debug
-                    error_log("Slot " . $formattedDate . " " . $slotTime . " non disponibile: " . $slotAvailability['reason']);
                 }
             }
 
             // Se ci sono almeno 2 slot disponibili, aggiungi questa data
             if (count($availableSlots) >= 2) {
                 $next3Days[$formattedDate] = $availableSlots;
-                error_log("Data " . $formattedDate . " aggiunta con " . count($availableSlots) . " slot disponibili");
 
                 if (count($next3Days) >= 3) {
                     break; // Abbiamo raggiunto le 3 date
                 }
-            } else {
-                error_log("Data " . $formattedDate . " scartata: solo " . count($availableSlots) . " slot disponibili (servono almeno 2)");
             }
         }
 
