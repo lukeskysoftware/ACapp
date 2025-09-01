@@ -244,9 +244,9 @@ function calculateDistance($origin, $destination) {
     $distanceCorrection = 1.4;
     $estimatedRoadDistance = $distance * $distanceCorrection;
     
-    error_log("Distanza euclidea: $distance km, Distanza stradale stimata: $estimatedRoadDistance km");
+//    error_log("Distanza euclidea: $distance km, Distanza stradale stimata: $estimatedRoadDistance km");
     
-    error_log("Distanza stimata: $estimatedRoadDistance km tra [$origin[0],$origin[1]] e [$destination[0],$destination[1]]");
+//    error_log("Distanza stimata: $estimatedRoadDistance km tra [$origin[0],$origin[1]] e [$destination[0],$destination[1]]");
     
     return $estimatedRoadDistance;
 }
@@ -1433,7 +1433,7 @@ function findOptimizedMixedDaySlots($new_lat, $new_lng, $radius_km = 3, $buffer_
                     if ($conflict) continue;
                     // Verifica che non sia slot unavailable
                     $slot_end = date('H:i:s', strtotime($slot_time) + $buffer_minutes*60);
-                    $availability = isSlotAvailable($thedate, $slot_time, $slot_end, $zone_id);
+                   $availability = function_exists('isSlotAvailable') ? isSlotAvailable($thedate, $slot_time, $slot_end, $zone_id) : ['available' => true];
                     if (!$availability['available']) continue;
                     // Proponi lo slot!
                     $results[] = [
