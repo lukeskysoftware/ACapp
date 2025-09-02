@@ -441,7 +441,7 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
                     $slots_limit_stmt->bind_param("i", $zone_id);
                     $slots_limit_stmt->execute();
                     $slots_limit_result = $slots_limit_stmt->get_result();
-                    if ($slots_row = $slots_limit_result->fetch_assoc()) {å
+                    if ($slots_row = $slots_limit_result->fetch_assoc()) {
                         if ($slots_row['earliest_slot'] !== null && $slots_row['latest_slot'] !== null) {
                             $display_limits_text = htmlspecialchars("Slot da {$slots_row['earliest_slot']} a {$slots_row['latest_slot']}");
                         } else { $display_limits_text = htmlspecialchars("Default (Nessuno slot per Zona {$zone_id})"); }
@@ -626,6 +626,32 @@ function getZonesFromCoordinates($latitude, $longitude) {
  * @param int $buffer_minutes Durata dello slot/buffer (default 60)
  * @return array Array di slot disponibili (o esclusi con motivo)
  */
+/**
+ * Helper function to get time limits for a specific day of the week from all zones
+ */
+function getDaySpecificTimeLimits($day_of_week) {
+    global $conn;
+    
+    $slots_config_sql = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE day = ?";
+    $slots_config_stmt = $conn->prepare($slots_config_sql);
+    
+    if ($slots_config_stmt) {
+        $slots_config_stmt->bind_param("s", $day_of_week);
+        $slots_config_stmt->execute();
+        $slots_config_result = $slots_config_stmt->get_result();
+        if ($slots_config_row = $slots_config_result->fetch_assoc()) {
+            $slots_config_stmt->close();
+            return [
+                'min_time' => $slots_config_row['earliest_slot'],
+                'max_time' => $slots_config_row['latest_slot']
+            ];
+        }
+        $slots_config_stmt->close();
+    }
+    
+    return null;
+}
+
 function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 60) {
     global $conn;
     $available_slots = [];
@@ -644,34 +670,7 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     
     $duration_slot_minutes = (int)$buffer_minutes;
 
-    // 1. Recupera i limiti degli slot configurati per la zona specifica (MIN e MAX time da cp_slots)
-    $zone_actual_min_slot_time = null; // Orario del primo slot disponibile nella zona
-    $zone_actual_max_slot_time = null; // Orario di INIZIO dell'ultimo slot disponibile nella zona
 
-    if ($zone_id != 0) {
-        $slots_config_sql = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ?";
-        $slots_config_stmt = $conn->prepare($slots_config_sql);
-        if ($slots_config_stmt) {
-            $slots_config_stmt->bind_param("i", $zone_id);
-            $slots_config_stmt->execute();
-            $slots_config_result = $slots_config_stmt->get_result();
-            if ($slots_config_row = $slots_config_result->fetch_assoc()) {
-                if ($slots_config_row['earliest_slot'] && $slots_config_row['latest_slot']) {
-                    $zone_actual_min_slot_time = $slots_config_row['earliest_slot'];
-                    $zone_actual_max_slot_time = $slots_config_row['latest_slot'];
-                    error_log("checkAvailableSlotsNearAppointment: App Ref ID {$appointment_id_ref}, Zona {$zone_id} -> Limiti slot da cp_slots: Min INIZIO {$zone_actual_min_slot_time}, Max INIZIO {$zone_actual_max_slot_time}");
-                }
-            }
-            $slots_config_stmt->close();
-        } else {
-            error_log("checkAvailableSlotsNearAppointment: Errore preparazione query limiti slot per zona {$zone_id} da cp_slots: " . $conn->error);
-        }
-    }
-
-    if (!$zone_actual_min_slot_time || !$zone_actual_max_slot_time) {
-        error_log("checkAvailableSlotsNearAppointment: Impossibile determinare limiti slot validi da cp_slots per zona {$zone_id} (o zone_id è 0) per app. ID {$appointment_id_ref}. Nessuno slot adiacente sarà proposto.");
-        return [];
-    }
 
     $appointment_datetime_ref = new DateTime($appointment_date_str_ref . ' ' . $appointment_time_str_ref);
 
@@ -718,10 +717,20 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     $before_slot_excluded_reason = "";
     $debug_info_before = ['evaluated_slot' => $proposed_before_date_str . ' ' . $proposed_before_time_str];
 
-    // Check 1: Rispetto ai limiti di slot della zona
-    if (strtotime($proposed_before_time_str) < strtotime($zone_actual_min_slot_time)) {
+    // Check 1: Rispetto ai limiti di slot per il giorno della settimana del slot proposto
+    $proposed_before_day_of_week = date('l', strtotime($proposed_before_date_str));
+    $before_day_limits = getDaySpecificTimeLimits($proposed_before_day_of_week);
+    
+    if ($before_day_limits && $before_day_limits['min_time'] && $before_day_limits['max_time']) {
+        if (strtotime($proposed_before_time_str) < strtotime($before_day_limits['min_time'])) {
+            $exclude_before = true;
+            $before_slot_excluded_reason = "Slot proposto {$proposed_before_time_str} è prima del primo slot operativo per {$proposed_before_day_of_week} ({$before_day_limits['min_time']})";
+        }
+        error_log("checkAvailableSlotsNearAppointment: Slot PRIMA - App Ref ID {$appointment_id_ref}, Giorno {$proposed_before_day_of_week} -> Limiti: Min {$before_day_limits['min_time']}, Max {$before_day_limits['max_time']}");
+    } else {
         $exclude_before = true;
-        $before_slot_excluded_reason = "Slot proposto {$proposed_before_time_str} è prima del primo slot operativo della zona ({$zone_actual_min_slot_time})";
+        $before_slot_excluded_reason = "Impossibile determinare limiti slot per {$proposed_before_day_of_week}";
+        error_log("checkAvailableSlotsNearAppointment: Impossibile determinare limiti slot per {$proposed_before_day_of_week} per app. ID {$appointment_id_ref}.");
     }
 
     // Check 2: Distanza dall'appuntamento precedente (se esiste e slot ancora valido)
@@ -798,12 +807,21 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     $after_slot_excluded_reason = "";
     $debug_info_after = ['evaluated_slot' => $proposed_after_date_str . ' ' . $proposed_after_time_str];
 
-    // Check 1: Rispetto ai limiti di slot della zona
-    // $zone_actual_max_slot_time è l'orario di INIZIO dell'ultimo slot.
-    // Lo slot proposto ($proposed_after_time_str) deve iniziare non più tardi di $zone_actual_max_slot_time.
-    if (strtotime($proposed_after_time_str) > strtotime($zone_actual_max_slot_time)) {
+    // Check 1: Rispetto ai limiti di slot per il giorno della settimana del slot proposto
+    $proposed_after_day_of_week = date('l', strtotime($proposed_after_date_str));
+    $after_day_limits = getDaySpecificTimeLimits($proposed_after_day_of_week);
+    
+    if ($after_day_limits && $after_day_limits['min_time'] && $after_day_limits['max_time']) {
+        // Lo slot proposto deve iniziare non più tardi dell'ultimo slot operativo per quel giorno
+        if (strtotime($proposed_after_time_str) > strtotime($after_day_limits['max_time'])) {
+            $exclude_after = true;
+            $after_slot_excluded_reason = "Slot proposto {$proposed_after_time_str} inizia dopo l'ultimo slot operativo per {$proposed_after_day_of_week} ({$after_day_limits['max_time']})";
+        }
+        error_log("checkAvailableSlotsNearAppointment: Slot DOPO - App Ref ID {$appointment_id_ref}, Giorno {$proposed_after_day_of_week} -> Limiti: Min {$after_day_limits['min_time']}, Max {$after_day_limits['max_time']}");
+    } else {
         $exclude_after = true;
-        $after_slot_excluded_reason = "Slot proposto {$proposed_after_time_str} inizia dopo l'ultimo slot operativo della zona ({$zone_actual_max_slot_time})";
+        $after_slot_excluded_reason = "Impossibile determinare limiti slot per {$proposed_after_day_of_week}";
+        error_log("checkAvailableSlotsNearAppointment: Impossibile determinare limiti slot per {$proposed_after_day_of_week} per app. ID {$appointment_id_ref}.");
     }
 
     // Check 2: Distanza dall'appuntamento successivo (se esiste e slot ancora valido)
