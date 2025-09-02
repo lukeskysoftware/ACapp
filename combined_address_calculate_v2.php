@@ -2672,142 +2672,157 @@ echo "</div></div><hr>";
                 }
             }
         }
+        
+        
 
-// --- INIZIO LOGICA SLOT EXTRA UNIVERSALE (solo orari fuori configurazione zona) ---
+
+
+// --- INIZIO LOGICA SLOT EXTRA UNIVERSALE (con calcolo distanza migliore) ---
 $today = date('Y-m-d');
-// Ottieni tutte le date future con appuntamenti
-$dates_sql = "SELECT DISTINCT appointment_date FROM cp_appointments WHERE appointment_date >= ?";
-$stmt_dates = $conn->prepare($dates_sql);
-$stmt_dates->bind_param("s", $today);
-$stmt_dates->execute();
-$res_dates = $stmt_dates->get_result();
-$date_list = [];
-while ($row = $res_dates->fetch_assoc()) {
-    $date_list[] = $row['appointment_date'];
-}
-$stmt_dates->close();
 
-foreach ($date_list as $thedate) {
-    // Ottieni TUTTI gli appuntamenti del giorno ordinati per orario
-    $sql_all_day = "SELECT * FROM cp_appointments WHERE appointment_date = ? ORDER BY appointment_time";
-    $stmt_all_day = $conn->prepare($sql_all_day);
-    $stmt_all_day->bind_param("s", $thedate);
-    $stmt_all_day->execute();
-    $res_all_day = $stmt_all_day->get_result();
-    $all_appointments_day = [];
-    while ($app_day = $res_all_day->fetch_assoc()) {
-        if (empty($app_day['latitude']) || empty($app_day['longitude'])) {
-            $coords = getCoordinatesForAppointment($app_day['id'], $app_day['address']);
-            if ($coords) {
-                $app_day['latitude'] = $coords['lat'];
-                $app_day['longitude'] = $coords['lng'];
-            }
-        }
-        $all_appointments_day[] = $app_day;
+foreach ($appuntamenti_riferimento as $ref_app) {
+    if (!empty($ref_app['excluded_reason'])) {
+        continue;
     }
-    $stmt_all_day->close();
     
-    if (empty($all_appointments_day)) continue;
+    if (empty($ref_app['latitude']) || empty($ref_app['longitude'])) {
+        continue;
+    }
     
-    // Per ogni appuntamento del giorno, controlla se l'utente è entro 3km
-    foreach ($all_appointments_day as $app_check) {
-        if (!empty($app_check['latitude']) && !empty($app_check['longitude'])) {
-            $distanza = calculateRoadDistance($latitude_utente, $longitude_utente, $app_check['latitude'], $app_check['longitude']);
+    $app_date = $ref_app['appointment_date'];
+    $distanza_utente = calculateRoadDistance(
+        $latitude_utente, $longitude_utente, 
+        $ref_app['latitude'], $ref_app['longitude']
+    );
+    
+    if ($distanza_utente !== false && $distanza_utente <= 3) {
+        $day_of_week = date('l', strtotime($app_date));
+        
+        // Trova TUTTI gli appuntamenti validi di quella data per calcolare la distanza minima
+        $distanza_minima = $distanza_utente; // Inizia con la distanza corrente
+        
+        $sql_all_apps_date = "SELECT latitude, longitude FROM cp_appointments WHERE appointment_date = ? AND latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != '' AND longitude != ''";
+        $stmt_all_apps = $conn->prepare($sql_all_apps_date);
+        
+        if ($stmt_all_apps) {
+            $stmt_all_apps->bind_param("s", $app_date);
+            $stmt_all_apps->execute();
+            $res_all_apps = $stmt_all_apps->get_result();
             
-            if ($distanza !== false && $distanza <= 3) {
-                $zone_id = $app_check['zone_id'];
+            while ($app_row = $res_all_apps->fetch_assoc()) {
+                $dist_temp = calculateRoadDistance(
+                    $latitude_utente, $longitude_utente,
+                    $app_row['latitude'], $app_row['longitude']
+                );
+                if ($dist_temp !== false && $dist_temp < $distanza_minima) {
+                    $distanza_minima = $dist_temp;
+                }
+            }
+            $stmt_all_apps->close();
+        }
+        
+        $sql_all_slots = "SELECT DISTINCT time FROM cp_slots WHERE day = ? ORDER BY time";
+        $stmt_all_slots = $conn->prepare($sql_all_slots);
+        $stmt_all_slots->bind_param("s", $day_of_week);
+        $stmt_all_slots->execute();
+        $res_all_slots = $stmt_all_slots->get_result();
+        $tutti_slot_configurati = [];
+        while ($slot_row = $res_all_slots->fetch_assoc()) {
+            $tutti_slot_configurati[] = $slot_row['time'];
+        }
+        $stmt_all_slots->close();
+        
+        if (!empty($tutti_slot_configurati)) {
+            $slot_occupati = 0;
+            $slot_totali = count($tutti_slot_configurati);
+            
+            foreach ($tutti_slot_configurati as $slot_time) {
+                $sql_check = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
+                $stmt_check = $conn->prepare($sql_check);
+                $stmt_check->bind_param("ss", $app_date, $slot_time);
+                $stmt_check->execute();
+                $res_check = $stmt_check->get_result();
+                $row_check = $res_check->fetch_assoc();
+                $stmt_check->close();
                 
-                // Recupera gli orari MIN e MAX configurati per questa zona in questo giorno della settimana
-                $day_of_week = date('l', strtotime($thedate));
-                $sql_slots_range = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ? AND day = ?";
-                $stmt_slots = $conn->prepare($sql_slots_range);
-                $stmt_slots->bind_param("is", $zone_id, $day_of_week);
-                $stmt_slots->execute();
-                $res_slots = $stmt_slots->get_result();
-                $slots_row = $res_slots->fetch_assoc();
-                $zona_min_time = $slots_row ? $slots_row['earliest_slot'] : null;
-                $zona_max_time = $slots_row ? $slots_row['latest_slot'] : null;
-                $stmt_slots->close();
+                if ($row_check['count'] > 0) {
+                    $slot_occupati++;
+                }
+            }
+            
+            // PROPONI SLOT EXTRA SOLO SE TUTTI GLI SLOT CONFIGURATI SONO OCCUPATI
+            if ($slot_occupati == $slot_totali) {
+                $primo_slot = min($tutti_slot_configurati);
+                $ultimo_slot = max($tutti_slot_configurati);
                 
-                if ($zona_min_time && $zona_max_time) {
-                    // Trova il primo e ultimo appuntamento del giorno
-                    $primo_app = reset($all_appointments_day);
-                    $ultimo_app = end($all_appointments_day);
+                // SLOT EXTRA PRIMA
+                $orario_extra_prima = date('H:i:s', strtotime($primo_slot) - 3600);
+                if (strtotime($orario_extra_prima) >= strtotime('06:00:00')) {
+                    $sql_check = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
+                    $stmt_check = $conn->prepare($sql_check);
+                    $stmt_check->bind_param("ss", $app_date, $orario_extra_prima);
+                    $stmt_check->execute();
+                    $res_check = $stmt_check->get_result();
+                    $row_check = $res_check->fetch_assoc();
+                    $stmt_check->close();
                     
-                    // SLOT EXTRA PRIMA: 60 minuti prima del primo slot configurato
-                    $orario_extra_prima = date('H:i:s', strtotime($zona_min_time) - 3600);
-                    // Deve essere almeno 60 minuti prima del primo appuntamento
-                    if (strtotime($thedate . ' ' . $orario_extra_prima) <= strtotime($thedate . ' ' . $primo_app['appointment_time']) - 3600) {
-                        // Verifica che non esista già un appuntamento a quell'orario
-                        $sql_check = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
-                        $stmt_check = $conn->prepare($sql_check);
-                        $stmt_check->bind_param("ss", $thedate, $orario_extra_prima);
-                        $stmt_check->execute();
-                        $res_check = $stmt_check->get_result();
-                        $row_check = $res_check->fetch_assoc();
-                        $stmt_check->close();
-                        
-                        if ($row_check['count'] == 0) {
-                            $slot_extra = [
-                                'date' => $thedate,
-                                'time' => $orario_extra_prima,
-                                'type' => 'before_extra',
-                                'related_appointment' => array_merge($primo_app, ['zone_id' => $zone_id]),
-                                'excluded' => false,
-                                'excluded_reason' => '',
-                                'debug_info' => [],
-                                'extra_warning' => "Slot fuori orario: 60 min prima del primo slot configurato ({$zona_min_time}) - entro 3km da app. ID: {$app_check['id']}"
-                            ];
-                            $slots_proposti_con_priorita[] = [
-                                'slot_details' => $slot_extra,
-                                'priority_score' => 10000 + $distanza,
-                                'travel_distance' => $distanza,
-                                'source' => 'extra_before_first'
-                            ];
-                            $tutti_gli_slot_adiacenti_per_tabella[] = $slot_extra;
-                        }
-                    }
-                    
-                    // SLOT EXTRA DOPO: 60 minuti dopo l'ultimo slot configurato  
-                    $orario_extra_dopo = date('H:i:s', strtotime($zona_max_time) + 3600);
-                    // Deve essere almeno 60 minuti dopo l'ultimo appuntamento
-                    if (strtotime($thedate . ' ' . $orario_extra_dopo) >= strtotime($thedate . ' ' . $ultimo_app['appointment_time']) + 3600) {
-                        // Verifica che non esista già un appuntamento a quell'orario
-                        $sql_check = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
-                        $stmt_check = $conn->prepare($sql_check);
-                        $stmt_check->bind_param("ss", $thedate, $orario_extra_dopo);
-                        $stmt_check->execute();
-                        $res_check = $stmt_check->get_result();
-                        $row_check = $res_check->fetch_assoc();
-                        $stmt_check->close();
-                        
-                        if ($row_check['count'] == 0) {
-                            $slot_extra = [
-                                'date' => $thedate,
-                                'time' => $orario_extra_dopo,
-                                'type' => 'after_extra',
-                                'related_appointment' => array_merge($ultimo_app, ['zone_id' => $zone_id]),
-                                'excluded' => false,
-                                'excluded_reason' => '',
-                                'debug_info' => [],
-                                'extra_warning' => "Slot fuori orario: 60 min dopo l'ultimo slot configurato ({$zona_max_time}) - entro 3km da app. ID: {$app_check['id']}"
-                            ];
-                            $slots_proposti_con_priorita[] = [
-                                'slot_details' => $slot_extra,
-                                'priority_score' => 10000 + $distanza,
-                                'travel_distance' => $distanza,
-                                'source' => 'extra_after_last'
-                            ];
-                            $tutti_gli_slot_adiacenti_per_tabella[] = $slot_extra;
-                        }
+                    if ($row_check['count'] == 0) {
+                        $slot_extra = [
+                            'date' => $app_date,
+                            'time' => $orario_extra_prima,
+                            'type' => 'before_extra',
+                            'related_appointment' => $ref_app,
+                            'excluded' => false,
+                            'excluded_reason' => '',
+                            'debug_info' => [],
+                            'extra_warning' => "SLOT EXTRA: Tutti gli slot regolari per {$day_of_week} sono occupati. Slot aggiuntivo 60 min prima del primo slot configurato ({$primo_slot})"
+                        ];
+                        $slots_proposti_con_priorita[] = [
+                            'slot_details' => $slot_extra,
+                            'priority_score' => 4000 + $distanza_minima,
+                            'travel_distance' => $distanza_minima,
+                            'source' => 'extra_before_first'
+                        ];
+                        $tutti_gli_slot_adiacenti_per_tabella[] = $slot_extra;
                     }
                 }
                 
-                // Esce dal loop una volta trovato un appuntamento entro 3km
-                break;
+                // SLOT EXTRA DOPO
+                $orario_extra_dopo = date('H:i:s', strtotime($ultimo_slot) + 3600);
+                if (strtotime($orario_extra_dopo) <= strtotime('22:00:00')) {
+                    $sql_check = "SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ?";
+                    $stmt_check = $conn->prepare($sql_check);
+                    $stmt_check->bind_param("ss", $app_date, $orario_extra_dopo);
+                    $stmt_check->execute();
+                    $res_check = $stmt_check->get_result();
+                    $row_check = $res_check->fetch_assoc();
+                    $stmt_check->close();
+                    
+                    if ($row_check['count'] == 0) {
+                        $slot_extra = [
+                            'date' => $app_date,
+                            'time' => $orario_extra_dopo,
+                            'type' => 'after_extra',
+                            'related_appointment' => $ref_app,
+                            'excluded' => false,
+                            'excluded_reason' => '',
+                            'debug_info' => [],
+                            'extra_warning' => "SLOT EXTRA: Tutti gli slot regolari per {$day_of_week} sono occupati. Slot aggiuntivo 60 min dopo l'ultimo slot configurato ({$ultimo_slot})"
+                        ];
+                        $slots_proposti_con_priorita[] = [
+                            'slot_details' => $slot_extra,
+                            'priority_score' => 4000 + $distanza_minima,
+                            'travel_distance' => $distanza_minima,
+                            'source' => 'extra_after_last'
+                        ];
+                        $tutti_gli_slot_adiacenti_per_tabella[] = $slot_extra;
+                    }
+                }
             }
         }
     }
+    
+    break;
 }
 // --- FINE LOGICA SLOT EXTRA ---
 
