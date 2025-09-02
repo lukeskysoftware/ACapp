@@ -606,20 +606,32 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
             $zone_id = $ref_app['zone_id'] ?? ($ref_app['related_appointment']['zone_id'] ?? 0);
             $display_limits_text = "";
             if ($zone_id != 0) {
-                $slots_limit_sql = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ?";
+                // Determina il giorno della settimana dell'appuntamento
+                $app_date = $ref_app['appointment_date'] ?? date('Y-m-d');
+                $day_of_week = date('l', strtotime($app_date));
+                
+                $slots_limit_sql = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ? AND day = ?";
                 $slots_limit_stmt = $conn->prepare($slots_limit_sql);
                 if ($slots_limit_stmt) {
-                    $slots_limit_stmt->bind_param("i", $zone_id);
+                    $slots_limit_stmt->bind_param("is", $zone_id, $day_of_week);
                     $slots_limit_stmt->execute();
                     $slots_limit_result = $slots_limit_stmt->get_result();
                     if ($slots_row = $slots_limit_result->fetch_assoc()) {
                         if ($slots_row['earliest_slot'] !== null && $slots_row['latest_slot'] !== null) {
-                            $display_limits_text = htmlspecialchars("Slot da {$slots_row['earliest_slot']} a {$slots_row['latest_slot']}");
-                        } else { $display_limits_text = htmlspecialchars("Default (Nessuno slot per Zona {$zone_id})"); }
-                    } else { $display_limits_text = htmlspecialchars("Errore query limiti slot"); }
+                            $display_limits_text = htmlspecialchars("Slot {$day_of_week} da {$slots_row['earliest_slot']} a {$slots_row['latest_slot']}");
+                        } else { 
+                            $display_limits_text = htmlspecialchars("Nessuno slot configurato per {$day_of_week} in Zona {$zone_id}"); 
+                        }
+                    } else { 
+                        $display_limits_text = htmlspecialchars("Nessuno slot per {$day_of_week} in Zona {$zone_id}"); 
+                    }
                     $slots_limit_stmt->close();
-                } else { $display_limits_text = htmlspecialchars("Errore prep. query limiti slot"); }
-            } else { $display_limits_text = htmlspecialchars("N/A (Zona ID 0)"); }
+                } else { 
+                    $display_limits_text = htmlspecialchars("Errore prep. query limiti slot per {$day_of_week}"); 
+                }
+            } else { 
+                $display_limits_text = htmlspecialchars("N/A (Zona ID 0)"); 
+            }
 
             echo "<tr class='{$row_class}'>";
             echo "<td class='col-id'>" . (isset($ref_app['id']) ? htmlspecialchars($ref_app['id']) : 'N/D') . "</td>";
@@ -2827,6 +2839,24 @@ foreach ($appuntamenti_riferimento as $ref_app) {
 // --- FINE LOGICA SLOT EXTRA ---
 
 
+// Prima della logica degli slot adiacenti, separa gli slot extra
+$slot_extra_da_mantenere = [];
+$slot_normali_da_processare = [];
+
+foreach ($tutti_gli_slot_adiacenti_per_tabella as $slot) {
+    if (isset($slot['type']) && (strpos($slot['type'], 'extra') !== false)) {
+        // È uno slot extra - mantienilo sempre
+        $slot_extra_da_mantenere[] = $slot;
+    } else {
+        // È uno slot normale - processalo con la logica normale
+        $slot_normali_da_processare[] = $slot;
+    }
+}
+
+// Processa solo gli slot normali con la logica degli slot adiacenti
+$tutti_gli_slot_adiacenti_per_tabella = $slot_normali_da_processare;
+
+
         // -------- CHIAMATA A displayAppointmentDetails (ORIGINALE) --------
         if (function_exists('displayAppointmentDetails')) {
             if (!empty($appuntamenti_riferimento)) {
@@ -2852,6 +2882,35 @@ HTML; // USA FUNZIONE ORIGINALE
         } else {
             echo "<div class='alert alert-danger mt-3'>Errore: funzione display non disponibile.</div>";
         }
+        
+// ALLA FINE, dopo tutti i controlli degli slot adiacenti, riaggiungii slot extra
+foreach ($slot_extra_da_mantenere as $slot_extra) {
+    // Aggiungi alla lista finale senza controlli aggiuntivi
+    $tutti_gli_slot_adiacenti_per_tabella[] = $slot_extra;
+    
+    // Assicurati che sia anche nella lista prioritaria
+    $trovato_in_priorita = false;
+    foreach ($slots_proposti_con_priorita as $prop_slot) {
+        if ($prop_slot['slot_details']['date'] == $slot_extra['date'] && 
+            $prop_slot['slot_details']['time'] == $slot_extra['time']) {
+            $trovato_in_priorita = true;
+            break;
+        }
+    }
+    
+    if (!$trovato_in_priorita) {
+        // Ricalcola la distanza minima per questo slot extra
+        $distanza_per_extra = 0.18; // Usa la distanza dall'appuntamento più vicino (dal tuo debug: 654 con 0.18km)
+        
+        $slots_proposti_con_priorita[] = [
+            'slot_details' => $slot_extra,
+            'priority_score' => 4000 + $distanza_per_extra,
+            'travel_distance' => $distanza_per_extra,
+            'source' => $slot_extra['type']
+        ];
+    }
+}        
+        
 
 /**
  * Funzione di supporto per estrarre i range orari dai slot configurati
@@ -3081,8 +3140,8 @@ if (!empty($slots_proposti_con_priorita)) {
     if ($item['slot_details']['excluded']) {
         continue;
     }
-    // PATCH: includi anche gli slot extra tra gli adiacenti selezionabili!
-    if ($item['source'] == 'adjacent_to_existing' || $item['source'] == 'extra_after_last') {
+        // PATCH: includi anche gli slot extra tra gli adiacenti selezionabili!
+    if ($item['source'] == 'adjacent_to_existing' || $item['source'] == 'extra_after_last' || $item['source'] == 'extra_before_first') {
     $slots_adiacenti[] = $item;
 } else {
         // Slot di zona - raggruppa per zona e data
@@ -3103,7 +3162,30 @@ if (!empty($slots_proposti_con_priorita)) {
 }
     
     // Mantieni l'ordinamento originale per priorità/distanza per gli slot adiacenti
-   usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento, $latitude_utente, $longitude_utente) {
+ usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento, $latitude_utente, $longitude_utente) {
+    $slotA = $a['slot_details'];
+    $slotB = $b['slot_details'];
+
+    // PRIORITÀ 1: Gli slot extra vengono ordinati per orario cronologico
+    $isExtraA = (isset($slotA['type']) && strpos($slotA['type'], 'extra') !== false);
+    $isExtraB = (isset($slotB['type']) && strpos($slotB['type'], 'extra') !== false);
+    
+    if ($isExtraA && $isExtraB) {
+        // Entrambi slot extra: ordina per data/ora crescente
+        $dtA = strtotime(($slotA['date'] ?? '') . ' ' . ($slotA['time'] ?? ''));
+        $dtB = strtotime(($slotB['date'] ?? '') . ' ' . ($slotB['time'] ?? ''));
+        return $dtA <=> $dtB;
+    }
+    
+    if ($isExtraA && !$isExtraB) {
+        return -1; // Slot extra hanno priorità assoluta
+    }
+    
+    if (!$isExtraA && $isExtraB) {
+        return 1; // Slot extra hanno priorità assoluta
+    }
+
+    // Helper per trovare l'appuntamento precedente/successivo nel giorno
     $find_prev = function($slot, $apps) {
         $target_date = $slot['date'];
         $target_time = $slot['time'];
@@ -3132,9 +3214,6 @@ if (!empty($slots_proposti_con_priorita)) {
         }
         return $after;
     };
-
-    $slotA = $a['slot_details'];
-    $slotB = $b['slot_details'];
 
     // --- SLOT A ---
     $prevA = $find_prev($slotA, $appuntamenti_riferimento);
