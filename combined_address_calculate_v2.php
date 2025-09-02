@@ -3162,7 +3162,7 @@ if (!empty($slots_proposti_con_priorita)) {
 }
     
     // Mantieni l'ordinamento originale per priorità/distanza per gli slot adiacenti
- usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento, $latitude_utente, $longitude_utente) {
+usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento, $latitude_utente, $longitude_utente) {
     $slotA = $a['slot_details'];
     $slotB = $b['slot_details'];
 
@@ -3171,7 +3171,7 @@ if (!empty($slots_proposti_con_priorita)) {
     $isExtraB = (isset($slotB['type']) && strpos($slotB['type'], 'extra') !== false);
     
     if ($isExtraA && $isExtraB) {
-        // Entrambi slot extra: ordina per data/ora crescente
+        // Entrambi slot extra: ordina per data/ora crescente (13:30 prima di 19:30)
         $dtA = strtotime(($slotA['date'] ?? '') . ' ' . ($slotA['time'] ?? ''));
         $dtB = strtotime(($slotB['date'] ?? '') . ' ' . ($slotB['time'] ?? ''));
         return $dtA <=> $dtB;
@@ -3267,10 +3267,29 @@ if (!empty($slots_proposti_con_priorita)) {
         echo "<h3 class='text-center mb-3 mt-4'>Slot disponibili vicino ad appuntamenti esistenti</h3>";
         $count_displayed_sel = 0;
         
-        // Ordinamento dinamico degli slot adiacenti in base alle distanze da appuntamenti precedenti/successivi
-usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento) {
+                // Ordinamento dinamico degli slot adiacenti in base alle distanze da appuntamenti precedenti/successivi
+usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento, $latitude_utente, $longitude_utente) {
     $slotA = $a['slot_details'];
     $slotB = $b['slot_details'];
+
+    // PRIORITÀ 1: Gli slot extra vengono ordinati per orario cronologico
+    $isExtraA = (isset($slotA['type']) && strpos($slotA['type'], 'extra') !== false);
+    $isExtraB = (isset($slotB['type']) && strpos($slotB['type'], 'extra') !== false);
+    
+    if ($isExtraA && $isExtraB) {
+        // Entrambi slot extra: ordina per data/ora crescente (13:30 prima di 19:30)
+        $dtA = strtotime(($slotA['date'] ?? '') . ' ' . ($slotA['time'] ?? ''));
+        $dtB = strtotime(($slotB['date'] ?? '') . ' ' . ($slotB['time'] ?? ''));
+        return $dtA <=> $dtB;
+    }
+    
+    if ($isExtraA && !$isExtraB) {
+        return -1; // Slot extra hanno priorità assoluta
+    }
+    
+    if (!$isExtraA && $isExtraB) {
+        return 1; // Slot extra hanno priorità assoluta
+    }
 
     // Helper per trovare l'appuntamento precedente/successivo nel giorno
     $find_prev = function($slot, $apps) {
@@ -3309,14 +3328,6 @@ usort($slots_adiacenti, function($a, $b) use ($appuntamenti_riferimento) {
     $nextA = $find_next($slotA, $appuntamenti_riferimento);
     $prevB = $find_prev($slotB, $appuntamenti_riferimento);
     $nextB = $find_next($slotB, $appuntamenti_riferimento);
-
-    // Funzione di priorità:
-    // 1. Se esiste prev, ordina per distanza crescente da prev (slot più vicino viene prima)
-    // 2. Se non esiste prev ma esiste next, ordina per distanza crescente da next
-    // 3. Se entrambi, usa solo prev
-    // Usa la funzione calculateRoadDistance per il calcolo
-
-    global $latitude_utente, $longitude_utente;
 
     if ($prevA) {
         $distA = calculateRoadDistance($latitude_utente, $longitude_utente, $prevA['latitude'], $prevA['longitude']);
