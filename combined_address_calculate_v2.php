@@ -608,12 +608,22 @@ function displayAppointmentDetails($reference_appointments, $all_calculated_adja
             if ($zone_id != 0) {
                 // Determina il giorno della settimana dell'appuntamento
                 $app_date = $ref_app['appointment_date'] ?? date('Y-m-d');
-                $day_of_week = date('l', strtotime($app_date));
+                $day_of_week_en = date('l', strtotime($app_date));
+                $giorni_traduzione = [
+                    'Monday' => 'Lunedì',
+                    'Tuesday' => 'Martedì', 
+                    'Wednesday' => 'Mercoledì',
+                    'Thursday' => 'Giovedì',
+                    'Friday' => 'Venerdì',
+                    'Saturday' => 'Sabato',
+                    'Sunday' => 'Domenica'
+                ];
+                $day_of_week = $giorni_traduzione[$day_of_week_en] ?? $day_of_week_en;
                 
                 $slots_limit_sql = "SELECT MIN(time) as earliest_slot, MAX(time) as latest_slot FROM cp_slots WHERE zone_id = ? AND day = ?";
                 $slots_limit_stmt = $conn->prepare($slots_limit_sql);
                 if ($slots_limit_stmt) {
-                    $slots_limit_stmt->bind_param("is", $zone_id, $day_of_week);
+                    $slots_limit_stmt->bind_param("is", $zone_id, $day_of_week_en);
                     $slots_limit_stmt->execute();
                     $slots_limit_result = $slots_limit_stmt->get_result();
                     if ($slots_row = $slots_limit_result->fetch_assoc()) {
@@ -967,8 +977,18 @@ function checkAvailableSlotsNearRef_v2($ref_appointmentData, $newUser_latitude, 
     $actual_travel_for_before_slot = false;
 
     // Check: Rispetto ai limiti di slot per il giorno della settimana del slot proposto
-    $proposed_before_day_of_week = date('l', strtotime($proposed_before_date_str));
-    $before_day_limits = getDaySpecificTimeLimits($proposed_before_day_of_week);
+    $proposed_before_day_of_week_en = date('l', strtotime($proposed_before_date_str));
+    $giorni_traduzione = [
+        'Monday' => 'Lunedì',
+        'Tuesday' => 'Martedì', 
+        'Wednesday' => 'Mercoledì',
+        'Thursday' => 'Giovedì',
+        'Friday' => 'Venerdì',
+        'Saturday' => 'Sabato',
+        'Sunday' => 'Domenica'
+    ];
+    $proposed_before_day_of_week = $giorni_traduzione[$proposed_before_day_of_week_en] ?? $proposed_before_day_of_week_en;
+    $before_day_limits = getDaySpecificTimeLimits($proposed_before_day_of_week_en);
     
     if ($before_day_limits && $before_day_limits['min_time'] && $before_day_limits['max_time']) {
         if (strtotime($proposed_before_time_str) < strtotime($before_day_limits['min_time'])) {
@@ -1036,8 +1056,18 @@ function checkAvailableSlotsNearRef_v2($ref_appointmentData, $newUser_latitude, 
     $actual_travel_for_after_slot = false;
 
     // Check: Rispetto ai limiti di slot per il giorno della settimana del slot proposto  
-    $proposed_after_day_of_week = date('l', strtotime($proposed_after_date_str));
-    $after_day_limits = getDaySpecificTimeLimits($proposed_after_day_of_week);
+    $proposed_after_day_of_week_en = date('l', strtotime($proposed_after_date_str));
+    $giorni_traduzione = [
+        'Monday' => 'Lunedì',
+        'Tuesday' => 'Martedì', 
+        'Wednesday' => 'Mercoledì',
+        'Thursday' => 'Giovedì',
+        'Friday' => 'Venerdì',
+        'Saturday' => 'Sabato',
+        'Sunday' => 'Domenica'
+    ];
+    $proposed_after_day_of_week = $giorni_traduzione[$proposed_after_day_of_week_en] ?? $proposed_after_day_of_week_en;
+    $after_day_limits = getDaySpecificTimeLimits($proposed_after_day_of_week_en);
     
     if ($after_day_limits && $after_day_limits['min_time'] && $after_day_limits['max_time']) {
         if (strtotime($proposed_after_time_str) > strtotime($after_day_limits['max_time'])) {
@@ -1256,8 +1286,18 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     $debug_info_before = ['evaluated_slot' => $proposed_before_date_str . ' ' . $proposed_before_time_str];
 
     // Check: Rispetto ai limiti di slot per il giorno della settimana del slot proposto
-    $proposed_before_day_of_week = date('l', strtotime($proposed_before_date_str));
-    $before_day_limits = getDaySpecificTimeLimits($proposed_before_day_of_week, true);
+    $proposed_before_day_of_week_en = date('l', strtotime($proposed_before_date_str));
+    $giorni_traduzione = [
+        'Monday' => 'Lunedì',
+        'Tuesday' => 'Martedì', 
+        'Wednesday' => 'Mercoledì',
+        'Thursday' => 'Giovedì',
+        'Friday' => 'Venerdì',
+        'Saturday' => 'Sabato',
+        'Sunday' => 'Domenica'
+    ];
+    $proposed_before_day_of_week = $giorni_traduzione[$proposed_before_day_of_week_en] ?? $proposed_before_day_of_week_en;
+    $before_day_limits = getDaySpecificTimeLimits($proposed_before_day_of_week_en, true);
     
     if ($before_day_limits && $before_day_limits['min_time'] && $before_day_limits['max_time']) {
         if (strtotime($proposed_before_time_str) < strtotime($before_day_limits['min_time'])) {
@@ -1346,8 +1386,18 @@ function checkAvailableSlotsNearAppointment($appointmentData, $buffer_minutes = 
     $debug_info_after = ['evaluated_slot' => $proposed_after_date_str . ' ' . $proposed_after_time_str];
 
     // Check: Rispetto ai limiti di slot per il giorno della settimana del slot proposto
-    $proposed_after_day_of_week = date('l', strtotime($proposed_after_date_str));
-    $after_day_limits = getDaySpecificTimeLimits($proposed_after_day_of_week, true);
+    $proposed_after_day_of_week_en = date('l', strtotime($proposed_after_date_str));
+    $giorni_traduzione = [
+        'Monday' => 'Lunedì',
+        'Tuesday' => 'Martedì', 
+        'Wednesday' => 'Mercoledì',
+        'Thursday' => 'Giovedì',
+        'Friday' => 'Venerdì',
+        'Saturday' => 'Sabato',
+        'Sunday' => 'Domenica'
+    ];
+    $proposed_after_day_of_week = $giorni_traduzione[$proposed_after_day_of_week_en] ?? $proposed_after_day_of_week_en;
+    $after_day_limits = getDaySpecificTimeLimits($proposed_after_day_of_week_en, true);
     
     if ($after_day_limits && $after_day_limits['min_time'] && $after_day_limits['max_time']) {
         if (strtotime($proposed_after_time_str) > strtotime($after_day_limits['max_time'])) {
@@ -1506,7 +1556,7 @@ function findOptimizedMixedDaySlots($new_lat, $new_lng, $radius_km = 3, $buffer_
         $zone_ids = array_unique(array_column($apps, 'zone_id'));
         foreach ($zone_ids as $zone_id) {
             // Prendi slot operativi della zona per quel giorno della settimana
-            $day_of_week = date('N', strtotime($thedate));
+            $day_of_week = date('l', strtotime($thedate));
             $sql_slot = "SELECT time FROM cp_slots WHERE zone_id = ? AND day = ?";
             $stmt_slot = $conn->prepare($sql_slot);
             $stmt_slot->bind_param("is", $zone_id, $day_of_week);
@@ -2708,7 +2758,17 @@ foreach ($appuntamenti_riferimento as $ref_app) {
     );
     
     if ($distanza_utente !== false && $distanza_utente <= 3) {
-        $day_of_week = date('l', strtotime($app_date));
+        $day_of_week_en = date('l', strtotime($app_date));
+        $giorni_traduzione = [
+            'Monday' => 'Lunedì',
+            'Tuesday' => 'Martedì', 
+            'Wednesday' => 'Mercoledì',
+            'Thursday' => 'Giovedì',
+            'Friday' => 'Venerdì',
+            'Saturday' => 'Sabato',
+            'Sunday' => 'Domenica'
+        ];
+        $day_of_week = $giorni_traduzione[$day_of_week_en] ?? $day_of_week_en;
         
         // Trova TUTTI gli appuntamenti validi di quella data per calcolare la distanza minima
         $distanza_minima = $distanza_utente; // Inizia con la distanza corrente
@@ -2735,7 +2795,7 @@ foreach ($appuntamenti_riferimento as $ref_app) {
         
         $sql_all_slots = "SELECT DISTINCT time FROM cp_slots WHERE day = ? ORDER BY time";
         $stmt_all_slots = $conn->prepare($sql_all_slots);
-        $stmt_all_slots->bind_param("s", $day_of_week);
+        $stmt_all_slots->bind_param("s", $day_of_week_en);
         $stmt_all_slots->execute();
         $res_all_slots = $stmt_all_slots->get_result();
         $tutti_slot_configurati = [];
