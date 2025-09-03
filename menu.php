@@ -7,7 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Define the timeout duration (e.g., 1800 seconds = 30 minutes)
-$timeout_duration = 1800;
+$timeout_duration = 7200;
 
 // Check if the user is logged in
 if (!isset($_SESSION['user_id'])) {
