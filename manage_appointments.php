@@ -10,12 +10,105 @@ if (!isset($_SESSION['user_id'])) {
 
 include 'db.php';
 include 'utils_appointment.php';
+// **NUOVA FUNZIONE: Gestire disdetta appuntamento**
+if (isset($_POST['cancel_appointment'])) {
+    $id = $_POST['appointment_id'];
+    
+    try {
+        // Aggiorna lo stato a 'disdetto' invece di eliminare
+        $stmt = $conn->prepare("UPDATE cp_appointments SET status = 'disdetto' WHERE id = ?");
+        if ($stmt === false) {
+            throw new Exception('Errore nella preparazione della query: ' . $conn->error);
+        }
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $stmt->close();
+        
+        $_SESSION['success_message'] = "Appuntamento disdetto con successo. Può essere ripristinato dalla ricerca pazienti.";
+        header('Location: manage_appointments.php');
+        exit();
+    } catch (Exception $e) {
+        error_log("Errore nella disdetta dell'appuntamento: " . $e->getMessage());
+        $_SESSION['error_message'] = "Si è verificato un errore nella disdetta: " . $e->getMessage();
+        header('Location: manage_appointments.php');
+        exit();
+    }
+}
+
+// **NUOVA FUNZIONE: Ripristinare appuntamento disdetto**
+if (isset($_POST['restore_appointment'])) {
+    $id = $_POST['appointment_id'];
+    
+    try {
+        // Verifica che lo slot sia ancora disponibile prima di ripristinare
+        $check_stmt = $conn->prepare("SELECT appointment_date, appointment_time, zone_id FROM cp_appointments WHERE id = ?");
+        $check_stmt->bind_param("i", $id);
+        $check_stmt->execute();
+        $result = $check_stmt->get_result();
+        $appointment_data = $result->fetch_assoc();
+        $check_stmt->close();
+        
+        if ($appointment_data) {
+            // Verifica conflitti con altri appuntamenti attivi
+            $conflict_stmt = $conn->prepare("SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ? AND status = 'attivo' AND id != ?");
+            $conflict_stmt->bind_param("ssi", $appointment_data['appointment_date'], $appointment_data['appointment_time'], $id);
+            $conflict_stmt->execute();
+            $conflict_result = $conflict_stmt->get_result();
+            $conflict_row = $conflict_result->fetch_assoc();
+            $conflict_stmt->close();
+            
+            if ($conflict_row['count'] > 0) {
+                $_SESSION['error_message'] = "Impossibile ripristinare: lo slot è già occupato da un altro appuntamento.";
+            } else {
+                // Verifica unavailable slots
+                $end_time = date('H:i:s', strtotime($appointment_data['appointment_time'] . ' +1 hour'));
+                $availability = isSlotAvailable($appointment_data['appointment_date'], $appointment_data['appointment_time'], $end_time, $appointment_data['zone_id']);
+                
+                if (!$availability['available']) {
+                    $_SESSION['error_message'] = "Impossibile ripristinare: " . $availability['reason'];
+                } else {
+                    // Ripristina lo stato a 'attivo'
+                    $restore_stmt = $conn->prepare("UPDATE cp_appointments SET status = 'attivo' WHERE id = ?");
+                    $restore_stmt->bind_param("i", $id);
+                    $restore_stmt->execute();
+                    $restore_stmt->close();
+                    
+                    $_SESSION['success_message'] = "Appuntamento ripristinato con successo.";
+                }
+            }
+        } else {
+            $_SESSION['error_message'] = "Appuntamento non trovato.";
+        }
+        
+        header('Location: manage_appointments.php');
+        exit();
+    } catch (Exception $e) {
+        error_log("Errore nel ripristino dell'appuntamento: " . $e->getMessage());
+        $_SESSION['error_message'] = "Si è verificato un errore nel ripristino: " . $e->getMessage();
+        header('Location: manage_appointments.php');
+        exit();
+    }
+}
+
 // Function to get all appointments with patient and zone information
 function getAppointments($filter = [], $search = '', $phone_search = '', $page = 1, $results_per_page = 15, $address_search = '') {
     global $conn;
     $conditions = [];
     $today = date('Y-m-d');
-    $conditions[] = "a.appointment_date >= '$today'";
+    
+    // **NUOVO: Gestione filtro per stato**
+    if (empty($filter['status']) || $filter['status'] === 'attivo') {
+        // Se non specificato o "attivo", mostra solo appuntamenti futuri e attivi
+        $conditions[] = "a.appointment_date >= '$today'";
+        $conditions[] = "(a.status IS NULL OR a.status = 'attivo')";
+    } elseif ($filter['status'] === 'disdetto') {
+        // Se "disdetto", mostra solo quelli disdetti (anche passati)
+        $conditions[] = "a.status = 'disdetto'";
+    } elseif ($filter['status'] === 'tutti') {
+        // Se "tutti", mostra tutto inclusi i disdetti futuri
+        $conditions[] = "a.appointment_date >= '$today'";
+    }
+    
     if (!empty($filter['date'])) {
         $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
     }
@@ -32,7 +125,9 @@ function getAppointments($filter = [], $search = '', $phone_search = '', $page =
         $conditions[] = "a.address LIKE '%" . mysqli_real_escape_string($conn, $address_search) . "%'";
     }
     $offset = ($page - 1) * $results_per_page;
-    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, COALESCE(z.name, 'N/A') as zone
+    
+    // **NUOVO: Aggiunta campo status nella SELECT**
+    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, a.status, COALESCE(z.name, 'N/A') as zone
             FROM cp_appointments a
             JOIN cp_patients p ON a.patient_id = p.id
             LEFT JOIN cp_zones z ON a.zone_id = z.id";
@@ -53,7 +148,17 @@ function getTotalAppointments($filter = [], $search = '', $phone_search = '', $a
     global $conn;
     $conditions = [];
     $today = date('Y-m-d');
-    $conditions[] = "a.appointment_date >= '$today'";
+    
+    // **NUOVO: Stessa logica di filtro per il count**
+    if (empty($filter['status']) || $filter['status'] === 'attivo') {
+        $conditions[] = "a.appointment_date >= '$today'";
+        $conditions[] = "(a.status IS NULL OR a.status = 'attivo')";
+    } elseif ($filter['status'] === 'disdetto') {
+        $conditions[] = "a.status = 'disdetto'";
+    } elseif ($filter['status'] === 'tutti') {
+        $conditions[] = "a.appointment_date >= '$today'";
+    }
+    
     if (!empty($filter['date'])) {
         $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
     }
@@ -157,7 +262,7 @@ if (isset($_POST['update'])) {
     }
 }
 
-// Function to delete an appointment
+// Function to delete an appointment (MANTENUTA per compatibilità)
 if (isset($_POST['delete_confirm'])) {
     $id = $_POST['appointment_id'];
     $sql = "DELETE FROM cp_appointments WHERE id = $id";
@@ -195,6 +300,7 @@ if (isset($_GET['highlight_appointment'])) {
         $filter = [
             'date' => '',
             'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
+            'status' => 'attivo' // **NUOVO: Aggiunto filtro status**
         ];
         $page = 1;
         $total_appointments = getTotalAppointments($filter, $search, $phone_search, $address_search);
@@ -207,6 +313,7 @@ if (isset($_GET['highlight_appointment'])) {
         $filter = [
             'date' => $row['appointment_date'],
             'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
+            'status' => 'attivo' // **NUOVO: Aggiunto filtro status**
         ];
         $page = 1; // Per assicurarsi di iniziare dalla prima pagina con questo filtro
         
@@ -263,6 +370,47 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
             background-color: grey;
             color: white;
         }
+        /* **NUOVI STILI PER DISDETTA** */
+.disdici-btn {
+    background-color: #ff9500;
+    color: white;
+    margin-left: 5px;
+}
+.ripristina-btn {
+    background-color: #28a745;
+    color: white;
+    margin-left: 5px;
+}
+.status-disdetto {
+    background-color: #fff3cd;
+    border-left: 4px solid #ffc107;
+}
+.badge-disdetto {
+    background-color: #ffc107;
+    color: #212529;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+.riprendi-btns {
+    margin-top: 5px;
+}
+.riprendi-btns a {
+    margin-right: 5px;
+    padding: 3px 8px;
+    font-size: 0.8em;
+    text-decoration: none;
+    border-radius: 3px;
+}
+.btn-smart {
+    background-color: #17a2b8;
+    color: white;
+}
+.btn-direct {
+    background-color: #6f42c1;
+    color: white;
+}
         .hidden {
             display: none;
         }
@@ -427,6 +575,21 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
                 document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
             }
         }
+        
+        // **NUOVA FUNZIONE: Conferma disdetta**
+function confirmCancel(appointment) {
+    if (confirm(`Sei sicuro di voler disdire l'appuntamento con ${appointment.name} ${appointment.surname} del ${appointment.appointment_date} alle ${appointment.appointment_time}?\n\nL'appuntamento potrà essere ripristinato dalla ricerca pazienti.`)) {
+        document.getElementById(`confirm-cancel-${appointment.id}`).style.display = 'inline';
+        document.getElementById(`cancel-btn-${appointment.id}`).style.display = 'none';
+    }
+}
+
+// **NUOVA FUNZIONE: Conferma ripristino**
+function confirmRestore(appointment) {
+    if (confirm(`Vuoi ripristinare l'appuntamento con ${appointment.name} ${appointment.surname} del ${appointment.appointment_date} alle ${appointment.appointment_time}?`)) {
+        document.getElementById(`restore-form-${appointment.id}`).submit();
+    }
+}
     
         function hideActions(id) {
             const actionRow = document.getElementById(`action-${id}`);
@@ -499,9 +662,11 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
     const search = document.getElementById('search').value;
     const phone_search = document.getElementById('phone_search').value;
     const address_search = document.getElementById('address_search').value;
+    // **NUOVA: Gestione filtro status**
+    const status = document.getElementById('status').value;
 
     const xhr = new XMLHttpRequest();
-    xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}&phone_search=${encodeURIComponent(phone_search)}&address_search=${encodeURIComponent(address_search)}&page=1`, true);
+    xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}&phone_search=${encodeURIComponent(phone_search)}&address_search=${encodeURIComponent(address_search)}&status=${encodeURIComponent(status)}`, true);
 
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4) {
@@ -534,6 +699,8 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
     document.getElementById('search').value = '';
     document.getElementById('phone_search').value = '';
     document.getElementById('address_search').value = '';
+    // **NUOVO: Reset filtro status a default**
+    document.getElementById('status').value = 'attivo';
     filterAppointments();
 }
     </script>
@@ -593,7 +760,7 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
             overflow-x: auto;
             width: 100%;
             box-sizing: border-box;
-            min-width: 900px;
+            min-width: 1000px;
         ">
 
         <div style="display: flex; align-items: center; min-width: 170px;">
@@ -601,7 +768,15 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
             <input type="text" id="date" name="date" class="flatpickr" value="<?php echo htmlspecialchars($filter['date']); ?>" style="width: 110px;">
         </div>
 
-        
+        <!-- **NUOVO FILTRO STATUS** -->
+<div style="display: flex; align-items: center; min-width: 150px;">
+    <label for="status" style="margin-right: 5px; font-weight: bold; white-space: nowrap;">Stato:</label>
+    <select id="status" name="status" style="width: 100px;">
+        <option value="attivo"<?php echo ($filter['status'] === 'attivo') ? ' selected' : ''; ?>>Solo attivi</option>
+        <option value="disdetto"<?php echo ($filter['status'] === 'disdetto') ? ' selected' : ''; ?>>Solo disdetti</option>
+        <option value="tutti"<?php echo ($filter['status'] === 'tutti') ? ' selected' : ''; ?>>Tutti</option>
+    </select>
+</div>
 
         <div style="display: flex; align-items: center; min-width: 180px;">
             <label for="search" style="margin-right: 5px; font-weight: bold; white-space: nowrap;">Nome/Cognome:</label>
@@ -652,91 +827,133 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
     <div class="pure-g aria">
         <table border="0" class="<?php echo $showTable ? '' : 'hidden'; ?> pure-table pure-table-bordered centrato aria">
             <thead>
-                <tr>
-                    <th>Nome</th>
-                    <th>Cognome</th>
-                    <th>Telefono</th>
-                    <th>Note</th>
-                    <th>Data Appuntamento</th>
-                    <th>Ora Appuntamento</th>
-                    <th>Indirizzo</th>
-                    <th>Zona</th>
-                    <th>Azioni</th>
-                </tr>
-            </thead>
+    <tr>
+        <th>Nome</th>
+        <th>Cognome</th>
+        <th>Telefono</th>
+        <th>Note</th>
+        <th>Data Appuntamento</th>
+        <th>Ora Appuntamento</th>
+        <th>Indirizzo</th>
+        <th>Zona</th>
+        <th>Stato</th> <!-- **NUOVA COLONNA** -->
+        <th>Azioni</th>
+    </tr>
+</thead>
             <tbody>
-                <?php foreach ($appointments as $appointment) { ?>
-                <tr>
-                    
-                    
-                    <td><?php echo htmlspecialchars($appointment['name']); ?></td>
-                    <td><?php echo htmlspecialchars($appointment['surname']); ?></td>
-                    <td><?php echo htmlspecialchars($appointment['phone']); ?></td>
-                    <td class="notes-cell"><?php echo htmlspecialchars($appointment['notes']); ?></td>
-                    <td><?php echo date('d/m/Y', strtotime($appointment['appointment_date'])); ?></td>
-                    <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
-                    <td><?php echo htmlspecialchars($appointment['address']); ?></td>
-                    <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
-                    <td>
-                        <button class="modifica-btn pure-button button-small button-green" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
-                        <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode(['id' => $appointment['id'], 'name' => $appointment['name'], 'surname' => $appointment['surname'], 'phone' => $appointment['phone'], 'zone' => $appointment['zone'], 'date' => date('d/m/Y', strtotime($appointment['appointment_date'])), 'time' => $appointment['appointment_time'], 'address' => $appointment['address']])); ?>)">Cancella</button>
-                        <form method="post" action="manage_appointments.php" style="display:inline;">
-                            <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                            <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
-                        </form>
-                    </td>
-                </tr>
-<tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
-    <td colspan="9">
-        <form method="post" action="manage_appointments.php" id="edit-form-<?php echo $appointment['id']; ?>" class="edit-form pure-form" style="display:inline;">
-            <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-            <div class="inline-edit-form">
-                <div class="edit-column">
-                    <label for="name-<?php echo $appointment['id']; ?>">Nome</label>
-                    <input type="text" id="name-<?php echo $appointment['id']; ?>" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>" required>
+    <?php foreach ($appointments as $appointment) { 
+        // **NUOVO: Applica stile per appuntamenti disdetti**
+        $rowClass = ($appointment['status'] === 'disdetto') ? 'status-disdetto' : '';
+    ?>
+    <tr class="<?php echo $rowClass; ?>">
+        <td><?php echo htmlspecialchars($appointment['name']); ?></td>
+        <td><?php echo htmlspecialchars($appointment['surname']); ?></td>
+        <td><?php echo htmlspecialchars($appointment['phone']); ?></td>
+        <td class="notes-cell"><?php echo htmlspecialchars($appointment['notes']); ?></td>
+        <td><?php echo date('d/m/Y', strtotime($appointment['appointment_date'])); ?></td>
+        <td><?php echo htmlspecialchars($appointment['appointment_time']); ?></td>
+        <td><?php echo htmlspecialchars($appointment['address']); ?></td>
+        <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
+        
+        <!-- **NUOVA COLONNA STATO** -->
+        <td>
+            <?php if ($appointment['status'] === 'disdetto'): ?>
+                <span class="badge-disdetto">DISDETTO</span>
+                <!-- **NUOVO: Link per riprendere appuntamento** -->
+                <div class="riprendi-btns">
+                    <a href="add_appointment.php?copy_appointment=<?php echo $appointment['id']; ?>&from_page=manage" class="btn-smart">Copia Smart</a>
+                    <a href="add_appointment.php?direct_restore=<?php echo $appointment['id']; ?>&from_page=manage" class="btn-direct">Ripristina Diretto</a>
                 </div>
-                <div class="edit-column">
-                    <label for="surname-<?php echo $appointment['id']; ?>">Cognome</label>
-                    <input type="text" id="surname-<?php echo $appointment['id']; ?>" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>" required>
+            <?php else: ?>
+                <span style="color: green; font-weight: bold;">ATTIVO</span>
+            <?php endif; ?>
+        </td>
+        
+        <!-- **COLONNA AZIONI MODIFICATA** -->
+        <td>
+            <?php if ($appointment['status'] === 'disdetto'): ?>
+                <!-- **APPUNTAMENTO DISDETTO: Pulsante ripristina** -->
+                <form method="post" action="manage_appointments.php" style="display:inline;" id="restore-form-<?php echo $appointment['id']; ?>">
+                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
+                    <button type="button" class="ripristina-btn pure-button button-small" onclick="confirmRestore(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Ripristina</button>
+                    <input type="submit" name="restore_appointment" value="Conferma Ripristina" style="display:none;" id="confirm-restore-<?php echo $appointment['id']; ?>">
+                </form>
+            <?php else: ?>
+                <!-- **APPUNTAMENTO ATTIVO: Pulsanti normali** -->
+                <button class="modifica-btn pure-button button-small button-green" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
+                
+                <button class="disdici-btn pure-button button-small" id="cancel-btn-<?php echo $appointment['id']; ?>" onclick="confirmCancel(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Disdici</button>
+                
+                <form method="post" action="manage_appointments.php" style="display:inline;">
+                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
+                    <input type="submit" name="cancel_appointment" value="Conferma Disdetta" class="confirm-btn pure-button button-small button-red" id="confirm-cancel-<?php echo $appointment['id']; ?>" style="display:none;">
+                </form>
+                
+                <!-- **MANTIENI anche il vecchio sistema di cancellazione definitiva** -->
+                <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)" style="display:none;">Cancella</button>
+                
+                <form method="post" action="manage_appointments.php" style="display:inline;">
+                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
+                    <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
+                </form>
+            <?php endif; ?>
+        </td>
+    </tr>
+    
+    <!-- **RIGA DI MODIFICA** (solo per appuntamenti attivi) -->
+    <?php if ($appointment['status'] !== 'disdetto'): ?>
+    <tr id="action-<?php echo $appointment['id']; ?>" class="action-row" style="display:none;">
+        <td colspan="10"> <!-- **AUMENTATO colspan da 9 a 10** -->
+            <form method="post" action="manage_appointments.php" id="edit-form-<?php echo $appointment['id']; ?>" class="edit-form pure-form" style="display:inline;">
+                <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
+                <div class="inline-edit-form">
+                    <div class="edit-column">
+                        <label for="name-<?php echo $appointment['id']; ?>">Nome</label>
+                        <input type="text" id="name-<?php echo $appointment['id']; ?>" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>" required>
+                    </div>
+                    <div class="edit-column">
+                        <label for="surname-<?php echo $appointment['id']; ?>">Cognome</label>
+                        <input type="text" id="surname-<?php echo $appointment['id']; ?>" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>" required>
+                    </div>
+                    <div class="edit-column">
+                        <label for="phone-<?php echo $appointment['id']; ?>">Telefono</label>
+                        <input type="text" id="phone-<?php echo $appointment['id']; ?>" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
+                    </div>
+                    <div class="edit-column notes-column">
+                        <label for="notes-<?php echo $appointment['id']; ?>">Note</label>
+                        <textarea id="notes-<?php echo $appointment['id']; ?>" name="notes" rows="3"><?php echo htmlspecialchars($appointment['notes']); ?></textarea>
+                    </div>
+                    <div class="edit-column">
+                        <label for="appointment_date-<?php echo $appointment['id']; ?>">Data</label>
+                        <input type="date" id="appointment_date-<?php echo $appointment['id']; ?>" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required class="flatpickr">
+                    </div>
+                    <div class="edit-column">
+                        <label for="appointment_time-<?php echo $appointment['id']; ?>">Ora</label>
+                        <input type="time" id="appointment_time-<?php echo $appointment['id']; ?>" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required class="flatpickr-time">
+                    </div>
+                    <div class="edit-column">
+                        <label for="address-<?php echo $appointment['id']; ?>">Indirizzo</label>
+                        <input type="text" id="address-<?php echo $appointment['id']; ?>" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>" required>
+                    </div>
                 </div>
-                                <div class="edit-column">
-                    <label for="phone-<?php echo $appointment['id']; ?>">Telefono</label>
-                    <input type="text" id="phone-<?php echo $appointment['id']; ?>" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>" required>
+                <div class="edit-buttons">
+                    <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn pure-button button-small button-green">
+                    <button type="button" class="chiudi-btn pure-button button-small" onclick="hideActions(<?php echo $appointment['id']; ?>)">Chiudi</button>
                 </div>
-                <div class="edit-column notes-column">
-                    <label for="notes-<?php echo $appointment['id']; ?>">Note</label>
-                    <textarea id="notes-<?php echo $appointment['id']; ?>" name="notes" rows="3"><?php echo htmlspecialchars($appointment['notes']); ?></textarea>
-                </div>
-                <div class="edit-column">
-                    <label for="appointment_date-<?php echo $appointment['id']; ?>">Data</label>
-                    <input type="date" id="appointment_date-<?php echo $appointment['id']; ?>" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required class="flatpickr">
-                </div>
-                <div class="edit-column">
-                    <label for="appointment_time-<?php echo $appointment['id']; ?>">Ora</label>
-                    <input type="time" id="appointment_time-<?php echo $appointment['id']; ?>" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required class="flatpickr-time">
-                </div>
-                <div class="edit-column">
-                    <label for="address-<?php echo $appointment['id']; ?>">Indirizzo</label>
-                    <input type="text" id="address-<?php echo $appointment['id']; ?>" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>" required>
-                </div>
-            </div>
-            <div class="edit-buttons">
-                <input type="submit" name="update" value="Conferma Modifica" class="modifica-btn pure-button button-small button-green">
-                <button type="button" class="chiudi-btn pure-button button-small" onclick="hideActions(<?php echo $appointment['id']; ?>)">Chiudi</button>
-            </div>
-        </form>
-    </td>
-</tr>
-                <?php } ?>
-            </tbody>
+            </form>
+        </td>
+    </tr>
+    <?php endif; ?>
+    <?php } ?>
+</tbody>
         </table>
     </div>
     <div class="pure-g aria centrato pagination">
         <?php if ($page > 1) { ?>
-            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>" class="pure-button">Pagina Precedente</a>
+            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status']); ?>" class="pure-button">Precedente</a>
         <?php } ?>
         <?php if ($page < $total_pages) { ?>
-            <a href="manage_appointments.php?page=<?php echo $page + 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>" class="pure-button">Pagina Successiva</a>
+            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status']); ?>" class="pure-button">Precedente</a>
         <?php } ?>
     </div>
     
