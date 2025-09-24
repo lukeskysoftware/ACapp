@@ -944,13 +944,17 @@ document.getElementById('status').value = 'tutti';
         </table>
     </div>
     <div class="pure-g aria centrato pagination">
-        <?php if ($page > 1) { ?>
-            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status']); ?>" class="pure-button">Precedente</a>
-        <?php } ?>
-        <?php if ($page < $total_pages) { ?>
-            <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date']); ?>&zone=<?php echo urlencode($filter['zone']); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status']); ?>" class="pure-button">Precedente</a>
-        <?php } ?>
-    </div>
+    <?php if ($page > 1) { ?>
+        <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date'] ?? ''); ?>&zone=<?php echo urlencode($filter['zone'] ?? ''); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status'] ?? ''); ?>" class="pure-button">← Precedente</a>
+    <?php } ?>
+    
+    <!-- Mostra info pagina corrente -->
+    <span style="margin: 0 15px; padding: 8px;">Pagina <?php echo $page; ?> di <?php echo $total_pages; ?></span>
+    
+    <?php if ($page < $total_pages) { ?>
+        <a href="manage_appointments.php?page=<?php echo $page + 1; ?>&date=<?php echo urlencode($filter['date'] ?? ''); ?>&zone=<?php echo urlencode($filter['zone'] ?? ''); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status'] ?? ''); ?>" class="pure-button">Successivo →</a>
+    <?php } ?>
+</div>
     
     
 <?php if (isset($_GET['highlight_appointment'])): ?>
