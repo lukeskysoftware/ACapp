@@ -96,19 +96,15 @@ function getAppointments($filter = [], $search = '', $phone_search = '', $page =
     $conditions = [];
     $today = date('Y-m-d');
     
-    // **NUOVO: Gestione filtro per stato**
-    if (empty($filter['status']) || $filter['status'] === 'attivo') {
-        // Se non specificato o "attivo", mostra solo appuntamenti futuri e attivi
-        $conditions[] = "a.appointment_date >= '$today'";
-        $conditions[] = "(a.status IS NULL OR a.status = 'attivo')";
-    } elseif ($filter['status'] === 'disdetto') {
-        // Se "disdetto", mostra solo quelli disdetti (anche passati)
-        $conditions[] = "a.status = 'disdetto'";
-    } elseif ($filter['status'] === 'tutti') {
-        // Se "tutti", mostra tutto inclusi i disdetti futuri
-        $conditions[] = "a.appointment_date >= '$today'";
-    }
-    
+    // **NUOVO: Logica filtro corretta**
+$conditions[] = "a.appointment_date >= '$today'"; // Sempre solo futuri
+
+if ($filter['status'] === 'attivo') {
+    // Solo appuntamenti attivi
+    $conditions[] = "(a.status IS NULL OR a.status = 'attivo')";
+}
+// Se status = 'tutti' o vuoto, mostra tutti (attivi + disdetti)
+
     if (!empty($filter['date'])) {
         $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
     }
@@ -699,8 +695,8 @@ function confirmRestore(appointment) {
     document.getElementById('search').value = '';
     document.getElementById('phone_search').value = '';
     document.getElementById('address_search').value = '';
-    // **NUOVO: Reset filtro status a default**
-    document.getElementById('status').value = 'attivo';
+    // Reset filtro status a default 'tutti'
+document.getElementById('status').value = 'tutti';
     filterAppointments();
 }
     </script>
@@ -772,10 +768,9 @@ function confirmRestore(appointment) {
 <div style="display: flex; align-items: center; min-width: 150px;">
     <label for="status" style="margin-right: 5px; font-weight: bold; white-space: nowrap;">Stato:</label>
     <select id="status" name="status" style="width: 100px;">
-        <option value="attivo"<?php echo ($filter['status'] === 'attivo') ? ' selected' : ''; ?>>Solo attivi</option>
-        <option value="disdetto"<?php echo ($filter['status'] === 'disdetto') ? ' selected' : ''; ?>>Solo disdetti</option>
-        <option value="tutti"<?php echo ($filter['status'] === 'tutti') ? ' selected' : ''; ?>>Tutti</option>
-    </select>
+    <option value="tutti"<?php echo (empty($filter['status']) || $filter['status'] === 'tutti') ? ' selected' : ''; ?>>Tutti</option>
+    <option value="attivo"<?php echo ($filter['status'] === 'attivo') ? ' selected' : ''; ?>>Solo attivi</option>
+</select>
 </div>
 
         <div style="display: flex; align-items: center; min-width: 180px;">
