@@ -2632,8 +2632,9 @@ $stmt_zone->close();
         $existingAppointmentForAddress = null;
         $today_date_for_check = date('Y-m-d'); // Usa un nome variabile diverso da $today se $today è usato dopo
         $checkAddressSql = "SELECT a.id, a.appointment_date, a.appointment_time, p.name AS patient_name, p.surname AS patient_surname, z.name AS zone_name, a.address AS appointment_address
-                            FROM cp_appointments a JOIN cp_patients p ON a.patient_id = p.id LEFT JOIN cp_zones z ON a.zone_id = z.id
-                            WHERE a.address = ? AND a.appointment_date >= ? ORDER BY a.appointment_date, a.appointment_time LIMIT 1";
+                    FROM cp_appointments a JOIN cp_patients p ON a.patient_id = p.id LEFT JOIN cp_zones z ON a.zone_id = z.id
+                    WHERE a.address = ? AND a.appointment_date >= ? AND (a.status IS NULL OR a.status = 'attivo') 
+                    ORDER BY a.appointment_date, a.appointment_time LIMIT 1";
         $checkAddressStmt = $conn->prepare($checkAddressSql);
         $proceedSearchAnyway_div_open = false; // Flag per gestire la chiusura del div
         if ($checkAddressStmt) {
@@ -3854,23 +3855,58 @@ catch (Exception $e) {
                 }
             </style>
                 <script>
-        async function loadAPIKey() {
-            try {
-                const response = await fetch('get_api_key.php');
-                const data = await response.json();
-                const apiKey = data.api_key;
-                const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=it`;
-                script.async = true;
-                script.onload = initAutocomplete;
-                document.head.appendChild(script);
-            } catch (error) {
-                console.error('Error fetching API key:', error);
-                displayMessage('Error fetching API key: ' + error.message);
-            }
-        }
+   async function loadAPIKey() {
+    try {
+        const response = await fetch('get_api_key.php');
+        const data = await response.json();
+        const apiKey = data.api_key;
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=it&callback=initAutocomplete`;
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+    } catch (error) {
+        console.error('Error fetching API key:', error);
+        displayMessage('Error fetching API key: ' + error.message);
+    }
+}
 
-        window.addEventListener('load', loadAPIKey);
+// Funzione globale per l'inizializzazione dell'autocomplete
+window.initAutocomplete = function() {
+    var input = document.getElementById('address');
+    if (!input) {
+        console.error('Campo address non trovato');
+        return;
+    }
+    
+    var options = {
+        types: ['geocode'],
+        componentRestrictions: {country: 'IT'}
+    };
+    
+    var autocomplete = new google.maps.places.Autocomplete(input, options);
+
+    autocomplete.addListener('place_changed', function() {
+        var place = autocomplete.getPlace();
+        console.log('Place selected:', place); // Debug
+        
+        if (place.geometry && place.geometry.location) {
+            var lat = place.geometry.location.lat();
+            var lng = place.geometry.location.lng();
+            
+            document.getElementById('latitude').value = lat;
+            document.getElementById('longitude').value = lng;
+            
+            console.log('Coordinate impostate:', lat, lng); // Debug
+            displayCoordinates(lat, lng);
+        } else {
+            console.error('Nessuna geometria trovata per il luogo selezionato');
+            displayMessage('Indirizzo non valido. Seleziona un indirizzo dalla lista a discesa.');
+        }
+    });
+}
+
+window.addEventListener('load', loadAPIKey);
 
         function initAutocomplete() {
             var input = document.getElementById('address');
