@@ -16,6 +16,7 @@ if (!isset($_GET['id']) || !isset($_GET['patient_id'])) {
 
 $appointment_id = intval($_GET['id']);
 $patient_id = intval($_GET['patient_id']);
+$return_to = isset($_GET['return_to']) ? $_GET['return_to'] : 'search_patients';
 
 try {
     // Aggiorna lo status dell'appuntamento da 'cancelled' a 'active'
@@ -39,18 +40,24 @@ try {
     $_SESSION['error_message'] = "Errore: " . $e->getMessage();
 }
 
-// Ottieni il nome e cognome del paziente per il redirect
-$sql = "SELECT name, surname FROM cp_patients WHERE id = ?";
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $patient_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($patient = $result->fetch_assoc()) {
-    $query = urlencode(trim($patient['name']) . ' ' . trim($patient['surname']));
-    header("Location: search_patients.php?mode=patient&query=" . $query);
+// **GESTIONE SISTEMICA DEL REDIRECT** - Basata sulla provenienza
+if ($return_to === 'manage_appointments') {
+    // Ritorna a manage_appointments con evidenziazione dell'appuntamento
+    header("Location: manage_appointments.php?highlight_appointment=" . $appointment_id);
 } else {
-    header("Location: search_patients.php");
+    // Comportamento originale per search_patients
+    $sql = "SELECT name, surname FROM cp_patients WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("i", $patient_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($patient = $result->fetch_assoc()) {
+        $query = urlencode(trim($patient['name']) . ' ' . trim($patient['surname']));
+        header("Location: search_patients.php?mode=patient&query=" . $query);
+    } else {
+        header("Location: search_patients.php");
+    }
 }
 
 $conn->close();
