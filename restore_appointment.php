@@ -2,13 +2,11 @@
 session_start();
 require_once 'config.php';
 
-// Verifica che l'utente sia loggato
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
-// Verifica che siano stati passati i parametri necessari
 if (!isset($_GET['id']) || !isset($_GET['patient_id'])) {
     header("Location: search_patients.php");
     exit();
@@ -19,8 +17,7 @@ $patient_id = intval($_GET['patient_id']);
 $return_to = isset($_GET['return_to']) ? $_GET['return_to'] : 'search_patients';
 
 try {
-    // Aggiorna lo status dell'appuntamento da 'cancelled' a 'active'
-    $sql = "UPDATE cp_appointments SET status = 'active' WHERE id = ? AND patient_id = ?";
+    $sql = "UPDATE cp_appointments SET status = NULL WHERE id = ? AND patient_id = ?";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("ii", $appointment_id, $patient_id);
     
@@ -33,19 +30,15 @@ try {
     } else {
         $_SESSION['error_message'] = "Errore durante il ripristino dell'appuntamento.";
     }
-    
     $stmt->close();
     
 } catch (Exception $e) {
     $_SESSION['error_message'] = "Errore: " . $e->getMessage();
 }
 
-// **GESTIONE SISTEMICA DEL REDIRECT** - Basata sulla provenienza
 if ($return_to === 'manage_appointments') {
-    // Ritorna a manage_appointments con evidenziazione dell'appuntamento
     header("Location: manage_appointments.php?highlight_appointment=" . $appointment_id);
 } else {
-    // Comportamento originale per search_patients
     $sql = "SELECT name, surname FROM cp_patients WHERE id = ?";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param("i", $patient_id);
