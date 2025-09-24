@@ -10,7 +10,8 @@ if (!isset($_SESSION['user_id'])) {
 
 include 'db.php';
 include 'utils_appointment.php';
-// **NUOVA FUNZIONE: Gestire disdetta appuntamento**
+
+// **FUNZIONE: Gestire disdetta appuntamento**
 if (isset($_POST['cancel_appointment'])) {
     $id = $_POST['appointment_id'];
     
@@ -30,61 +31,6 @@ if (isset($_POST['cancel_appointment'])) {
     } catch (Exception $e) {
         error_log("Errore nella disdetta dell'appuntamento: " . $e->getMessage());
         $_SESSION['error_message'] = "Si è verificato un errore nella disdetta: " . $e->getMessage();
-        header('Location: manage_appointments.php');
-        exit();
-    }
-}
-
-// **NUOVA FUNZIONE: Ripristinare appuntamento disdetto**
-if (isset($_POST['restore_appointment'])) {
-    $id = $_POST['appointment_id'];
-    
-    try {
-        // Verifica che lo slot sia ancora disponibile prima di ripristinare
-        $check_stmt = $conn->prepare("SELECT appointment_date, appointment_time, zone_id FROM cp_appointments WHERE id = ?");
-        $check_stmt->bind_param("i", $id);
-        $check_stmt->execute();
-        $result = $check_stmt->get_result();
-        $appointment_data = $result->fetch_assoc();
-        $check_stmt->close();
-        
-        if ($appointment_data) {
-            // Verifica conflitti con altri appuntamenti attivi
-            $conflict_stmt = $conn->prepare("SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ? AND (status IS NULL OR status = 'attivo') AND id != ?");
-            $conflict_stmt->bind_param("ssi", $appointment_data['appointment_date'], $appointment_data['appointment_time'], $id);
-            $conflict_stmt->execute();
-            $conflict_result = $conflict_stmt->get_result();
-            $conflict_row = $conflict_result->fetch_assoc();
-            $conflict_stmt->close();
-            
-            if ($conflict_row['count'] > 0) {
-                $_SESSION['error_message'] = "Impossibile ripristinare: lo slot è già occupato da un altro appuntamento.";
-            } else {
-                // Verifica unavailable slots
-                $end_time = date('H:i:s', strtotime($appointment_data['appointment_time'] . ' +1 hour'));
-                $availability = isSlotAvailable($appointment_data['appointment_date'], $appointment_data['appointment_time'], $end_time, $appointment_data['zone_id']);
-                
-                if (!$availability['available']) {
-                    $_SESSION['error_message'] = "Impossibile ripristinare: " . $availability['reason'];
-                } else {
-                    // Ripristina lo stato a 'attivo'
-                    $restore_stmt = $conn->prepare("UPDATE cp_appointments SET status = 'attivo' WHERE id = ?");
-                    $restore_stmt->bind_param("i", $id);
-                    $restore_stmt->execute();
-                    $restore_stmt->close();
-                    
-                    $_SESSION['success_message'] = "Appuntamento ripristinato con successo.";
-                }
-            }
-        } else {
-            $_SESSION['error_message'] = "Appuntamento non trovato.";
-        }
-        
-        header('Location: manage_appointments.php');
-        exit();
-    } catch (Exception $e) {
-        error_log("Errore nel ripristino dell'appuntamento: " . $e->getMessage());
-        $_SESSION['error_message'] = "Si è verificato un errore nel ripristino: " . $e->getMessage();
         header('Location: manage_appointments.php');
         exit();
     }
@@ -126,7 +72,7 @@ function getAppointments($filter = [], $search = '', $phone_search = '', $page =
     $offset = ($page - 1) * $results_per_page;
     
     // **NUOVO: Aggiunta campo status nella SELECT**
-    $sql = "SELECT a.id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, a.status, COALESCE(z.name, 'N/A') as zone
+    $sql = "SELECT a.id, a.patient_id, p.name, p.surname, p.phone, a.notes, a.appointment_date, a.appointment_time, a.address, a.status, COALESCE(z.name, 'N/A') as zone
             FROM cp_appointments a
             JOIN cp_patients p ON a.patient_id = p.id
             LEFT JOIN cp_zones z ON a.zone_id = z.id";
@@ -449,6 +395,18 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
     background-color: #198754;
     color: white;
 }
+
+/* **RIPRISTINA BUTTON - VERDE CON !IMPORTANT PER SOVRASCRIVERE IL CSS GLOBALE** */
+.btn-outline-warning {
+    color: #28a745 !important; /* Verde con !important per sovrascrivere styles.css */
+    border-color: #28a745 !important;
+    background-color: transparent !important;
+}
+
+.btn-outline-warning:hover {
+    background-color: #28a745 !important;
+    color: white !important;
+}
         .hidden {
             display: none;
         }
@@ -608,24 +566,17 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
         }
     
         function confirmDelete(appointment) {
-            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.appointment_date} alle ${appointment.appointment_time}?`)) {
+            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.appointment_date} ${appointment.appointment_time}?`)) {
                 document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
                 document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
             }
         }
         
-        // **NUOVA FUNZIONE: Conferma disdetta**
+        // **FUNZIONE: Conferma disdetta**
 function confirmCancel(appointment) {
-    if (confirm(`Sei sicuro di voler disdire l'appuntamento con ${appointment.name} ${appointment.surname} del ${appointment.appointment_date} alle ${appointment.appointment_time}?\n\nL'appuntamento potrà essere ripristinato dalla ricerca pazienti.`)) {
+    if (confirm(`Sei sicuro di voler disdire l'appuntamento con ${appointment.name} ${appointment.surname} del ${appointment.appointment_date} alle ${appointment.appointment_time}?\n\nL'appuntamento potrà essere ripristinato in seguito.`)) {
         document.getElementById(`confirm-cancel-${appointment.id}`).style.display = 'inline';
         document.getElementById(`cancel-btn-${appointment.id}`).style.display = 'none';
-    }
-}
-
-// **NUOVA FUNZIONE: Conferma ripristino**
-function confirmRestore(appointment) {
-    if (confirm(`Vuoi ripristinare l'appuntamento con ${appointment.name} ${appointment.surname} del ${appointment.appointment_date} alle ${appointment.appointment_time}?`)) {
-        document.getElementById(`restore-form-${appointment.id}`).submit();
     }
 }
     
@@ -672,12 +623,6 @@ function confirmRestore(appointment) {
                 time_24hr: true,
                 allowInput: true
             });
-            
-            // Utilizziamo debounce per i filtri in tempo reale
-           // document.getElementById('date').addEventListener('change', debounce(filterAppointments, 500));
-            //document.getElementById('zone').addEventListener('input', debounce(filterAppointments, 500));
-           // document.getElementById('search').addEventListener('input', debounce(filterAppointments, 500));
-           // document.getElementById('phone_search').addEventListener('input', debounce(filterAppointments, 500));
             
             // Aggiungere pulsante di ricerca esplicito
             document.getElementById('search-button').addEventListener('click', filterAppointments);
@@ -741,10 +686,6 @@ function confirmRestore(appointment) {
     filterAppointments();
 }
     </script>
-    
-   
-
-    
 </head>
 <body>
     <?php include 'menu.php'; ?>
@@ -901,17 +842,18 @@ function confirmRestore(appointment) {
     <?php endif; ?>
 </td>
         
-        <!-- **COLONNA AZIONI MODIFICATA** -->
+        <!-- **COLONNA AZIONI MODIFICATA CON REDIRECT SISTEMICO** -->
         <td>
             <?php if ($appointment['status'] === 'disdetto'): ?>
-                <!-- **APPUNTAMENTO DISDETTO: Pulsanti come in search_patients.php** -->
+                <!-- **APPUNTAMENTO DISDETTO: Pulsanti come in search_patients.php CON REDIRECT SISTEMICO** -->
                 <div style="display: flex; flex-direction: column; gap: 5px;">
-                    <!-- Ripristina appuntamento -->
-                    <form method="post" action="manage_appointments.php" style="display:inline;" id="restore-form-<?php echo $appointment['id']; ?>">
-                        <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                        <button type="button" class="ripristina-btn pure-button button-small" onclick="confirmRestore(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Ripristina</button>
-                        <input type="submit" name="restore_appointment" value="Conferma Ripristina" style="display:none;" id="confirm-restore-<?php echo $appointment['id']; ?>">
-                    </form>
+                    <!-- **RIPRISTINA CON PARAMETRO return_to** -->
+                    <a href='restore_appointment.php?id=<?php echo $appointment['id']; ?>&patient_id=<?php echo $appointment['patient_id']; ?>&return_to=manage_appointments' 
+                       class='btn btn-sm btn-outline-warning' 
+                       title='Ripristina Appuntamento' 
+                       onclick='return confirm("Sei sicuro di voler ripristinare questo appuntamento?")'>
+                       Ripristina
+                    </a>
                     
                     <!-- Nuovo appuntamento con stessi dati -->
                     <form method="GET" action="insert_appointment.php" style="display:inline;">
@@ -935,19 +877,19 @@ function confirmRestore(appointment) {
                 <!-- **APPUNTAMENTO ATTIVO: Pulsanti normali** -->
                 <button class="modifica-btn pure-button button-small button-green" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
                 
-                <button class="disdici-btn pure-button button-small" id="cancel-btn-<?php echo $appointment['id']; ?>" onclick="confirmCancel(<?php echo htmlspecialchars(json_encode($appointment)); ?>)" style="display: inline;">Disdici</button>
+                <button class="disdici-btn pure-button button-small" id="cancel-btn-<?php echo $appointment['id']; ?>" onclick="confirmCancel(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Disdici</button>
                 
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="cancel_appointment" value="Conferma Disdetta" class="confirm-btn pure-button button-small button-red" id="confirm-cancel-<?php echo $appointment['id']; ?>" style="display: none;">
+                    <input type="submit" name="cancel_appointment" value="Conferma Disdetta" class="confirm-btn pure-button button-small button-red" id="confirm-cancel-<?php echo $appointment['id']; ?>" style="display:none;">
                 </form>
                 
                 <!-- **MANTIENI anche il vecchio sistema di cancellazione definitiva** -->
-                <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)" style="display: inline;">Cancella</button>
+                <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Cancella</button>
                 
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display: none;">
+                    <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
                 </form>
             <?php endif; ?>
         </td>
@@ -1003,14 +945,14 @@ function confirmRestore(appointment) {
     </div>
     <div class="pure-g aria centrato pagination">
     <?php if ($page > 1) { ?>
-        <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date'] ?? ''); ?>&zone=<?php echo urlencode($filter['zone'] ?? ''); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status'] ?? ''); ?>" class="pure-button">← Precedente</a>
+        <a href="manage_appointments.php?page=<?php echo $page - 1; ?>&date=<?php echo urlencode($filter['date'] ?? ''); ?>&zone=<?php echo urlencode($filter['zone'] ?? ''); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status'] ?? ''); ?>" class="pure-button">Precedente</a>
     <?php } ?>
     
     <!-- Mostra info pagina corrente -->
     <span style="margin: 0 15px; padding: 8px;">Pagina <?php echo $page; ?> di <?php echo $total_pages; ?></span>
     
     <?php if ($page < $total_pages) { ?>
-        <a href="manage_appointments.php?page=<?php echo $page + 1; ?>&date=<?php echo urlencode($filter['date'] ?? ''); ?>&zone=<?php echo urlencode($filter['zone'] ?? ''); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status'] ?? ''); ?>" class="pure-button">Successivo →</a>
+        <a href="manage_appointments.php?page=<?php echo $page + 1; ?>&date=<?php echo urlencode($filter['date'] ?? ''); ?>&zone=<?php echo urlencode($filter['zone'] ?? ''); ?>&search=<?php echo urlencode($search); ?>&phone_search=<?php echo urlencode($phone_search); ?>&address_search=<?php echo urlencode($address_search); ?>&status=<?php echo urlencode($filter['status'] ?? ''); ?>" class="pure-button">Successiva</a>
     <?php } ?>
 </div>
     
