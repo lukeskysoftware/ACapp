@@ -50,7 +50,7 @@ if (isset($_POST['restore_appointment'])) {
         
         if ($appointment_data) {
             // Verifica conflitti con altri appuntamenti attivi
-            $conflict_stmt = $conn->prepare("SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ? AND status = 'attivo' AND id != ?");
+            $conflict_stmt = $conn->prepare("SELECT COUNT(*) as count FROM cp_appointments WHERE appointment_date = ? AND appointment_time = ? AND (status IS NULL OR status = 'attivo') AND id != ?");
             $conflict_stmt->bind_param("ssi", $appointment_data['appointment_date'], $appointment_data['appointment_time'], $id);
             $conflict_stmt->execute();
             $conflict_result = $conflict_stmt->get_result();
