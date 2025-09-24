@@ -274,8 +274,8 @@ if ($appointments) {
                         <i class='bi bi-pencil-square'></i> Gestisci appuntamento
                     </a>";
             } else {
-    // Per appuntamenti disdetti futuri - pulsante ripristina + riutilizzo dati
-    echo " <a href='restore_appointment.php?id={$app['id']}&patient_id={$patient['id']}' 
+    // **APPUNTAMENTI DISDETTI FUTURI - CON PARAMETRO return_to**
+    echo " <a href='restore_appointment.php?id={$app['id']}&patient_id={$patient['id']}&return_to=search_patients' 
             class='btn btn-sm btn-outline-warning restore-btn' 
             title='Ripristina Appuntamento' 
             onclick='return confirm(\"Sei sicuro di voler ripristinare questo appuntamento?\")'>
