@@ -97,13 +97,16 @@ function getAppointments($filter = [], $search = '', $phone_search = '', $page =
     $today = date('Y-m-d');
     
     // **NUOVO: Logica filtro corretta**
-$conditions[] = "a.appointment_date >= '$today'"; // Sempre solo futuri
+    $conditions[] = "a.appointment_date >= '$today'"; // Sempre solo futuri
 
-if ($filter['status'] === 'attivo') {
-    // Solo appuntamenti attivi
-    $conditions[] = "(a.status IS NULL OR a.status = 'attivo')";
-}
-// Se status = 'tutti' o vuoto, mostra tutti (attivi + disdetti)
+    if ($filter['status'] === 'attivo') {
+        // Solo appuntamenti attivi
+        $conditions[] = "(a.status IS NULL OR a.status = 'attivo')";
+    } elseif ($filter['status'] === 'disdetto') {
+        // Solo appuntamenti disdetti
+        $conditions[] = "a.status = 'disdetto'";
+    }
+    // Se status = 'tutti' o vuoto, mostra tutti (attivi + disdetti)
 
     if (!empty($filter['date'])) {
         $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
@@ -146,14 +149,14 @@ function getTotalAppointments($filter = [], $search = '', $phone_search = '', $a
     $today = date('Y-m-d');
     
     // **NUOVO: Stessa logica di filtro per il count**
-    if (empty($filter['status']) || $filter['status'] === 'attivo') {
-        $conditions[] = "a.appointment_date >= '$today'";
+    $conditions[] = "a.appointment_date >= '$today'"; // Sempre solo futuri
+
+    if ($filter['status'] === 'attivo') {
         $conditions[] = "(a.status IS NULL OR a.status = 'attivo')";
     } elseif ($filter['status'] === 'disdetto') {
         $conditions[] = "a.status = 'disdetto'";
-    } elseif ($filter['status'] === 'tutti') {
-        $conditions[] = "a.appointment_date >= '$today'";
     }
+    // Se status = 'tutti', mostra tutti
     
     if (!empty($filter['date'])) {
         $conditions[] = "a.appointment_date = '" . mysqli_real_escape_string($conn, $filter['date']) . "'";
@@ -329,6 +332,7 @@ if (isset($_GET['highlight_appointment'])) {
     $filter = [
         'date' => isset($_GET['date']) ? $_GET['date'] : '',
         'zone' => isset($_GET['zone']) ? $_GET['zone'] : '',
+        'status' => isset($_GET['status']) ? $_GET['status'] : 'tutti' // **NUOVO: Filtro status**
     ];
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
     $total_appointments = getTotalAppointments($filter, $search, $phone_search, $address_search);
@@ -405,6 +409,44 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
 }
 .btn-direct {
     background-color: #6f42c1;
+    color: white;
+}
+/* **NUOVI STILI PER PULSANTI COME IN SEARCH_PATIENTS** */
+.btn {
+    display: inline-block;
+    padding: 4px 8px;
+    margin: 2px;
+    text-decoration: none;
+    border-radius: 3px;
+    font-size: 0.8em;
+    border: 1px solid;
+    cursor: pointer;
+}
+
+.btn-sm {
+    padding: 2px 6px;
+    font-size: 0.75em;
+}
+
+.btn-outline-primary {
+    color: #0d6efd;
+    border-color: #0d6efd;
+    background-color: transparent;
+}
+
+.btn-outline-primary:hover {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.btn-outline-success {
+    color: #198754;
+    border-color: #198754;
+    background-color: transparent;
+}
+
+.btn-outline-success:hover {
+    background-color: #198754;
     color: white;
 }
         .hidden {
@@ -566,7 +608,7 @@ $zones = getZones(); // Questo è ancora necessario per il menu a discesa delle 
         }
     
         function confirmDelete(appointment) {
-            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.date} ${appointment.time}?`)) {
+            if (confirm(`Sei sicuro di voler cancellare l'appuntamento in zona ${appointment.zone} ${appointment.address} con ${appointment.name} ${appointment.surname} ${appointment.phone} ${appointment.appointment_date} alle ${appointment.appointment_time}?`)) {
                 document.getElementById(`confirm-delete-${appointment.id}`).style.display = 'inline';
                 document.getElementById(`delete-btn-${appointment.id}`).style.display = 'none';
             }
@@ -662,7 +704,7 @@ function confirmRestore(appointment) {
     const status = document.getElementById('status').value;
 
     const xhr = new XMLHttpRequest();
-    xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}&phone_search=${encodeURIComponent(phone_search)}&address_search=${encodeURIComponent(address_search)}&status=${encodeURIComponent(status)}`, true);
+    xhr.open('GET', `manage_appointments.php?date=${encodeURIComponent(date)}&zone=${encodeURIComponent(zone)}&search=${encodeURIComponent(search)}&phone_search=${encodeURIComponent(phone_search)}&address_search=${encodeURIComponent(address_search)}&status=${encodeURIComponent(status)}`);
 
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4) {
@@ -695,8 +737,7 @@ function confirmRestore(appointment) {
     document.getElementById('search').value = '';
     document.getElementById('phone_search').value = '';
     document.getElementById('address_search').value = '';
-    // Reset filtro status a default 'tutti'
-document.getElementById('status').value = 'tutti';
+    document.getElementById('status').value = 'tutti'; // Reset a 'tutti'
     filterAppointments();
 }
     </script>
@@ -764,13 +805,14 @@ document.getElementById('status').value = 'tutti';
             <input type="text" id="date" name="date" class="flatpickr" value="<?php echo htmlspecialchars($filter['date']); ?>" style="width: 110px;">
         </div>
 
-        <!-- **NUOVO FILTRO STATUS** -->
+        <!-- **NUOVO FILTRO STATUS AGGIORNATO** -->
 <div style="display: flex; align-items: center; min-width: 150px;">
     <label for="status" style="margin-right: 5px; font-weight: bold; white-space: nowrap;">Stato:</label>
     <select id="status" name="status" style="width: 100px;">
-    <option value="tutti"<?php echo (empty($filter['status']) || $filter['status'] === 'tutti') ? ' selected' : ''; ?>>Tutti</option>
-    <option value="attivo"<?php echo ($filter['status'] === 'attivo') ? ' selected' : ''; ?>>Solo attivi</option>
-</select>
+        <option value="tutti"<?php echo (empty($filter['status']) || $filter['status'] === 'tutti') ? ' selected' : ''; ?>>Tutti</option>
+        <option value="attivo"<?php echo ($filter['status'] === 'attivo') ? ' selected' : ''; ?>>Solo attivi</option>
+        <option value="disdetto"<?php echo ($filter['status'] === 'disdetto') ? ' selected' : ''; ?>>Solo disdetti</option>
+    </select>
 </div>
 
         <div style="display: flex; align-items: center; min-width: 180px;">
@@ -850,46 +892,62 @@ document.getElementById('status').value = 'tutti';
         <td><?php echo htmlspecialchars($appointment['address']); ?></td>
         <td><?php echo htmlspecialchars($appointment['zone']); ?></td>
         
-        <!-- **NUOVA COLONNA STATO** -->
-        <td>
-            <?php if ($appointment['status'] === 'disdetto'): ?>
-                <span class="badge-disdetto">DISDETTO</span>
-                <!-- **NUOVO: Link per riprendere appuntamento** -->
-                <div class="riprendi-btns">
-                    <a href="add_appointment.php?copy_appointment=<?php echo $appointment['id']; ?>&from_page=manage" class="btn-smart">Copia Smart</a>
-                    <a href="add_appointment.php?direct_restore=<?php echo $appointment['id']; ?>&from_page=manage" class="btn-direct">Ripristina Diretto</a>
-                </div>
-            <?php else: ?>
-                <span style="color: green; font-weight: bold;">ATTIVO</span>
-            <?php endif; ?>
-        </td>
+      <!-- **NUOVA COLONNA STATO** -->
+<td>
+    <?php if ($appointment['status'] === 'disdetto'): ?>
+        <span class="badge-disdetto">DISDETTO</span>
+    <?php else: ?>
+        <span style="color: green; font-weight: bold;">ATTIVO</span>
+    <?php endif; ?>
+</td>
         
         <!-- **COLONNA AZIONI MODIFICATA** -->
         <td>
             <?php if ($appointment['status'] === 'disdetto'): ?>
-                <!-- **APPUNTAMENTO DISDETTO: Pulsante ripristina** -->
-                <form method="post" action="manage_appointments.php" style="display:inline;" id="restore-form-<?php echo $appointment['id']; ?>">
-                    <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <button type="button" class="ripristina-btn pure-button button-small" onclick="confirmRestore(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Ripristina</button>
-                    <input type="submit" name="restore_appointment" value="Conferma Ripristina" style="display:none;" id="confirm-restore-<?php echo $appointment['id']; ?>">
-                </form>
+                <!-- **APPUNTAMENTO DISDETTO: Pulsanti come in search_patients.php** -->
+                <div style="display: flex; flex-direction: column; gap: 5px;">
+                    <!-- Ripristina appuntamento -->
+                    <form method="post" action="manage_appointments.php" style="display:inline;" id="restore-form-<?php echo $appointment['id']; ?>">
+                        <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
+                        <button type="button" class="ripristina-btn pure-button button-small" onclick="confirmRestore(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Ripristina</button>
+                        <input type="submit" name="restore_appointment" value="Conferma Ripristina" style="display:none;" id="confirm-restore-<?php echo $appointment['id']; ?>">
+                    </form>
+                    
+                    <!-- Nuovo appuntamento con stessi dati -->
+                    <form method="GET" action="insert_appointment.php" style="display:inline;">
+                        <input type="hidden" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>">
+                        <input type="hidden" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>">
+                        <input type="hidden" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>">
+                        <input type="hidden" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>">
+                        <button type="submit" class="btn btn-sm btn-outline-primary" title="Nuovo appuntamento con questi dati">Nuovo</button>
+                    </form>
+                    
+                    <!-- Cerca data per zona -->
+                    <form method="GET" action="combined_address_calculate_v2.php" style="display:inline;">
+                        <input type="hidden" name="name" value="<?php echo htmlspecialchars($appointment['name']); ?>">
+                        <input type="hidden" name="surname" value="<?php echo htmlspecialchars($appointment['surname']); ?>">
+                        <input type="hidden" name="phone" value="<?php echo htmlspecialchars($appointment['phone']); ?>">
+                        <input type="hidden" name="address" value="<?php echo htmlspecialchars($appointment['address']); ?>">
+                        <button type="submit" class="btn btn-sm btn-outline-success" title="Cerca nuova data per zona">Zona</button>
+                    </form>
+                </div>
             <?php else: ?>
                 <!-- **APPUNTAMENTO ATTIVO: Pulsanti normali** -->
                 <button class="modifica-btn pure-button button-small button-green" onclick="showActions(<?php echo $appointment['id']; ?>)">Modifica</button>
                 
-                <button class="disdici-btn pure-button button-small" id="cancel-btn-<?php echo $appointment['id']; ?>" onclick="confirmCancel(<?php echo htmlspecialchars(json_encode($appointment)); ?>)">Disdici</button>
+                <button class="disdici-btn pure-button button-small" id="cancel-btn-<?php echo $appointment['id']; ?>" onclick="confirmCancel(<?php echo htmlspecialchars(json_encode($appointment)); ?>)" style="display: inline;">Disdici</button>
                 
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="cancel_appointment" value="Conferma Disdetta" class="confirm-btn pure-button button-small button-red" id="confirm-cancel-<?php echo $appointment['id']; ?>" style="display:none;">
+                    <input type="submit" name="cancel_appointment" value="Conferma Disdetta" class="confirm-btn pure-button button-small button-red" id="confirm-cancel-<?php echo $appointment['id']; ?>" style="display: none;">
                 </form>
                 
                 <!-- **MANTIENI anche il vecchio sistema di cancellazione definitiva** -->
-                <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)" style="display:none;">Cancella</button>
+                <button class="cancella-btn pure-button button-small button-red" id="delete-btn-<?php echo $appointment['id']; ?>" onclick="confirmDelete(<?php echo htmlspecialchars(json_encode($appointment)); ?>)" style="display: inline;">Cancella</button>
                 
                 <form method="post" action="manage_appointments.php" style="display:inline;">
                     <input type="hidden" name="appointment_id" value="<?php echo $appointment['id']; ?>">
-                    <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display:none;">
+                    <input type="submit" name="delete_confirm" value="Conferma cancella" class="confirm-btn pure-button button-small button-red" id="confirm-delete-<?php echo $appointment['id']; ?>" style="display: none;">
                 </form>
             <?php endif; ?>
         </td>
@@ -920,11 +978,11 @@ document.getElementById('status').value = 'tutti';
                     </div>
                     <div class="edit-column">
                         <label for="appointment_date-<?php echo $appointment['id']; ?>">Data</label>
-                        <input type="date" id="appointment_date-<?php echo $appointment['id']; ?>" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required class="flatpickr">
+                        <input type="date" id="appointment_date-<?php echo $appointment['id']; ?>" name="appointment_date" value="<?php echo htmlspecialchars($appointment['appointment_date']); ?>" required>
                     </div>
                     <div class="edit-column">
                         <label for="appointment_time-<?php echo $appointment['id']; ?>">Ora</label>
-                        <input type="time" id="appointment_time-<?php echo $appointment['id']; ?>" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required class="flatpickr-time">
+                        <input type="time" id="appointment_time-<?php echo $appointment['id']; ?>" name="appointment_time" value="<?php echo htmlspecialchars($appointment['appointment_time']); ?>" required>
                     </div>
                     <div class="edit-column">
                         <label for="address-<?php echo $appointment['id']; ?>">Indirizzo</label>
