@@ -40,7 +40,8 @@ function searchPatients($conn, $search) {
 }
 
 function getPatientAppointments($conn, $patient_id) {
-    $sql = "SELECT a.*, z.name as zone_name
+    $sql = "SELECT a.*, z.name as zone_name, 
+                   COALESCE(a.status, 'active') as status
             FROM cp_appointments a
             LEFT JOIN cp_zones z ON a.zone_id = z.id
             WHERE a.patient_id = ?
@@ -52,7 +53,8 @@ function getPatientAppointments($conn, $patient_id) {
 }
 
 function searchAppointmentsByDate($conn, $date) {
-    $sql = "SELECT a.*, p.name, p.surname, p.phone
+    $sql = "SELECT a.*, p.name, p.surname, p.phone,
+                   COALESCE(a.status, 'active') as status
             FROM cp_appointments a
             LEFT JOIN cp_patients p ON a.patient_id = p.id
             WHERE a.appointment_date = ?
@@ -81,6 +83,23 @@ $search_date = isset($_GET['search_date']) ? $_GET['search_date'] : '';
         .action-btns .btn {margin-right: 10px;}
         .appointment-list {font-size:0.96em;}
         .appointment-list li {margin-bottom:3px;}
+        .patient-card {margin-bottom: 30px;}
+.action-btns .btn {margin-right: 10px;}
+.appointment-list {font-size:0.96em;}
+.appointment-list li {margin-bottom:3px;}
+.cancelled-appointment {
+    opacity: 0.6;
+    text-decoration: line-through;
+}
+.status-badge {
+    font-size: 0.75em;
+    margin-left: 8px;
+}
+.restore-btn {
+    font-size: 0.7em;
+    padding: 2px 6px;
+    margin-left: 8px;
+}
     </style>
 </head>
 <body>
@@ -223,23 +242,67 @@ $search_date = isset($_GET['search_date']) ? $_GET['search_date'] : '';
 <?php
 if ($appointments) {
     foreach ($appointments as $app) {
-        echo "<li>";
-        echo date('d/m/Y', strtotime($app['appointment_date'])) . " " . htmlspecialchars($app['appointment_time']) . " - ";
-        echo htmlspecialchars($app['address']);
-        if ($app['zone_name']) {
-            echo " <span class='badge bg-info text-dark'>Zona: ".htmlspecialchars($app['zone_name'])."</span>";
-        }
+        $isCancelled = (isset($app['status']) && $app['status'] === 'cancelled');
+        $listClass = $isCancelled ? 'cancelled-appointment' : '';
+        
         // Calcola se l'appuntamento è futuro
         $appDateTime = strtotime($app['appointment_date'] . ' ' . $app['appointment_time']);
         $now = time();
-        if ($appDateTime > $now) {
-    echo " <a href='manage_appointments.php?highlight_appointment={$app['id']}' 
-            class='btn btn-sm btn-outline-info px-2 py-0 ms-2' 
-            style='font-size:0.8em;line-height:1.1;vertical-align:baseline;' 
-            title='Gestisci Appuntamento'>
-            <i class='bi bi-pencil-square'></i> Gestisci appuntamento
+        $isFuture = ($appDateTime > $now);
+        
+        echo "<li class='{$listClass}'>";
+        echo date('d/m/Y', strtotime($app['appointment_date'])) . " " . htmlspecialchars($app['appointment_time']) . " - ";
+        echo htmlspecialchars($app['address']);
+        
+        if ($app['zone_name']) {
+            echo " <span class='badge bg-info text-dark'>Zona: ".htmlspecialchars($app['zone_name'])."</span>";
+        }
+        
+        // Status badge - solo per appuntamenti futuri o disdetti
+        if ($isCancelled) {
+            echo " <span class='badge bg-danger status-badge'>Disdetto</span>";
+        } elseif ($isFuture) {
+            echo " <span class='badge bg-success status-badge'>Attivo</span>";
+        }
+        
+        if ($isFuture) {
+            if (!$isCancelled) {
+                echo " <a href='manage_appointments.php?highlight_appointment={$app['id']}' 
+                        class='btn btn-sm btn-outline-info px-2 py-0 ms-2' 
+                        style='font-size:0.8em;line-height:1.1;vertical-align:baseline;' 
+                        title='Gestisci Appuntamento'>
+                        <i class='bi bi-pencil-square'></i> Gestisci appuntamento
+                    </a>";
+            } else {
+    // Per appuntamenti disdetti futuri - pulsante ripristina + riutilizzo dati
+    echo " <a href='restore_appointment.php?id={$app['id']}&patient_id={$patient['id']}' 
+            class='btn btn-sm btn-outline-warning restore-btn' 
+            title='Ripristina Appuntamento' 
+            onclick='return confirm(\"Sei sicuro di voler ripristinare questo appuntamento?\")'>
+            Ripristina
         </a>";
+    
+    echo " <form method='GET' action='insert_appointment.php' style='display:inline;'>
+            <input type='hidden' name='name' value='".htmlspecialchars($patient['name'])."'>
+            <input type='hidden' name='surname' value='".htmlspecialchars($patient['surname'])."'>
+            <input type='hidden' name='phone' value='".htmlspecialchars($patient['phone'])."'>
+            <input type='hidden' name='address' value='".htmlspecialchars($app['address'])."'>
+            <button type='submit' class='btn btn-sm btn-outline-primary restore-btn' title='Nuovo appuntamento con questi dati'>
+                Nuovo
+            </button>
+          </form>";
+    
+    echo " <form method='GET' action='combined_address_calculate_v2.php' style='display:inline;'>
+            <input type='hidden' name='name' value='".htmlspecialchars($patient['name'])."'>
+            <input type='hidden' name='surname' value='".htmlspecialchars($patient['surname'])."'>
+            <input type='hidden' name='phone' value='".htmlspecialchars($patient['phone'])."'>
+            <input type='hidden' name='address' value='".htmlspecialchars($app['address'])."'>
+            <button type='submit' class='btn btn-sm btn-outline-success restore-btn' title='Cerca nuova data per zona'>
+                Zona
+            </button>
+          </form>";
 }
+        }
         echo "</li>";
     }
 } else {
@@ -262,13 +325,20 @@ if ($appointments) {
         if ($apps) {
             echo "<h4 class='mb-3 text-info'>Appuntamenti per il giorno ".date('d/m/Y', strtotime($search_date))."</h4>";
             foreach ($apps as $app) {
-                $nomeCognome = htmlspecialchars($app['name']." ".$app['surname']);
-                $querystr = urlencode(trim($app['name']).' '.trim($app['surname']));
-                echo "<div class='mb-1'>";
-                echo "<a href='?mode=patient&query={$querystr}' class='fw-bold'>{$nomeCognome}</a>";
-                echo " <span class='text-muted' style='font-size:0.95em;'>(Tel: ".htmlspecialchars($app['phone']).")</span>";
-                echo "</div>";
-            }
+    $nomeCognome = htmlspecialchars($app['name']." ".$app['surname']);
+    $querystr = urlencode(trim($app['name']).' '.trim($app['surname']));
+    $isCancelled = (isset($app['status']) && $app['status'] === 'cancelled');
+    $textClass = $isCancelled ? 'text-decoration-line-through text-muted' : '';
+    
+    echo "<div class='mb-1'>";
+    echo "<a href='?mode=patient&query={$querystr}' class='fw-bold {$textClass}'>{$nomeCognome}</a>";
+    echo " <span class='text-muted' style='font-size:0.95em;'>(Tel: ".htmlspecialchars($app['phone']).")</span>";
+    
+    if ($isCancelled) {
+        echo " <span class='badge bg-danger ms-2'>Disdetto</span>";
+    }
+    echo "</div>";
+}
         } else {
             echo '<div class="alert alert-warning">Nessun appuntamento trovato per questa data.</div>';
         }
